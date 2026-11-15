@@ -14,7 +14,7 @@ import { extractRoofPlanes, analyzeRoof } from './roof-geometry.js';
 import * as TX from './textures.js';
 import { sunPosition, sunDirection, dayOfYear, makeSkyTexture, fitShadow, snapshot, PathTraceMode } from './render.js';
 import { pitchLabel, slugify, rgbToHex, clamp } from './util.js';
-import { LabelOverlay, drawCallouts } from './labels.js';
+import { LabelOverlay, drawCallouts, labelReserve, SCREEN_INSETS } from './labels.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -212,12 +212,25 @@ function frameView(exploded = false, instant = false) {
   const center = box.getCenter(new THREE.Vector3());
   const size = box.getSize(new THREE.Vector3()).length();
   const dir = camera.position.clone().sub(controls.target).normalize();
-  const dist = size / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))) * (camera.aspect < 1 ? 1.2 : 0.74) * (exploded ? 1.12 : 1);
-  if (exploded && camera.aspect > 0.9) {
-    // slide the model left so the callout column fits on the right
+  const tanV = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+  let dist = size / (2 * tanV) * (camera.aspect < 1 ? 1.2 : 0.74);
+  if (exploded) {
+    // keep a strip on the right free for the label column and stay clear of the top bar and toolbar
+    const W = Math.max(1, stage.clientWidth), H = Math.max(1, stage.clientHeight);
+    const reserve = Math.min(labelReserve(W), W * 0.55);
+    const freeX = (W - reserve - SCREEN_INSETS.side) / W;
+    const freeY = (H - SCREEN_INSETS.top - SCREEN_INSETS.bottom) / H;
+    // the bounding-box diagonal overstates the on-screen width, more so on tall phone views
+    const k = W < 520 ? 0.68 : 0.82;
+    const fitV = (size / 2) / (tanV * Math.max(0.3, freeY)) * 0.82;
+    const fitH = (size / 2) / (tanV * camera.aspect * Math.max(0.3, freeX)) * k;
+    dist = Math.max(fitV, fitH);
+    // slide the model left by half the reserved strip
     const right = new THREE.Vector3().crossVectors(dir.clone().negate(), UP).normalize();
-    const halfW = dist * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect;
-    center.addScaledVector(right, halfW * 0.28);
+    const halfW = dist * tanV * camera.aspect;
+    center.addScaledVector(right, halfW * (reserve / W));
+    // and up a little, because the toolbar covers more than the top bar
+    center.y -= dist * tanV * ((SCREEN_INSETS.bottom - SCREEN_INSETS.top) / H);
   }
   tweenCamera(center, center.clone().addScaledVector(dir, dist), instant ? 0 : 0.9);
 }

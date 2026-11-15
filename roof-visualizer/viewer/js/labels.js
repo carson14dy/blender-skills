@@ -6,8 +6,29 @@ import * as THREE from 'three';
 
 const _p = new THREE.Vector3();
 
-/** Project label anchors and lay the labels out without overlaps. */
-export function layoutLabels(items, camera, { width, height, labelW = 250, labelH = 40, gap = 6, margin = 16 }) {
+/** Label size for a given 3D view width. Shared with the camera framing in app.js. */
+export function labelMetrics(width) {
+  if (width < 520) return { labelW: 134, labelH: 26, lead: 20, mode: 'compact' }; // title only
+  if (width < 780) return { labelW: 196, labelH: 34, lead: 36, mode: 'mid' };
+  return { labelW: 250, labelH: 42, lead: 56, mode: 'full' };
+}
+
+/** Screen space the on-screen chrome covers (top bar, toolbar), in px. */
+export const SCREEN_INSETS = { top: 64, bottom: 80, side: 16 };
+
+/** Pixels to keep free on the right of the 3D view for the label column. */
+export function labelReserve(width) {
+  const m = labelMetrics(width);
+  return m.labelW + m.lead + SCREEN_INSETS.side;
+}
+
+/**
+ * Project label anchors and lay the labels out in one column without overlaps.
+ * The column sits right of the model when it fits, else against the right edge
+ * (the camera framing leaves that strip free), and only uses the left side when
+ * the right edge would cover the anchors and the left has room.
+ */
+export function layoutLabels(items, camera, { width, height, labelW = 250, labelH = 42, gap = 6, top = 16, bottom = 16, side = 16, lead = 56 }) {
   const pts = [];
   for (const it of items) {
     if (!it.show) continue;
@@ -18,21 +39,22 @@ export function layoutLabels(items, camera, { width, height, labelW = 250, label
   }
   if (!pts.length) return [];
   const maxX = Math.max(...pts.map((p) => p.sx)), minX = Math.min(...pts.map((p) => p.sx));
-  let side = 'right';
-  let colX = maxX + 56;
-  if (colX + labelW > width - margin) {
-    if (minX - 56 - labelW > margin) { side = 'left'; colX = minX - 56 - labelW; }
-    else colX = width - margin - labelW;
+  let colX = Math.min(maxX + lead, width - side - labelW);
+  let where = 'right';
+  if (colX < maxX + 12) {
+    const leftX = minX - lead - labelW;
+    if (leftX >= side) { where = 'left'; colX = leftX; }
   }
-  // top-to-bottom order follows the anchors; push down to resolve overlaps, then pull up to fit
+  // vertical: keep inside [top, height - bottom]; squeeze the spacing when there are many layers
+  const avail = Math.max(labelH, height - top - bottom);
+  const step = Math.min(labelH + gap, Math.max(labelH * 0.7, (avail - labelH) / Math.max(1, pts.length - 1)));
   pts.sort((a, b) => a.sy - b.sy);
-  const step = labelH + gap;
   let y = -Infinity;
   for (const p of pts) { p.ly = Math.max(p.sy - labelH / 2, y + step); y = p.ly; }
-  const overflow = y + labelH - (height - margin);
+  const overflow = y + labelH - (height - bottom);
   if (overflow > 0) pts.forEach((p) => { p.ly -= overflow; });
-  if (pts[0].ly < margin) { const d = margin - pts[0].ly; pts.forEach((p) => { p.ly += d; }); }
-  for (const p of pts) { p.lx = colX; p.side = side; }
+  if (pts[0].ly < top) { const d = top - pts[0].ly; pts.forEach((p) => { p.ly += d; }); }
+  for (const p of pts) { p.lx = colX; p.side = where; }
   return pts;
 }
 
@@ -46,7 +68,8 @@ export class LabelOverlay {
   }
 
   update(items, camera, width, height) {
-    const placed = layoutLabels(items, camera, { width, height, labelW: width < 600 ? 190 : 250, labelH: width < 600 ? 36 : 42 });
+    const m = labelMetrics(width);
+    const placed = layoutLabels(items, camera, { width, height, labelW: m.labelW, labelH: m.labelH, lead: m.lead, gap: m.mode === 'compact' ? 4 : 6, ...SCREEN_INSETS });
     const seen = new Set();
     let paths = '';
     for (const p of placed) {
@@ -54,19 +77,22 @@ export class LabelOverlay {
       let el = this.nodes.get(p.id);
       if (!el) {
         el = document.createElement('div');
-        el.className = 'callout';
         el.innerHTML = '<b></b><i></i>';
         this.root.append(el);
         this.nodes.set(p.id, el);
       }
+      el.className = `callout ${m.mode}`;
+      el.style.width = `${m.labelW}px`;
+      el.style.height = `${m.labelH}px`;
       el.querySelector('b').textContent = p.title;
       el.querySelector('i').textContent = p.spec;
+      el.title = `${p.title}: ${p.spec}`;
       el.style.transform = `translate(${p.lx.toFixed(1)}px, ${p.ly.toFixed(1)}px)`;
       el.style.opacity = String(p.opacity ?? 1);
       el.hidden = false;
-      const ly = p.ly + (width < 600 ? 18 : 21);
-      const ex = p.side === 'right' ? p.lx : p.lx + (width < 600 ? 190 : 250);
-      const mx = p.side === 'right' ? ex - 18 : ex + 18;
+      const ly = p.ly + m.labelH / 2;
+      const ex = p.side === 'right' ? p.lx : p.lx + m.labelW;
+      const mx = p.side === 'right' ? ex - Math.min(18, m.lead / 2) : ex + Math.min(18, m.lead / 2);
       paths += `<path d="M${p.sx.toFixed(1)} ${p.sy.toFixed(1)} L${mx.toFixed(1)} ${ly.toFixed(1)} L${ex.toFixed(1)} ${ly.toFixed(1)}" style="opacity:${p.opacity ?? 1}"/><circle cx="${p.sx.toFixed(1)}" cy="${p.sy.toFixed(1)}" r="3.5" style="opacity:${p.opacity ?? 1}"/>`;
     }
     for (const [id, el] of this.nodes) if (!seen.has(id)) el.hidden = true;
@@ -79,7 +105,7 @@ export class LabelOverlay {
 export function drawCallouts(ctx, items, camera, width, height) {
   const s = Math.max(1, width / 1600);
   const labelW = 250 * s, labelH = 42 * s;
-  const placed = layoutLabels(items, camera, { width, height, labelW, labelH, gap: 6 * s, margin: 16 * s });
+  const placed = layoutLabels(items, camera, { width, height, labelW, labelH, gap: 6 * s, top: 16 * s, bottom: 16 * s, side: 16 * s, lead: 56 * s });
   ctx.save();
   for (const p of placed) {
     ctx.globalAlpha = p.opacity ?? 1;
