@@ -62,4 +62,4 @@ What the user wants, where it stands after the first build (experiment 000), and
 | 006 | T6 | GLB size: instance nails, meshopt compression, phone load time | cloud |
 | 007 | T4 | Claude-written plans: 5 real job descriptions, review with the user | cloud with API key |
 | 008 | T5 | One-page "roof system" proposal sheet from the layers view | cloud |
-| 009 | T5 | Layers-view labels on narrow screens: they cover the house and the bottom one hides behind the toolbar (see 000, finding) | cloud |
+| 009 | T5 | Layers-view labels on narrow screens: they cover the house and the bottom one hides behind the toolbar. **Done**, see 009 | cloud |

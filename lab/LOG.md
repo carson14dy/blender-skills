@@ -4,6 +4,23 @@ Newest first. One entry per session: date, cloud or local, what changed, results
 
 ---
 
+## 2026-11-15 · cloud (2)
+
+**Changed**
+- Fixed backlog 009: layers-view labels now pick a size by view width (full, mid, or title-only on phones), stay between the top bar and the toolbar, and the camera keeps a strip free for them. Files: `roof-visualizer/viewer/js/labels.js`, `js/app.js` (`frameView`), `index.html` (callout styles).
+- Experiment write-up with before and after images: `lab/experiments/009-narrow-labels/`.
+- Same code change applied to PR #1's branch; demo artifact republished.
+
+**Results:** labels readable and clear of the house at 1000, 1400 and 1920 px windows and at phone width; snapshots still burn labels in; 8/8 unit tests pass.
+
+**Next:** waiting on experiment 001 from the local PC.
+
+**Needs local:** unchanged from the entry below (run experiment 001). While you are in the layers view, check the labels on your real screen sizes and write down anything that looks off.
+
+**Needs cloud:** none open.
+
+---
+
 ## 2026-11-15 · cloud
 
 **Changed**
