@@ -31,7 +31,12 @@ flowchart LR
 | Blender 4.2 / 5.x | GPL-3.0 (application) | Cycles rendering. Your renders are yours. Blender's own position is that scripts calling its Python API (like `roof_core.py`) fall under the GPL if you distribute them; using them in-house and selling the renders is unaffected |
 | Poly Haven HDRI "Kloofendal partly cloudy" | CC0-1.0 | Optional photographic sky |
 | @anthropic-ai/sdk (optional) | Apache-2.0 | Claude-written build plans |
+| pip `bpy` (cloud tests only) | GPL-3.0, like Blender | Runs Blender as a Python module in cloud sessions |
+| ffmpeg | LGPL-2.1+, GPL when built with libx264 | Encodes build videos. Used as a separate program, which is fine for in-house use |
+| Playwright (dev only) | Apache-2.0 | Scripted screenshots and timings in `lab/tools` |
 | Procedural textures, geometry, server | written for this repo | No third-party assets; no image licensing questions for built-in products |
+
+This repository has no LICENSE file yet, so by default its own code is "all rights reserved". If you want it to be MIT like most of its dependencies, add a LICENSE file; that is the owner's decision.
 
 ## Worth adding next (MIT unless noted)
 
@@ -44,8 +49,8 @@ flowchart LR
 | [GaussianSplats3D](https://github.com/mkkellogg/GaussianSplats3D), [Spark](https://github.com/sparkjsdev/spark) | MIT | Show a drone capture of the real house (trees, driveway, neighbors) around the rebuilt roof |
 | [xatlas](https://github.com/jpcy/xatlas) / xatlas-web | MIT | Clean UVs on photogrammetry meshes before texturing |
 | [meshoptimizer](https://github.com/zeux/meshoptimizer), [glTF-Transform](https://github.com/donmccurdy/glTF-Transform) | MIT | Compress house and layer GLBs 5-10x for faster loading on phones (the viewer already decodes meshopt) |
-| [straight-skeleton v1](https://github.com/StrandedKitty/straight-skeleton) (npm 1.x) | MIT (ported from Apache-2.0 code; keep the notice) | Generate hip roofs from a building footprint in the browser |
-| [That Open Engine](https://github.com/ThatOpen/engine_components) | MIT | Open IFC/BIM models from builders and architects |
+| [straight-skeleton](https://github.com/StrandedKitty/straight-skeleton) **1.x** (npm) | MIT (ported from Apache-2.0 code; keep the notice) | Generate hip roofs from a building footprint in the browser. Pin 1.x: 3.x compiles CGAL (GPL), and 2.x was not checked |
+| [That Open Engine](https://github.com/ThatOpen/engine_components) | MIT, but it depends on `web-ifc` (MPL-2.0, file-level copyleft) | Open IFC/BIM models from builders and architects |
 
 Permissive but not MIT, also fine for commercial use:
 
@@ -66,9 +71,9 @@ Permissive but not MIT, also fine for commercial use:
 | OpenDroneMap (ODM) | AGPL-3.0 | Offering it as a hosted service triggers source-sharing obligations; fine as a separate internal tool |
 | Meshroom / AliceVision | MPL-2.0 | File-level copyleft; usable as a separate program |
 | bpypolyskel, blosm | GPL-3.0 | Roof-from-footprint in Blender, but GPL |
-| straight-skeleton **3.x** | MIT wrapper around CGAL (GPL-3.0+) | Use 1.x, or buy a CGAL commercial license |
+| straight-skeleton **3.x** (and 2.x until checked) | MIT wrapper around CGAL (GPL-3.0+) | Use 1.x, or buy a CGAL commercial license |
 | Materialize, DeepBump, AwesomeBump, Laigter | GPL-3.0 | Photo-to-PBR tools; use the MIT options above instead |
-| Google Solar API | Proprietary terms | Billed, limits caching, and forbids building 3D models from its data |
+| Google Solar API | Proprietary terms | Billed, limits caching, and restricts building 3D models from its data ([policies](https://developers.google.com/maps/documentation/solar/policies)) |
 
 ## Supplier images
 

@@ -7,10 +7,12 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 import { createHouse, HOUSE_PRESETS } from './house.js';
 import { RoofLayers, LAYER_OPTIONS, shadesOf } from './layers.js';
 import { BuildPlayer, autoPlan } from './build.js';
-import { extractRoofPlanes, analyzeRoof } from './roof-geometry.js';
+import { extractRoofPlanes, analyzeRoof, withoutTriangles } from './roof-geometry.js';
 import * as TX from './textures.js';
 import { sunPosition, sunDirection, dayOfYear, makeSkyTexture, fitShadow, snapshot, PathTraceMode } from './render.js';
 import { pitchLabel, slugify, rgbToHex, clamp } from './util.js';
@@ -20,6 +22,7 @@ const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
 const UP = new THREE.Vector3(0, 1, 0);
 
+let renderUntil = 0; // on-demand rendering: draw frames until this time (ms)
 const S = {
   presetId: params.get('house') || 'ranch-hip',
   pitch: Number(params.get('pitch')) || 6,
@@ -27,7 +30,8 @@ const S = {
   catalog: [],
   server: null,
   sun: { lat: 39.7, date: new Date(), hour: 15, facing: 180 },
-  quality: ['standard', 'high', 'ultra'].includes(params.get('quality')) ? params.get('quality') : 'high',
+  quality: ['standard', 'high', 'ultra'].includes(params.get('quality')) ? params.get('quality')
+    : (window.matchMedia?.('(pointer: coarse)').matches ? 'standard' : 'high'),
   cine: true,
   env: 'sky',
   glb: null,
@@ -93,6 +97,7 @@ function resize() {
   camera.aspect = w / Math.max(1, h);
   camera.updateProjectionMatrix();
   ptDirty = true;
+  invalidate();
 }
 new ResizeObserver(resize).observe(stage);
 
@@ -135,6 +140,7 @@ function updateSun() {
     scene.fog = new THREE.Fog(hz, 90, 520);
   }
   if (ptMode.enabled) { ptMode.envTexture = currentEquirect(); ptDirty = true; }
+  invalidate();
 }
 
 function currentEquirect() { return S.env === 'hdri' && hdriTex ? hdriTex : skyTex; }
@@ -179,7 +185,7 @@ function buildHouse() {
 function makeLayers(planes, segs) {
   const prevOptions = layers?.options;
   const prevCustom = layers?.custom || [];
-  layers = new RoofLayers({ planes, segs, renderer });
+  layers = new RoofLayers({ planes, segs, renderer, overhangM: S.glb ? null : (house?.preset?.overhang ?? null) });
   if (prevOptions) Object.assign(layers.options, prevOptions);
   layers.custom = prevCustom;
   layers.gap = Number($('lyGap').value);
@@ -195,6 +201,7 @@ function makeLayers(planes, segs) {
   updateSun();
   renderStack(); renderTakeoff(); updateChips();
   ptDirty = true;
+  invalidate();
 }
 
 function disposeTree(obj) {
@@ -304,6 +311,7 @@ async function applyProduct(p, { keepView = false } = {}) {
   renderCatalog(); renderStack(); renderTakeoff(); updateChips(); syncTune();
   ptDirty = true;
   hideProgress();
+  invalidate();
 }
 
 function averageColor(canvas) {
@@ -379,6 +387,8 @@ function syncTune() {
     $('tuneW').value = v.widthIn || S.product.widthIn || 36;
     $('tuneBright').value = v.brightness ?? 0; $('tuneContrast').value = v.contrast ?? 0; $('tuneSat').value = v.saturation ?? 0;
     $('tuneSeamless').checked = !!v.seamless;
+    $('tuneExposure').value = S.product.exposureIn || 5.625;
+    $('tuneCourses').checked = !S.product.flat;
   }
 }
 
@@ -411,6 +421,17 @@ function bindTune() {
     }, 220);
   });
   ['tuneW', 'tuneBright', 'tuneContrast', 'tuneSat', 'tuneSeamless'].forEach((k) => reprocess(k));
+  // course geometry for photos: match the exposure printed in the photo, or keep the roof flat
+  const regeometry = () => {
+    if (!S.product?.image) return;
+    S.product.exposureIn = Math.min(14, Math.max(3, Number($('tuneExposure').value) || 5.625));
+    S.product.flat = !$('tuneCourses').checked;
+    layers.setProduct(S.product);
+    layers.updateProductTransform(S.product.view || {});
+    player.seek(player.t); renderStack(); renderTakeoff(); ptDirty = true; invalidate();
+  };
+  $('tuneExposure').addEventListener('change', regeometry);
+  $('tuneCourses').addEventListener('change', regeometry);
 }
 
 function ptMaterials() { if (ptMode.enabled) ptMode.updateMaterials(); }
@@ -447,15 +468,24 @@ function renderStack() {
     if (rec.id === 'iceWater') {
       const r2 = document.createElement('div'); r2.className = 'row'; r2.style.gridColumn = '2 / 4';
       const rows = document.createElement('select'); rows.setAttribute('aria-label', 'Rows at eaves');
+      const auto = layers.overhangM != null ? `Auto: ${layers.iceRows} rows (24" inside the wall)` : 'Auto: 2 rows (overhang unknown)';
+      rows.add(new Option(auto, 'auto', false, layers.options.iceRows === 'auto'));
       for (const k of [1, 2, 3]) rows.add(new Option(`${k} row${k > 1 ? 's' : ''} at eaves`, k, false, layers.options.iceRows === k));
-      rows.onchange = () => setLayerOption('iceRows', Number(rows.value));
+      rows.onchange = () => setLayerOption('iceRows', rows.value === 'auto' ? 'auto' : Number(rows.value));
       const v = document.createElement('input'); v.type = 'checkbox'; v.checked = layers.options.valleys; v.id = 'lyValleys';
       v.onchange = () => setLayerOption('valleys', v.checked);
       const vl = document.createElement('label'); vl.htmlFor = 'lyValleys'; vl.textContent = 'Valleys'; vl.style.minWidth = '0';
       r2.append(rows, v, vl);
       row.append(r2);
     }
-    if (rec.id === 'nails' && S.product?.category !== 'metal') {
+    if (rec.id === 'deck') {
+      const r2 = document.createElement('div'); r2.className = 'row'; r2.style.gridColumn = '2 / 4';
+      r2.innerHTML = '<label for="lyRepair" style="min-width:0">Repair allowance</label><input id="lyRepair" type="number" min="0" max="20" step="1" style="width:64px"><span class="hint">sheets</span>';
+      const inp = r2.querySelector('input'); inp.value = layers.options.deckRepairSheets;
+      inp.onchange = () => setLayerOption('deckRepairSheets', Math.max(0, Math.min(20, Number(inp.value) || 0)));
+      row.append(r2);
+    }
+    if (rec.id === 'nails' && (S.product?.category || 'shingle') === 'shingle') {
       const sel = document.createElement('select'); sel.setAttribute('aria-label', 'Nails per shingle');
       for (const k of [4, 6]) sel.add(new Option(`${k} nails per shingle${k === 6 ? ' (high wind)' : ''}`, k, false, layers.options.nailsPerShingle === k));
       sel.onchange = () => setLayerOption('nailsPerShingle', Number(sel.value));
@@ -486,7 +516,9 @@ function afterLayerChange() {
   ptDirty = true;
 }
 
+let wasteTouched = false;
 function renderTakeoff() {
+  if (!wasteTouched) $('waste').value = Math.round(layers.suggestedWaste() * 100);
   const rows = layers.takeoff({ waste: (Number($('waste').value) || 0) / 100 });
   $('takeoff').innerHTML = rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('');
 }
@@ -540,6 +572,7 @@ function fmtTime(t) { const m = Math.floor(t / 60), s = Math.floor(t % 60); retu
 
 player.on('plan', renderSteps);
 player.on('time', ({ t, duration, step, stepProgress }) => {
+  invalidate();
   $('bScrub').value = String(Math.round((t / Math.max(duration, 1e-6)) * 1000));
   $('bTime').textContent = `${fmtTime(t)} / ${fmtTime(duration)}`;
   [...$('steps').children].forEach((li, i) => { li.classList.toggle('cur', i === step && t < duration); li.classList.toggle('done', i < step || t >= duration); });
@@ -569,9 +602,9 @@ function showCaption(on) { $('caption').hidden = !on; }
 // ---------------------------------------------------------------------------
 // supplier import
 
-let found = [], picked = null;
+let found = [], picked = null, pickedFile = null;
 function openImport() {
-  found = []; picked = null;
+  found = []; picked = null; pickedFile = null;
   $('impFound').innerHTML = ''; $('impStatus').textContent = S.server ? '' : 'Local server not detected: paste a direct image link, or upload a file from the Materials tab.';
   $('impRights').checked = false; updateImportButton();
   $('dlgImport').showModal();
@@ -609,20 +642,36 @@ async function scanUrl() {
   }
 }
 
+function pickFile(file) {
+  if (!file || !file.type.startsWith('image/')) { $('impStatus').textContent = 'Choose a JPG, PNG or WebP image.'; return; }
+  pickedFile = file; picked = URL.createObjectURL(file);
+  $('impFound').innerHTML = '';
+  const b = document.createElement('button'); b.type = 'button'; b.setAttribute('aria-pressed', 'true');
+  const img = document.createElement('img'); img.alt = ''; img.src = picked; b.append(img);
+  $('impFound').append(b);
+  if (!$('impName').value) $('impName').value = file.name.replace(/\.[^.]+$/, '');
+  if (!$('impSupplier').value) $('impSupplier').value = 'Own photo';
+  $('impStatus').textContent = 'Photo from your computer selected.';
+  updateImportButton();
+}
+
 async function addImported() {
   const product = {
     id: `sup-${slugify($('impSupplier').value || 'supplier')}-${slugify($('impName').value)}`,
     name: $('impName').value.trim(), supplier: $('impSupplier').value.trim() || new URL(picked, location.href).hostname,
-    category: $('impCat').value, widthIn: Number($('impW').value) || 36, image: picked, sourceUrl: $('impUrl').value.trim(),
+    category: $('impCat').value, widthIn: Number($('impW').value) || 36, image: picked, sourceUrl: pickedFile ? '' : $('impUrl').value.trim(),
     rights: 'Confirmed by user at import', addedAt: new Date().toISOString(),
   };
   if (S.server) {
     $('impStatus').textContent = 'Saving to the catalog…';
     try {
-      const r = await fetch('api/swatch', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...product, imageUrl: picked }) });
+      const body = pickedFile
+        ? { ...product, image: undefined, dataUrl: await new Promise((res) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(pickedFile); }) }
+        : { ...product, imageUrl: picked };
+      const r = await fetch('api/swatch', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || 'Save failed');
-      Object.assign(product, j.product);
+      Object.assign(product, j.product, pickedFile ? { image: picked } : {});
     } catch (e) { $('impStatus').textContent = `Not saved: ${e.message}`; return; }
   }
   S.catalog = S.catalog.filter((p) => p.id !== product.id);
@@ -637,19 +686,11 @@ async function addImported() {
 async function useFile(file) {
   if (!file || !file.type.startsWith('image/')) { toast('Drop an image file (JPG, PNG or WebP).'); return; }
   const url = URL.createObjectURL(file);
-  const product = { id: `upload-${slugify(file.name)}-${Date.now()}`, name: file.name.replace(/\.[^.]+$/, ''), supplier: 'Uploaded photo', category: 'shingle', widthIn: 36, image: url };
-  if (S.server) {
-    try {
-      const dataUrl = await new Promise((r) => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(file); });
-      const res = await fetch('api/swatch', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...product, image: undefined, dataUrl, rights: 'Uploaded by user' }) });
-      const j = await res.json();
-      if (res.ok) Object.assign(product, j.product, { image: url });
-    } catch (_) { /* keep in memory */ }
-  }
+  const product = { id: `upload-${slugify(file.name)}-${Date.now()}`, name: file.name.replace(/\.[^.]+$/, ''), supplier: 'Uploaded photo', category: 'shingle', widthIn: 36, image: url, sessionOnly: true };
   S.catalog.push(product);
   filter = 'supplier'; renderFilters();
   await applyProduct(product);
-  toast('Photo applied. Set "Photo width" so its scale matches the real shingles.');
+  toast(S.server ? 'Photo applied for this session. To keep it, use Add supplier product and confirm your rights to the image.' : 'Photo applied. Set "Photo width" so its scale matches the real shingles.');
 }
 
 // ---------------------------------------------------------------------------
@@ -695,11 +736,15 @@ async function takeSnapshot(w, h) {
     pathTracer: ptMode.enabled ? ptMode : null, samples: Number($('rSamples').value) || 128,
     onProgress: (p) => showProgress(p),
     });
+  } catch (e) {
+    console.error(e);
   } finally {
     busy = false;
     if (pendingResize) { pendingResize = false; resize(); }
+    invalidate();
   }
   hideProgress();
+  if (!blob) { toast(`The ${W} × ${H} image could not be created here. Try a smaller size such as 3840 × 2160.`); return null; }
   const url = URL.createObjectURL(blob);
   lastSnap = { blob, name: `roof-${slugify(S.product?.name || 'render')}-${W}x${H}.png` };
   $('snapImg').src = url;
@@ -730,6 +775,10 @@ function exportGlb() {
 async function loadHouseModel(fileOrUrl) {
   const loader = new GLTFLoader();
   loader.setMeshoptDecoder(MeshoptDecoder);
+  // compressed models (Draco geometry, KTX2 textures); decoders load from the CDN on first use
+  const cdn = 'https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/libs/';
+  loader.setDRACOLoader(new DRACOLoader().setDecoderPath(`${cdn}draco/gltf/`));
+  loader.setKTX2Loader(new KTX2Loader().setTranscoderPath(`${cdn}basis/`).detectSupport(renderer));
   showProgress(0.2);
   try {
     const url = typeof fileOrUrl === 'string' ? fileOrUrl : URL.createObjectURL(fileOrUrl);
@@ -744,7 +793,7 @@ async function loadHouseModel(fileOrUrl) {
     root.position.y -= box.min.y;
     root.updateMatrixWorld(true);
     root.traverse((o) => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; } });
-    const { planes, sourceMeshes } = extractRoofPlanes(root);
+    const { planes, roofTris } = extractRoofPlanes(root);
     if (!planes.length) throw new Error('No roof planes were found. Name the roof mesh "Roof" or check the model units.');
     // keep ground from the demo house, drop the procedural building
     if (house) { scene.remove(house.group); }
@@ -754,8 +803,15 @@ async function loadHouseModel(fileOrUrl) {
     scene.add(house.group);
     if (glbRoot) scene.remove(glbRoot);
     glbRoot = root; scene.add(root);
-    S.glb = { sourceMeshes };
-    sourceMeshes.forEach((m) => { m.visible = false; });
+    // remove only the roof triangles; walls in the same mesh stay
+    const swaps = [];
+    for (const [mesh, tris] of roofTris) {
+      const original = mesh.geometry;
+      const stripped = withoutTriangles(original, tris);
+      mesh.geometry = stripped;
+      swaps.push({ mesh, original, stripped });
+    }
+    S.glb = { swaps };
     $('origRow').hidden = false; $('pOrig').checked = false;
     if (layers) { scene.remove(layers.root); disposeTree(layers.root); }
     makeLayers(planes, house.segs);
@@ -821,6 +877,7 @@ function bindUI() {
   $('impUrl').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); scanUrl(); } });
   ['impRights', 'impName'].forEach((id) => $(id).addEventListener('input', updateImportButton));
   $('impAdd').onclick = addImported;
+  $('impFile').onchange = (e) => pickFile(e.target.files[0]);
   $('fileSwatch').onchange = (e) => useFile(e.target.files[0]);
   stage.addEventListener('dragover', (e) => e.preventDefault());
   stage.addEventListener('drop', (e) => {
@@ -843,7 +900,7 @@ function bindUI() {
     afterLayerChange();
     toast(`${name} added to the stack.`);
   };
-  $('waste').oninput = renderTakeoff;
+  $('waste').oninput = () => { wasteTouched = true; renderTakeoff(); };
   // build
   $('bPlay').onclick = () => { if (ptMode.enabled) togglePT(false); player.toggle(); };
   $('bPrev').onclick = () => { player.pause(); player.jumpToStep(Math.max(0, player.stepAt() - 1)); showCaption(true); };
@@ -879,7 +936,11 @@ function bindUI() {
     clearTimeout(pitchTimer); pitchTimer = setTimeout(() => { if (!S.glb) buildHouse(); }, 160);
   };
   $('fileGlb').onchange = (e) => e.target.files[0] && loadHouseModel(e.target.files[0]);
-  $('pOrig').onchange = (e) => { S.glb?.sourceMeshes.forEach((m) => { m.visible = e.target.checked; }); if (layers) layers.root.visible = !e.target.checked; };
+  $('pOrig').onchange = (e) => {
+    S.glb?.swaps.forEach(({ mesh, original, stripped }) => { mesh.geometry = e.target.checked ? original : stripped; });
+    if (layers) layers.root.visible = !e.target.checked;
+    ptDirty = true;
+  };
   $('pDate').valueAsDate = S.sun.date;
   $('pLat').onchange = (e) => { S.sun.lat = Number(e.target.value); updateSun(); };
   $('pDate').onchange = (e) => { if (e.target.valueAsDate) { S.sun.date = e.target.valueAsDate; updateSun(); } };
@@ -888,14 +949,18 @@ function bindUI() {
   $('btnGlb').onclick = exportGlb;
   // keyboard
   window.addEventListener('keydown', (e) => {
-    if (e.target.closest('input, textarea, select') || e.metaKey || e.ctrlKey) return;
+    if (e.target.closest('input, textarea, select, dialog') || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === ' ' && e.target.closest('button, a, [role="tab"]')) return; // let Space press the focused control
     if (e.key === 'e' || e.key === 'E') setExplode($('tbExplode').getAttribute('aria-pressed') !== 'true');
     else if (e.key === 'c' || e.key === 'C') setCutaway($('tbCut').getAttribute('aria-pressed') !== 'true');
     else if (e.key === 'b' || e.key === 'B') $('tbBefore').click();
     else if (e.key === ' ') { e.preventDefault(); $('tbPlay').click(); }
     else if (e.key === 's' || e.key === 'S') takeSnapshot();
   });
-  controls.addEventListener('change', () => { if (ptMode.enabled) ptMode.updateCamera(); });
+  controls.addEventListener('change', () => { invalidate(); if (ptMode.enabled) ptMode.updateCamera(); });
+  // render on demand: any interaction keeps frames coming briefly; idle pages stop drawing
+  for (const ev of ['pointerdown', 'wheel', 'keydown', 'input', 'change', 'click']) window.addEventListener(ev, () => invalidate(), { passive: true, capture: true });
+  window.addEventListener('pointermove', (e) => { if (e.buttons) invalidate(); }, { passive: true });
 }
 
 function selectTab(id) {
@@ -947,11 +1012,15 @@ async function generateAiPlan() {
 
 const timer = new THREE.Timer();
 let lastPT = 0;
+/** Ask for frames for the next `ms` milliseconds (on-demand rendering). */
+function invalidate(ms = 700) { renderUntil = Math.max(renderUntil, performance.now() + ms); }
 function frame(now) {
   requestAnimationFrame(frame);
   if (busy) return; // a snapshot owns the renderer
   timer.update(now);
   const dt = Math.min(0.05, timer.getDelta());
+  const animating = !!camTween || player.playing || (layers && (Math.abs(layers.explodeTarget - layers.explode) > 1e-4 || Math.abs(layers.cutTarget - layers.cut) > 1e-4));
+  if (!animating && !ptMode.enabled && performance.now() > renderUntil) return; // idle: nothing to draw
   const moving = layers ? layers.update(dt) : false;
   player.update(dt);
   if (camTween) {
@@ -971,8 +1040,12 @@ function frame(now) {
   camera.far = Math.max(800, dist * 40);
   camera.updateProjectionMatrix();
   if (ptMode.enabled) {
-    if (moving || player.playing) { renderer.render(scene, camera); ptDirty = true; }
-    else {
+    // the path tracer draws whole layers, so it pauses while a layer is part-built or cut away
+    const partial = layers && (layers.isPartial() || layers.cutTarget < 1);
+    if (moving || player.playing || partial) {
+      renderer.render(scene, camera); ptDirty = true;
+      if (partial && performance.now() - lastPT > 250) { $('rPTs').textContent = 'paused: build or cutaway in progress'; lastPT = performance.now(); }
+    } else {
       if (ptDirty) { ptMode.rebuild(); ptDirty = false; }
       ptMode.render();
       const now = performance.now();
@@ -1035,6 +1108,7 @@ window.roofStudio = {
   loadHouse: (url) => loadHouseModel(url),
   pathTrace: (on = true) => togglePT(on),
   settle: () => {
+    invalidate(3000);
     if (layers) { layers.explode = layers.explodeTarget; layers.cut = layers.cutTarget; for (let i = 0; i < 60; i++) layers.update(0.2); }
     if (camTween) { controls.target.copy(camTween.t1); camera.position.copy(camTween.p1); camTween = null; }
   },
