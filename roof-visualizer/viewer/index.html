@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Roof Layer Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: full-bleed 3D stage; tool panel docks right on desktop and becomes a bottom sheet on phones. */
+:root {
+  --bg: #eef1f4; --panel: #ffffff; --panel-2: #f2f4f7; --line: #d8dde4; --fg: #18202c; --fg-dim: #5a6577;
+  --accent: #1d6ad8; --accent-ink: #ffffff; --accent-soft: #dce9fb; --caution: #b9650a; --ok: #1f8556;
+  --shadow: 0 10px 30px rgba(20, 30, 45, 0.16);
+  --font-body: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-ui: "Barlow Semi Condensed", "Barlow", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --panel-w: 372px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1318; --panel: #161b22; --panel-2: #1d232c; --line: #2a323d; --fg: #e8ecf1; --fg-dim: #97a3b3;
+    --accent: #4c9cff; --accent-ink: #08101c; --accent-soft: #1a2a40; --caution: #f0a23a; --ok: #4fc08d;
+    --shadow: 0 10px 30px rgba(0, 0, 0, 0.45); color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1318; --panel: #161b22; --panel-2: #1d232c; --line: #2a323d; --fg: #e8ecf1; --fg-dim: #97a3b3;
+  --accent: #4c9cff; --accent-ink: #08101c; --accent-soft: #1a2a40; --caution: #f0a23a; --ok: #4fc08d;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.45); color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--fg); font: 14px/1.45 var(--font-body); overflow: hidden; -webkit-font-smoothing: antialiased; }
+button, input, select, textarea { font: inherit; color: inherit; }
+[hidden] { display: none !important; }
+
+#app { position: relative; height: 100%; display: grid; grid-template-columns: 1fr var(--panel-w); }
+#stage { position: relative; min-width: 0; overflow: hidden; background: var(--bg); }
+#stage canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+#labels { position: absolute; inset: 0; pointer-events: none; }
+
+/* top bar */
+.topbar {
+  position: absolute; top: calc(12px + env(safe-area-inset-top, 0px)); left: max(16px, env(safe-area-inset-left, 0px)); right: 16px;
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap; pointer-events: none; z-index: 3;
+}
+.topbar > * { pointer-events: auto; }
+.brand { font: 700 15px/1 var(--font-ui); letter-spacing: 0.02em; background: var(--panel); border: 1px solid var(--line); padding: 9px 12px; border-radius: 8px; box-shadow: var(--shadow); display: flex; gap: 8px; align-items: center; }
+.brand .mark { width: 18px; height: 14px; display: inline-block; background: linear-gradient(135deg, transparent 49%, var(--accent) 50%) top/100% 50% no-repeat, linear-gradient(225deg, transparent 49%, var(--accent) 50%) top/100% 50% no-repeat; }
+.chip { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; font: 500 13px/1.2 var(--font-ui); box-shadow: var(--shadow); display: flex; gap: 10px; align-items: center; }
+.chip .k { color: var(--fg-dim); font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; font-size: 11px; }
+.chip .v { font-family: var(--font-mono); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.chip .sw { width: 18px; height: 18px; border-radius: 4px; background-size: cover; border: 1px solid var(--line); }
+
+/* caption during build playback */
+.caption {
+  position: absolute; left: 50%; transform: translateX(-50%); top: calc(64px + env(safe-area-inset-top, 0px)); width: min(560px, calc(100% - 32px));
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); padding: 12px 14px 10px; z-index: 3;
+}
+.caption .step { font: 600 11px/1 var(--font-ui); letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+.caption h2 { margin: 4px 0 2px; font: 700 19px/1.2 var(--font-ui); text-wrap: balance; }
+.caption p { margin: 0; color: var(--fg-dim); font-size: 13.5px; }
+.caption .bar { margin-top: 9px; height: 4px; background: var(--panel-2); border-radius: 2px; overflow: hidden; }
+.caption .bar i { display: block; height: 100%; width: 0; background: var(--accent); }
+.caption.remove .step { color: var(--caution); }
+.caption.remove .bar i { background: var(--caution); }
+
+/* floating toolbar */
+.toolbar {
+  position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 3;
+  display: flex; gap: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 5px; box-shadow: var(--shadow); max-width: calc(100% - 32px); overflow-x: auto;
+}
+.tb { display: flex; align-items: center; gap: 7px; white-space: nowrap; border: 0; background: transparent; padding: 8px 12px; border-radius: 8px; cursor: pointer; font: 600 13.5px/1 var(--font-ui); letter-spacing: 0.02em; }
+.tb:hover { background: var(--panel-2); }
+.tb[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.tb svg { width: 17px; height: 17px; flex: none; }
+.tb:focus-visible, .btn:focus-visible, .tab:focus-visible, .card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* side panel */
+.panel { position: relative; background: var(--panel); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; z-index: 4; }
+.tabs { display: grid; grid-template-columns: repeat(5, 1fr); border-bottom: 1px solid var(--line); padding-top: env(safe-area-inset-top, 0px); }
+.tab { border: 0; background: none; padding: 12px 4px 10px; cursor: pointer; font: 600 13px/1 var(--font-ui); letter-spacing: 0.03em; color: var(--fg-dim); border-bottom: 2px solid transparent; }
+.tab[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); }
+.tabpanes { flex: 1; overflow-y: auto; min-height: 0; }
+.pane { padding: 14px max(16px, env(safe-area-inset-right, 0px)) 24px 16px; display: grid; gap: 16px; }
+.pane h3 { margin: 0; font: 700 12px/1 var(--font-ui); letter-spacing: 0.09em; text-transform: uppercase; color: var(--fg-dim); }
+.sec { display: grid; gap: 9px; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.row > label { color: var(--fg-dim); font-size: 13px; min-width: 92px; }
+.row > .grow { flex: 1; min-width: 0; }
+.hint { color: var(--fg-dim); font-size: 12.5px; margin: 0; }
+.mono { font-family: var(--font-mono); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+input[type="range"] { accent-color: var(--accent); width: 100%; }
+input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; }
+select, input[type="text"], input[type="url"], input[type="number"], input[type="date"], textarea {
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 7px; padding: 7px 9px; min-width: 0;
+}
+textarea { width: 100%; resize: vertical; min-height: 70px; }
+.btn { border: 1px solid var(--line); background: var(--panel-2); border-radius: 8px; padding: 8px 12px; cursor: pointer; font: 600 13.5px/1 var(--font-ui); letter-spacing: 0.02em; }
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.filters { display: flex; gap: 6px; flex-wrap: wrap; }
+.filters button { border: 1px solid var(--line); background: none; border-radius: 999px; padding: 4px 10px; font: 500 12.5px/1.3 var(--font-ui); cursor: pointer; }
+.filters button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--fg); }
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.card { border: 1px solid var(--line); background: var(--panel-2); border-radius: 8px; padding: 0; overflow: hidden; cursor: pointer; text-align: left; display: flex; flex-direction: column; }
+.card img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; background: var(--line); }
+.card span { margin: 6px 7px 2px; font: 500 12px/1.25 var(--font-ui); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.5em; }
+.card small { display: block; color: var(--fg-dim); font-size: 11px; padding: 0 7px 7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+
+.stack { display: grid; gap: 6px; }
+.layer { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; display: grid; grid-template-columns: auto 1fr auto; gap: 4px 10px; align-items: center; background: var(--panel-2); }
+.layer .n { font: 600 14px/1.2 var(--font-ui); }
+.layer .s { grid-column: 2 / 4; color: var(--fg-dim); font-size: 12.5px; }
+.layer .lvl { font: 500 11px/1 var(--font-mono); color: var(--fg-dim); }
+.layer select { grid-column: 2 / 4; }
+.layer.old .n::after { content: "existing"; margin-left: 6px; font: 600 10px/1 var(--font-ui); letter-spacing: 0.06em; text-transform: uppercase; color: var(--caution); }
+.layer.off { opacity: 0.55; }
+
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; counter-reset: s; }
+.steps li { display: grid; grid-template-columns: 26px 1fr auto; gap: 8px; padding: 7px 8px; border-radius: 7px; cursor: pointer; align-items: baseline; }
+.steps li::before { counter-increment: s; content: counter(s); font: 500 12px/1 var(--font-mono); color: var(--fg-dim); text-align: right; }
+.steps li:hover { background: var(--panel-2); }
+.steps li.cur { background: var(--accent-soft); }
+.steps li.done::before { color: var(--ok); }
+.steps li b { font: 600 13.5px/1.25 var(--font-ui); }
+.steps li em { font: 400 12px/1 var(--font-mono); color: var(--fg-dim); font-style: normal; }
+.transport { display: flex; gap: 6px; align-items: center; }
+.transport .btn { padding: 8px 10px; }
+.time { font-family: var(--font-mono); font-size: 12.5px; color: var(--fg-dim); margin-left: auto; font-variant-numeric: tabular-nums; }
+
+table.takeoff { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.takeoff td { padding: 5px 0; border-bottom: 1px solid var(--line); }
+table.takeoff td:last-child { text-align: right; font-family: var(--font-mono); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+
+/* exploded-view callouts */
+.leader-lines { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.leader-lines path { fill: none; stroke: var(--accent); stroke-width: 1.5; }
+.leader-lines circle { fill: var(--accent); stroke: var(--panel); stroke-width: 1.5; }
+.callout { position: absolute; left: 0; top: 0; width: 250px; height: 42px; padding: 5px 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 7px; box-shadow: var(--shadow); display: grid; align-content: center; will-change: transform; }
+.callout b { font: 600 14px/1.15 var(--font-ui); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.callout i { font: 400 12px/1.25 var(--font-body); font-style: normal; color: var(--fg-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 600px) { .callout { width: 190px; height: 36px; padding: 3px 8px; } .callout b { font-size: 12.5px; } .callout i { font-size: 11px; } }
+
+/* dialogs */
+dialog { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--fg); box-shadow: var(--shadow); padding: 0; width: min(720px, calc(100% - 32px)); max-height: calc(100% - 48px); }
+dialog::backdrop { background: rgba(8, 12, 18, 0.55); }
+.dlg { padding: 18px 20px 20px; display: grid; gap: 14px; }
+.dlg h2 { margin: 0; font: 700 20px/1.2 var(--font-ui); }
+.dlg .found { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; max-height: 300px; overflow-y: auto; }
+.dlg .found button { border: 1px solid var(--line); border-radius: 8px; padding: 0; background: var(--panel-2); cursor: pointer; overflow: hidden; }
+.dlg .found button[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.dlg .found img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
+.dlg .rights { border-left: 3px solid var(--caution); padding: 8px 10px; background: var(--panel-2); border-radius: 0 7px 7px 0; font-size: 13px; }
+.dlg .actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.snap-img { width: 100%; border-radius: 8px; border: 1px solid var(--line); background: var(--panel-2); }
+
+.toast { position: absolute; left: 50%; bottom: calc(80px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 9px 14px; border-radius: 8px; font: 500 13.5px/1.3 var(--font-ui); z-index: 9; max-width: calc(100% - 32px); }
+.progress { position: absolute; inset: auto 0 0 0; height: 3px; background: var(--accent); transform-origin: left; z-index: 5; }
+.loading { position: absolute; inset: 0; display: grid; place-items: center; z-index: 8; background: var(--bg); font: 600 15px/1.4 var(--font-ui); color: var(--fg-dim); text-align: center; padding: 0 16px; }
+
+@media (max-width: 860px) {
+  #app { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
+  .panel { border-left: 0; border-top: 1px solid var(--line); max-height: 46vh; }
+  .tabs { padding-top: 0; }
+  .toolbar { bottom: 12px; }
+  .grid { grid-template-columns: repeat(4, 1fr); }
+  .caption { top: calc(108px + env(safe-area-inset-top, 0px)); }
+}
+@media (max-width: 480px) {
+  .grid { grid-template-columns: repeat(3, 1fr); }
+  .tb span { display: none; }
+  .chip.hide-sm { display: none; }
+}
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/",
+    "three/examples/jsm/": "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/",
+    "three-mesh-bvh": "https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.9.16/build/index.module.js",
+    "three-gpu-pathtracer": "https://cdn.jsdelivr.net/npm/three-gpu-pathtracer@0.0.27/build/index.module.js"
+  }
+}
+</script>
+</head>
+<body>
+<div id="app">
+  <main id="stage" aria-label="3D roof view">
+    <div id="labels"></div>
+    <div class="topbar">
+      <div class="brand"><span class="mark" aria-hidden="true"></span>Roof Layer Studio</div>
+      <div class="chip" id="chipProduct" title="Selected roof covering"><span class="sw" id="chipSwatch"></span><span id="chipName">Loading…</span></div>
+      <div class="chip hide-sm" id="chipMeasure"><span class="k">Roof</span><span class="v" id="chipSquares">—</span><span class="k">Pitch</span><span class="v" id="chipPitch">—</span></div>
+    </div>
+    <section class="caption" id="caption" hidden aria-live="polite">
+      <div class="step" id="capStep"></div>
+      <h2 id="capTitle"></h2>
+      <p id="capDetail"></p>
+      <div class="bar"><i id="capBar"></i></div>
+    </section>
+    <nav class="toolbar" aria-label="View tools">
+      <button class="tb" id="tbExplode" aria-pressed="false" title="Separate the layers (E)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 17l9 4 9-4M3 12l9 4 9-4M3 7l9-4 9 4-9 4-9-4z"/></svg><span>Layers view</span></button>
+      <button class="tb" id="tbCut" aria-pressed="false" title="Step-back cutaway (C)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20h16M4 20V8l6-4v16M10 20V11l5-3v12M15 20v-6l5-2v8"/></svg><span>Cutaway</span></button>
+      <button class="tb" id="tbBefore" aria-pressed="false" title="Show the existing roof (B)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v18M4 6h6v12H4zM14 6h6v12h-6z"/></svg><span>Before</span></button>
+      <button class="tb" id="tbPlay" aria-pressed="false" title="Play the build sequence (Space)">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l12-7.5z"/></svg><span>Watch build</span></button>
+      <button class="tb" id="tbSnap" title="Render a high-resolution image (S)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg><span>Snapshot</span></button>
+    </nav>
+    <div class="toast" id="toast" hidden role="status"></div>
+    <div class="progress" id="progress" hidden></div>
+    <div class="loading" id="loading">Building the roof model…</div>
+  </main>
+
+  <aside class="panel" aria-label="Controls">
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" aria-selected="true" data-tab="materials">Materials</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="layers">Layers</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="build">Build</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="render">Render</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="project">Project</button>
+    </div>
+    <div class="tabpanes">
+      <!-- MATERIALS -->
+      <div class="pane" data-pane="materials">
+        <div class="sec">
+          <div class="row"><input id="search" class="grow" type="text" placeholder="Search products or suppliers" aria-label="Search products"></div>
+          <div class="filters" id="filters"></div>
+          <div class="grid" id="catalog"></div>
+          <div class="row">
+            <button class="btn primary" id="btnImport">Add supplier product</button>
+            <label class="btn" for="fileSwatch" style="margin:0">Upload photo</label>
+            <input id="fileSwatch" type="file" accept="image/*" hidden>
+          </div>
+          <p class="hint">Drop a swatch photo anywhere on the 3D view to try it on the roof.</p>
+        </div>
+        <div class="sec" id="tuneSec">
+          <h3>Fit to roof</h3>
+          <div class="row"><label for="tuneScale">Scale</label><input class="grow" id="tuneScale" type="range" min="0.4" max="2.5" step="0.01" value="1"><span class="mono" id="tuneScaleV">100%</span></div>
+          <div class="row"><label for="tuneRot">Rotation</label><input class="grow" id="tuneRot" type="range" min="-180" max="180" step="1" value="0"><span class="mono" id="tuneRotV">0°</span></div>
+          <div class="row"><label for="tuneOffV">Course line</label><input class="grow" id="tuneOffV" type="range" min="0" max="1" step="0.005" value="0"><span class="mono" id="tuneOffVV">0</span></div>
+          <div class="row"><label for="tuneRelief">Relief</label><input class="grow" id="tuneRelief" type="range" min="0" max="3" step="0.05" value="1"><span class="mono" id="tuneReliefV">1.0</span></div>
+          <div class="row"><label for="tuneTint">Tint</label><input id="tuneTint" type="color" value="#ffffff"><button class="btn" id="tuneTintReset">Reset</button></div>
+          <div id="photoTune" class="sec" hidden>
+            <div class="row"><label for="tuneW">Photo width</label><input id="tuneW" type="number" min="4" max="240" step="1" value="36" style="width:80px"><span class="hint">inches of roof shown across the photo</span></div>
+            <div class="row"><label for="tuneBright">Brightness</label><input class="grow" id="tuneBright" type="range" min="-0.4" max="0.4" step="0.01" value="0"></div>
+            <div class="row"><label for="tuneContrast">Contrast</label><input class="grow" id="tuneContrast" type="range" min="-0.5" max="0.8" step="0.01" value="0"></div>
+            <div class="row"><label for="tuneSat">Saturation</label><input class="grow" id="tuneSat" type="range" min="-1" max="1" step="0.01" value="0"></div>
+            <div class="row"><label for="tuneSeamless">Seamless</label><input id="tuneSeamless" type="checkbox"><span class="hint">blend the photo edges so it repeats without seams</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- LAYERS -->
+      <div class="pane" data-pane="layers" hidden>
+        <div class="sec">
+          <div class="row"><label for="lyExplode">Layers view</label><input id="lyExplode" type="checkbox"><span class="hint">float every layer apart</span></div>
+          <div class="row"><label for="lyGap">Spacing</label><input class="grow" id="lyGap" type="range" min="0.3" max="2" step="0.05" value="0.85"><span class="mono" id="lyGapV">0.85 m</span></div>
+          <div class="row"><label for="lyLabels">Labels</label><input id="lyLabels" type="checkbox" checked><label for="lyCut" style="min-width:0">Cutaway</label><input id="lyCut" type="checkbox"></div>
+        </div>
+        <div class="sec">
+          <h3>Stack, top to bottom</h3>
+          <div class="stack" id="stack"></div>
+        </div>
+        <div class="sec">
+          <h3>Add a layer</h3>
+          <div class="row"><input id="newName" class="grow" type="text" placeholder="e.g. Radiant barrier" aria-label="Layer name"></div>
+          <div class="row"><label for="newAfter">Above</label><select id="newAfter" class="grow"><option value="deck">Roof deck</option><option value="iceWater">Ice &amp; water shield</option><option value="underlayment" selected>Underlayment</option></select></div>
+          <div class="row"><label for="newCoverage">Coverage</label><select id="newCoverage" class="grow"><option value="full">Whole roof</option><option value="eaves">Eaves only (3 ft)</option></select><input id="newColor" type="color" value="#c9b27a" aria-label="Layer colour"></div>
+          <div class="row"><button class="btn" id="btnAddLayer">Add layer</button></div>
+        </div>
+        <div class="sec">
+          <h3>Material takeoff</h3>
+          <div class="row"><label for="waste">Waste</label><input id="waste" type="number" min="0" max="40" value="12" style="width:70px"><span class="hint">% added to bundles</span></div>
+          <table class="takeoff" id="takeoff"></table>
+          <p class="hint">Measured from the 3D model. Check against your own measurements before ordering.</p>
+        </div>
+      </div>
+
+      <!-- BUILD -->
+      <div class="pane" data-pane="build" hidden>
+        <div class="sec">
+          <div class="transport">
+            <button class="btn primary" id="bPlay">Play</button>
+            <button class="btn" id="bPrev" title="Previous step">◀</button>
+            <button class="btn" id="bNext" title="Next step">▶</button>
+            <select id="bSpeed" aria-label="Playback speed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select>
+            <span class="time" id="bTime">0:00 / 0:00</span>
+          </div>
+          <input id="bScrub" type="range" min="0" max="1000" value="1000" aria-label="Build timeline">
+          <div class="row"><label for="bCine">Camera</label><input id="bCine" type="checkbox" checked><span class="hint">orbit slowly while playing</span></div>
+        </div>
+        <div class="sec">
+          <h3 id="planTitle">Build plan</h3>
+          <p class="hint" id="planSummary"></p>
+          <ol class="steps" id="steps"></ol>
+        </div>
+        <div class="sec">
+          <h3>Plan source</h3>
+          <div class="row"><select id="planSel" class="grow"><option value="auto">Generated from the layer stack</option></select></div>
+          <div class="row"><label class="btn" for="filePlan" style="margin:0">Load plan JSON</label><input id="filePlan" type="file" accept="application/json,.json" hidden><button class="btn" id="btnPlanDl">Download plan</button></div>
+          <div id="aiBox" class="sec" hidden>
+            <label for="jobText" class="hint">Describe the job and Claude writes the build sequence</label>
+            <textarea id="jobText">Tear off one layer of 3-tab, replace two sheets of OSB by the chimney side, two rows of ice and water, synthetic underlayment, architectural shingles with a ridge vent.</textarea>
+            <div class="row"><button class="btn primary" id="btnAi">Generate plan</button></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RENDER -->
+      <div class="pane" data-pane="render" hidden>
+        <div class="sec">
+          <h3>Viewport</h3>
+          <div class="row"><label for="rQuality">Quality</label><select id="rQuality" class="grow"><option value="standard">Standard</option><option value="high" selected>High</option><option value="ultra">Ultra (4K shadows, 2× pixels)</option></select></div>
+          <div class="row"><label for="rTone">Tone map</label><select id="rTone" class="grow"><option value="agx" selected>AgX (film-like)</option><option value="aces">ACES filmic</option><option value="neutral">Neutral</option></select></div>
+          <div class="row"><label for="rExposure">Exposure</label><input class="grow" id="rExposure" type="range" min="0.3" max="2.5" step="0.01" value="1"></div>
+          <div class="row"><label for="rEnv">Sky</label><select id="rEnv" class="grow"><option value="sky" selected>Physical sky (offline)</option><option value="hdri">Poly Haven HDRI, partly cloudy (CC0)</option></select></div>
+        </div>
+        <div class="sec">
+          <h3>Path tracing</h3>
+          <div class="row"><label for="rPT">Enabled</label><input id="rPT" type="checkbox"><span class="mono" id="rPTs">off</span></div>
+          <p class="hint">Progressive, physically based light transport for final stills. It refines while the camera is still and shows each layer complete.</p>
+        </div>
+        <div class="sec">
+          <h3>Snapshot</h3>
+          <div class="row"><label for="rSize">Size</label><select id="rSize" class="grow"><option value="1920x1080">1920 × 1080</option><option value="3840x2160" selected>3840 × 2160 (4K)</option><option value="7680x4320">7680 × 4320 (8K)</option><option value="3000x3000">3000 × 3000 square</option></select></div>
+          <div class="row"><label for="rSamples">PT samples</label><input id="rSamples" type="number" min="16" max="2048" step="16" value="128" style="width:90px"></div>
+          <div class="row"><label for="rLabels">Burn in labels</label><input id="rLabels" type="checkbox" checked></div>
+          <div class="row"><button class="btn primary" id="btnSnap">Render snapshot</button></div>
+        </div>
+      </div>
+
+      <!-- PROJECT -->
+      <div class="pane" data-pane="project" hidden>
+        <div class="sec">
+          <h3>House</h3>
+          <div class="row"><label for="pHouse">Model</label><select id="pHouse" class="grow"></select></div>
+          <div class="row"><label for="pPitch">Pitch</label><input class="grow" id="pPitch" type="range" min="3" max="14" step="0.5" value="6"><span class="mono" id="pPitchV">6/12</span></div>
+          <div class="row"><label class="btn" for="fileGlb" style="margin:0">Load house model (.glb)</label><input id="fileGlb" type="file" accept=".glb,.gltf,model/gltf-binary" hidden>
+            <select id="pUnits" aria-label="Model units"><option value="1">metres</option><option value="0.3048">feet</option><option value="0.0254">inches</option><option value="0.01">centimetres</option></select></div>
+          <div class="row" id="origRow" hidden><label for="pOrig">Original roof</label><input id="pOrig" type="checkbox"><span class="hint">show the scanned roof for comparison</span></div>
+          <p class="hint">Roof planes are found by name (roof, shingle) or by slope, then every layer is rebuilt on them at real scale.</p>
+        </div>
+        <div class="sec">
+          <h3>Sun</h3>
+          <div class="row"><label for="pLat">Latitude</label><input id="pLat" type="number" min="-66" max="66" step="0.1" value="39.7" style="width:90px"><label for="pDate" style="min-width:0">Date</label><input id="pDate" type="date"></div>
+          <div class="row"><label for="pHour">Solar time</label><input class="grow" id="pHour" type="range" min="6" max="19" step="0.05" value="15"><span class="mono" id="pHourV">15:00</span></div>
+          <div class="row"><label for="pFacing">Front faces</label><select id="pFacing" class="grow"><option value="0">North</option><option value="45">North-east</option><option value="90">East</option><option value="135">South-east</option><option value="180" selected>South</option><option value="225">South-west</option><option value="270">West</option><option value="315">North-west</option></select></div>
+        </div>
+        <div class="sec">
+          <h3>Export</h3>
+          <div class="row"><button class="btn" id="btnGlb">Download layers (.glb)</button></div>
+          <p class="hint" id="glbHint">Layer meshes named RT_layer_* open in Blender for Cycles renders (see roof-blender).</p>
+        </div>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<dialog id="dlgImport">
+  <form class="dlg" method="dialog" id="formImport">
+    <h2>Add a supplier product</h2>
+    <p class="hint">Paste a product page or an image link. With the local server running, the page is scanned for product photos; otherwise paste a direct image link or upload a file. Pick a straight-on, flat photo of the shingles: a whole-house photo or a rendered sphere will not map correctly.</p>
+    <div class="row"><input id="impUrl" class="grow" type="url" placeholder="https://supplier.example/products/shingle-color" aria-label="Product page or image URL"><button class="btn" id="impScan" type="button">Find images</button></div>
+    <div class="found" id="impFound"></div>
+    <div class="row"><label for="impName">Product</label><input id="impName" class="grow" type="text" placeholder="Product and colour name"></div>
+    <div class="row"><label for="impSupplier">Supplier</label><input id="impSupplier" class="grow" type="text" placeholder="Manufacturer or distributor"></div>
+    <div class="row"><label for="impCat">Type</label><select id="impCat" class="grow"><option value="shingle">Asphalt shingle</option><option value="metal">Metal</option><option value="tile">Tile</option><option value="slate">Slate</option><option value="shake">Shake</option></select>
+      <label for="impW" style="min-width:0">Width shown</label><input id="impW" type="number" min="4" max="240" value="36" style="width:72px"><span class="hint">in</span></div>
+    <div class="rights">Only import images you are allowed to use: assets from a manufacturer's contractor or brand portal, images you have written permission for, or your own photos. Most manufacturer sites do not allow reuse without permission.</div>
+    <div class="row"><input id="impRights" type="checkbox"><label for="impRights" style="min-width:0;color:var(--fg)">I have the rights to use this image</label></div>
+    <p class="hint" id="impStatus"></p>
+    <div class="actions"><button class="btn" value="cancel">Cancel</button><button class="btn primary" id="impAdd" type="button" disabled>Add to catalog</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlgSnap">
+  <div class="dlg">
+    <h2>Snapshot</h2>
+    <img class="snap-img" id="snapImg" alt="Rendered roof snapshot">
+    <p class="hint" id="snapInfo"></p>
+    <div class="actions"><button class="btn primary" id="snapDl">Save PNG</button><button class="btn" id="snapClose">Close</button></div>
+  </div>
+</dialog>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

@@ -19,7 +19,14 @@ A collection of Claude Code skills for automating 3D product workflows in Blende
 ### Blender Automation
 - **[blender-toolkit](blender-toolkit/SKILL.md)** — WebSocket-based geometry, materials, modifiers, and Mixamo animation retargeting.
 
+### Roofing (RoofTec 3D homes)
+- **[roof-visualizer](roof-visualizer/SKILL.md)** — Roof Layer Studio: browser app that swaps the roof for any supplier product or photo at true scale, toggles every layer, plays a tear-off-to-finish build, opens an exploded layers view, measures squares and order quantities, and exports 4K/8K or path-traced stills. `cd roof-visualizer && npm start`
+- **[roof-blender](roof-blender/SKILL.md)** — The same layer stack in Blender with stepped shingle courses and real nails: Cycles stills, build videos and exploded-layer videos, through blender-mcp or headless.
+- **[Open-source guide](docs/ROOFTEC-OPEN-SOURCE.md)** — MIT and other permissive tools for the next steps, licenses to avoid, and supplier image rights.
+
 ## Prerequisites
+
+Roofing skills: Node 18+ for roof-visualizer; Blender 4.2+ (MCP or headless) and ffmpeg for roof-blender.
 
 - Blender 5.x with [blender-mcp](https://github.com/ahujasid/blender-mcp) addon installed
 - Claude Code with MCP server configured (`uvx blender-mcp`)

@@ -1,0 +1,17 @@
+{
+  "name": "roof-layer-studio",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Interactive roof material, layer, build-sequence and exploded-view visualizer (Three.js) with supplier swatch import and Claude-written build plans.",
+  "type": "module",
+  "scripts": {
+    "start": "node scripts/serve.mjs --open",
+    "serve": "node scripts/serve.mjs",
+    "swatch": "node scripts/fetch-swatch.mjs",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "engines": { "node": ">=18" },
+  "optionalDependencies": {
+    "@anthropic-ai/sdk": "^1.7.0"
+  }
+}
