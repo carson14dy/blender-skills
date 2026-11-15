@@ -19,8 +19,8 @@ u.searchParams.set('capture', '1');
 if (f.product) u.searchParams.set('product', String(f.product));
 const { browser, noGpu } = await launch({ software: f.software ? true : undefined });
 try {
-  const { page, errors, readyMs } = await openViewer(browser, u.href, { width: 1400, height: 860 });
-  console.log(`ready in ${readyMs} ms${noGpu ? ' (software WebGL, slow)' : ''}`);
+  const { page, errors, readyMs, gpu } = await openViewer(browser, u.href, { width: 1400, height: 860 });
+  console.log(`ready in ${readyMs} ms · WebGL renderer: ${gpu}${/swiftshader|llvmpipe|software/i.test(gpu) ? ' (software: timings are not representative)' : ''}`);
   const t0 = Date.now();
   const b64 = await page.evaluate(async ({ w, h, explode, cutaway, t, pt }) => {
     const S = window.roofStudio;

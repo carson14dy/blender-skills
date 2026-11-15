@@ -27,7 +27,11 @@ cat > "$SHIM" <<EOF
 # Accepts roof-blender's headless call: blender -b [file|--factory-startup] --python CORE -- cfg
 FILE=""
 while [ "\$#" -gt 0 ] && [ "\$1" != "--python" ]; do
-  case "\$1" in -b|--factory-startup) ;; *) FILE="\$1" ;; esac
+  case "\$1" in
+    -b|--factory-startup) ;;
+    --python-exit-code) shift ;;
+    *) FILE="\$1" ;;
+  esac
   shift
 done
 CORE="\$2"; shift 3

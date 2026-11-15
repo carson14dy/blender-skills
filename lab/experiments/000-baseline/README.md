@@ -47,8 +47,8 @@ What do roof-visualizer and roof-blender do today, how fast are they on a machin
 | Blender: demo house + 12 layers | about 1 s |
 | Blender still 640×360, 12 samples | 3.4 s |
 | Blender build video 480×270, 160 frames, 4 samples | 2 min 43 s |
-| Demo roof (Blender, 0.40 m overhang) | 28.96 squares; eaves 66.0 m, rakes 8.94 m, ridges 15.4 m, hips 32.4 m, valleys 12.0 m |
-| Demo roof (web, 0.45 m overhang) | 29.4 squares |
+| Demo roof (Blender, 0.40 m overhang) | 28.96 squares; eaves 66.0 m, rakes 8.94 m, ridges 15.4 m, hips 32.4 m, valleys 12.0 m. **Wrong, corrected in 010:** 27.43 squares, eaves 58.3, ridges 15.45, hips 32.70, valleys 12.15 m at 0.45 m overhang |
+| Demo roof (web, 0.45 m overhang) | 29.4 squares. **Wrong, corrected in 010:** 27.4 |
 | GLB exported from Blender | 16 MB, mostly nail geometry |
 | Tests | 8/8 Node tests, all Blender core checks |
 

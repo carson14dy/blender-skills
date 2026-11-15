@@ -29,8 +29,8 @@ fs.mkdirSync(out, { recursive: true });
 const shots = String(f.shots || 'finished,layers').split(',').map((s) => s.trim()).filter(Boolean);
 const { browser, noGpu } = await launch({ software: f.software ? true : undefined });
 try {
-  const { page, errors, readyMs } = await openViewer(browser, String(f.url), { width: Number(f.width || 1400), height: Number(f.height || 860), colorScheme: f.dark ? 'dark' : 'light' });
-  console.log(`ready in ${readyMs} ms${noGpu ? ' (software WebGL)' : ''}`);
+  const { page, errors, readyMs, gpu } = await openViewer(browser, String(f.url), { width: Number(f.width || 1400), height: Number(f.height || 860), colorScheme: f.dark ? 'dark' : 'light' });
+  console.log(`ready in ${readyMs} ms · WebGL renderer: ${gpu}${/swiftshader|llvmpipe|software/i.test(gpu) ? ' (software: timings are not representative)' : ''}`);
   if (f.eval) await page.evaluate(String(f.eval));
   for (const s of shots) {
     const code = SHOTS[s];

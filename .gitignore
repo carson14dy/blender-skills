@@ -4,3 +4,4 @@ out/
 lab/**/out/
 __pycache__/
 *.blend1
+node_modules/

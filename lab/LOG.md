@@ -4,6 +4,24 @@ Newest first. One entry per session: date, cloud or local, what changed, results
 
 ---
 
+## 2026-11-15 · cloud (3)
+
+**Changed**
+- Ran an independent review on Claude Fable 5.2 (46 findings across web, Blender, lab and docs) and fixed the verified ones. Details and evidence: `lab/experiments/010-fable-review/`.
+- Measurements corrected: the ranch demo is 27.4 squares, not 29.4. Hand-calculation tests now cover 3 houses in the web app and the ranch in Blender.
+- Blender videos: no black bands, the sun matches the sky, frame-step previews work, failures fail, renders report seconds and device.
+- Local-session guide: `lab/NEXT.md` (setup with winget and MCP for Blender), experiment 001 rewritten as a runbook, README "start here", `CLAUDE.md` points at NEXT.md.
+
+**Results:** 12/12 Node tests; Blender core checks pass on 5.2.4 and 4.2.0; scan and image proxy work live; path-traced snapshots are no longer blank.
+
+**Next:** experiment 001 on the local PC. New backlog items 011-013.
+
+**Needs local:** follow `lab/NEXT.md`, Local session.
+
+**Needs cloud:** none open.
+
+---
+
 ## 2026-11-15 · cloud (2)
 
 **Changed**

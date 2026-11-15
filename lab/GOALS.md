@@ -19,7 +19,7 @@ What the user wants, where it stands after the first build (experiment 000), and
 
 **Goal:** sharper images of each change, and geometry and measurements you can rely on.
 
-**Now:** tiled snapshots to 8K, path tracing in the browser, Cycles in Blender with stepped courses and real nails. Measurements come from the model (the demo house is 29 squares).
+**Now:** tiled snapshots to 8K, path tracing in the browser, Cycles in Blender with stepped courses and real nails. Measurements come from the model and match hand calculations: the ranch demo is 27.4 squares (experiment 010 fixed double-counted ridges and hips and the roof hidden under the garage).
 
 **Open questions**
 - GPU timings on the user's PC: 4K raster, path tracing to 256 samples, Cycles 4K (experiment 001).
@@ -63,3 +63,7 @@ What the user wants, where it stands after the first build (experiment 000), and
 | 007 | T4 | Claude-written plans: 5 real job descriptions, review with the user | cloud with API key |
 | 008 | T5 | One-page "roof system" proposal sheet from the layers view | cloud |
 | 009 | T5 | Layers-view labels on narrow screens: they cover the house and the bottom one hides behind the toolbar. **Done**, see 009 | cloud |
+| 010 | all | Independent review by Claude Fable 5.2, and fixes. **Done**, see 010 | cloud |
+| 011 | T6 | Offline use: vendor three.js, the path tracer and the fonts; optional service worker | cloud |
+| 012 | T2/T6 | Robust roof-plane detection for drone and scan meshes (region growing or RANSAC, T-junctions) | cloud, then local with a real scan |
+| 013 | T1 | Supplier photo crop and perspective correction, course detection from the photo | cloud |

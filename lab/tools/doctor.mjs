@@ -44,7 +44,7 @@ function findBlender() {
   if (process.env.BLENDER) c.push(process.env.BLENDER);
   c.push('blender');
   if (process.platform === 'win32') {
-    const base = 'C:\\Program Files\\Blender Foundation';
+    const base = path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Blender Foundation');
     try { for (const d of fs.readdirSync(base).sort().reverse()) c.push(path.join(base, d, 'blender.exe')); } catch { /* not installed there */ }
     const steam = 'C:\\Program Files (x86)\\Steam\\steamapps\\common\\Blender\\blender.exe';
     c.push(steam);
@@ -57,8 +57,11 @@ function findBlender() {
   return null;
 }
 const blender = findBlender();
-add(blender ? true : null, 'Blender', blender ? `${blender.version} at ${blender.exe}` : 'not found (set BLENDER=<path to blender>)',
-  'Install Blender 4.2 LTS or 5.x, or set BLENDER to its path');
+const cloud = process.platform === 'linux' && !process.env.DISPLAY;
+const bv = blender ? blender.version.match(/Blender (\d+)\.(\d+)/) : null;
+const bvOk = bv && (Number(bv[1]) > 4 || (Number(bv[1]) === 4 && Number(bv[2]) >= 2));
+add(blender ? (bvOk ? true : false) : (cloud ? null : false), 'Blender', blender ? `${blender.version} at ${blender.exe}${bvOk ? '' : ' (too old: need 4.2 or newer)'}` : 'not found (set BLENDER=<path to blender.exe>)',
+  'Install Blender 4.2 LTS or 5.x from https://www.blender.org/download/ (or set BLENDER to the full path of blender.exe)');
 
 // pip bpy (cloud sessions use this instead of a Blender install)
 const py = process.env.LAB_BPY_PYTHON || path.join(os.homedir(), '.cache', 'rooftec-lab', 'bpyenv', process.platform === 'win32' ? 'Scripts\\python.exe' : 'bin/python');
@@ -73,7 +76,10 @@ const mcp = await new Promise((res) => {
   s.on('error', () => res(false));
   s.on('timeout', () => { s.destroy(); res(false); });
 });
-add(mcp ? true : null, 'blender-mcp on :9876', mcp ? 'listening' : 'not listening (open Blender, N panel > BlenderMCP > Connect)');
+const uv = run('uvx', ['--version'], { shell: process.platform === 'win32' });
+add(uv ? true : (cloud ? null : false), 'uv (installs MCP for Blender)', uv || 'not found', 'Install uv: winget install --id=astral-sh.uv -e   (then open a new terminal)');
+add(mcp ? true : (cloud ? null : false), 'MCP for Blender on :9876', mcp ? 'listening' : 'not listening',
+  'Run: uvx mcp-for-blender install-addon   then open Blender (the addon starts its server; check N panel > MCP for Blender)');
 
 // roof-visualizer deps and Playwright
 const rv = path.join(root, 'roof-visualizer');
@@ -82,7 +88,7 @@ let pw = null;
 for (const base of [process.cwd(), rv, run('npm', ['root', '-g'], { shell: process.platform === 'win32' })].filter(Boolean)) {
   try { createRequire(path.join(base, 'x.js'))('playwright'); pw = base; break; } catch { /* try next */ }
 }
-add(pw ? true : null, 'Playwright (for lab/tools capture)', pw ? `found from ${pw}` : 'not installed (npm i -D playwright && npx playwright install chromium)');
+add(pw ? true : null, 'Playwright (for lab/tools capture)', pw ? `found from ${pw}` : 'not installed (optional: cd roof-visualizer && npm i --no-save playwright && npx playwright install chromium)');
 add(process.env.ANTHROPIC_API_KEY ? true : null, 'ANTHROPIC_API_KEY', process.env.ANTHROPIC_API_KEY ? 'set' : 'not set (Claude-written build plans stay off)');
 
 // print

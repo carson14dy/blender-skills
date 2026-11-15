@@ -2,12 +2,15 @@
 
 Research and testing sandbox for RoofTec 3D-home features before they go into the app: supplier materials on the roof, render resolution and accuracy, interactive layers, the AI build sequence, and the exploded layers view. Work here may be rough. Anything that proves out moves to `main` (as a skill) or to the app through a small, separate pull request.
 
-Start every session by reading `lab/LOG.md` (newest entry first) and `lab/GOALS.md`.
+**Start every session with `lab/NEXT.md`**: it holds the current to-do list for each kind of session. Then read the newest entry in `lab/LOG.md`, and `lab/GOALS.md` when choosing new work.
+
+**Local session on the user's Windows PC:** run `node lab/tools/doctor.mjs`, fix what it lists, then do the first open "Local session" item in `lab/NEXT.md`. Ask the user only for what needs their eyes or hands (opening Blender, judging how something looks, exporting a house model).
 
 ## Layout
 
 - `roof-visualizer/`: Roof Layer Studio, the Three.js web app ([SKILL.md](roof-visualizer/SKILL.md))
 - `roof-blender/`: the same layer stack in Blender ([SKILL.md](roof-blender/SKILL.md))
+- `lab/NEXT.md`: what each session does next, plus the Windows setup steps
 - `lab/GOALS.md`: research tracks, what "done" means, experiment backlog
 - `lab/LOG.md`: running hand-off log between sessions, newest first
 - `lab/experiments/NNN-short-name/`: one folder per experiment, started from `lab/experiments/_template/`
@@ -18,7 +21,7 @@ Start every session by reading `lab/LOG.md` (newest entry first) and `lab/GOALS.
 
 | | Cloud session | Local session (the user's Windows PC, "Omen") |
 |---|---|---|
-| Has | Linux, Node, Chromium with software WebGL, `pip install bpy` (Blender as a Python module, CPU only), ffmpeg | Real GPU, Blender with its UI and the blender-mcp addon, real RoofTec house models, the user watching |
+| Has | Linux, Node, Chromium with software WebGL, `pip install bpy` (Blender as a Python module, CPU only), ffmpeg | Real GPU, Blender with its UI and the MCP for Blender addon (formerly blender-mcp), real RoofTec house models, the user watching |
 | Good for | code, research, unit tests, headless Blender checks, documentation | GPU timings, path tracing at real speed, Cycles renders, testing on real houses, judging how things look |
 | Slow or impossible | anything GPU-bound; WebGL renders take seconds per frame | nothing in particular |
 
@@ -39,13 +42,17 @@ When a task needs the other kind of session, write it under **Needs local** or *
 node lab/tools/doctor.mjs                       # what this machine can run, and what is missing
 cd roof-visualizer && npm install && npm test   # unit tests (Node 18+)
 cd roof-visualizer && npm start                 # web app at http://127.0.0.1:8080
-python roof-blender/tests/test_roof_core.py     # Blender core checks with pip bpy (cloud)
-blender -b --factory-startup --python roof-blender/tests/test_roof_core.py   # same, with real Blender (local)
+$LAB_BPY_PYTHON roof-blender/tests/test_roof_core.py   # Blender core checks with pip bpy (cloud; see setup-cloud.sh)
+blender -b --factory-startup --python-exit-code 1 --python roof-blender/tests/test_roof_core.py   # same, real Blender (local); pass = "all roof_core checks passed"
 node lab/tools/capture.mjs --url "http://127.0.0.1:8080/?quality=standard" --shots finished,layers,cutaway,midbuild --out lab/experiments/NNN-name/img
 node lab/tools/snapshot.mjs --url "http://127.0.0.1:8080/" --size 3840x2160 --explode --out out/roof-4k.png
 ```
 
 Cloud only: `bash lab/tools/setup-cloud.sh` creates a Python venv with `bpy` (about 430 MB download) and prints the paths to use.
+
+## Long-running commands
+
+Start the web server, Blender renders and videos in the background and check on them later; they outlast a normal command timeout. `roof-blender.mjs` prints one `RT_RESULT {json}` line per step, with `seconds`, `device` and `blender` for renders. Treat a missing `RT_RESULT` as a failure.
 
 ## Conventions
 

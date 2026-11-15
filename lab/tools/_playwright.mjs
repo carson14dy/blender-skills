@@ -44,5 +44,11 @@ export async function openViewer(browser, url, { width = 1400, height = 860, col
   await page.goto(url, { waitUntil: 'load', timeout: 120000 });
   await page.waitForFunction(() => window.roofStudio, null, { timeout: 120000 });
   await page.evaluate(() => window.roofStudio.ready);
-  return { page, errors, readyMs: Date.now() - t0 };
+  // which GPU actually drew the page: a software renderer means timings are not representative
+  const gpu = await page.evaluate(() => {
+    const gl = window.roofStudio.three.renderer.getContext();
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    return ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+  }).catch(() => 'unknown');
+  return { page, errors, readyMs: Date.now() - t0, gpu };
 }

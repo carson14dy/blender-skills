@@ -4,37 +4,44 @@ The current to-do list for both sessions. Do the first open item for your kind o
 
 ## Local session (Windows PC "Omen")
 
-- [ ] **Setup, once (about 30 minutes):** follow "Set up this PC" below, then run `node lab/tools/doctor.mjs`. Every line except `bpy` should say OK.
-- [ ] **Experiment 001, GPU baseline (about 45 minutes, mostly waiting on renders):** follow `lab/experiments/001-local-gpu-baseline/README.md` step by step and fill in its Result section.
-- [ ] **Report back:** add a `lab/LOG.md` entry (newest first), tick the boxes here, then commit and push:
-  ```
-  git add -A
-  git commit -m "Lab: experiment 001 results (local)"
-  git push
-  ```
-- [ ] **Experiment 003, a real RoofTec house:** export one house as `.glb` into `lab/experiments/003-real-house/out/` (git-ignored). Open it in the viewer (Project tab > Load house model), write down squares, pitch and LF next to the house's measurement report, and save two screenshots.
+- [ ] **Setup, once (about 30 minutes):** follow "Set up this PC" below, then run `node lab/tools/doctor.mjs` until it shows no `NO` lines.
+- [ ] **Experiment 001, GPU baseline (about 45 minutes, mostly renders running in the background):** follow `lab/experiments/001-local-gpu-baseline/README.md` from top to bottom, including its "Report back" checklist.
+- [ ] **Experiment 003, a real RoofTec house:**
+  1. Export one house as `.glb` into `lab/experiments/003-real-house/out/` (git-ignored). Name the roof mesh `Roof` if the export tool allows it.
+  2. Load it in the viewer (Project tab > Load house model).
+  3. Compare squares, pitch and eave/rake/ridge/hip/valley lengths with the house's measurement report.
+  4. Save two screenshots and write `lab/experiments/003-real-house/README.md` from the template.
 
 ## Cloud session
 
-- [ ] Wait for 001 results, then pick the next experiment from `lab/GOALS.md` (likely 004: baked textures in Blender, or 006: lighter GLB files).
+- [ ] After 001 is pushed: read the results, then pick the next experiment from `lab/GOALS.md` (likely 006, lighter GLB files for phones, or 012, sturdier roof detection for scans).
 
 ---
 
 ## Set up this PC
 
-Run these in PowerShell. Install anything doctor reports missing, then open a new PowerShell window so PATH changes apply.
+Run these in PowerShell. Open a new PowerShell window after installing, so PATH changes apply. Each line is optional if doctor already shows it OK.
 
-1. **Git** from https://git-scm.com/download/win. The first `git push` asks you to sign in to GitHub in the browser.
-2. **Node.js LTS** (18 or newer) from https://nodejs.org
-3. **Blender 4.2 LTS or 5.x** from https://www.blender.org/download/. The default folder is `C:\Program Files\Blender Foundation\Blender <version>\blender.exe`. Doctor finds it there, or set `BLENDER` to the full path.
-4. **ffmpeg** from https://www.gyan.dev/ffmpeg/builds/ (the "release essentials" zip). Unzip it, add its `bin` folder to PATH, and check with `ffmpeg -version`.
-5. **blender-mcp addon:**
-   1. Download `addon.py` from https://github.com/ahujasid/blender-mcp
-   2. In Blender: Edit > Preferences > Add-ons > Install from Disk, pick `addon.py`, and enable "Blender MCP".
-   3. In the 3D view press N, open the BlenderMCP tab, and click Connect.
-
-   The roof-blender scripts talk to the addon on port 9876 directly, so Claude does not need an MCP server entry for this.
-6. **Get the lab:**
+1. Install the tools:
+   ```
+   winget install --id Git.Git -e
+   winget install --id OpenJS.NodeJS.LTS -e
+   winget install --id BlenderFoundation.Blender -e
+   winget install --id Gyan.FFmpeg -e
+   winget install --id astral-sh.uv -e
+   ```
+   Without winget, download them from:
+   - https://git-scm.com
+   - https://nodejs.org (LTS)
+   - https://www.blender.org/download/ (4.2 LTS or 5.x)
+   - https://www.gyan.dev/ffmpeg/builds/ (add its `bin` folder to PATH)
+   - https://docs.astral.sh/uv/
+2. Install the Blender addon. MCP for Blender was formerly called blender-mcp.
+   ```
+   uvx mcp-for-blender install-addon
+   ```
+   Open Blender. The addon starts its server on port 9876 when Blender opens; check the N panel > MCP for Blender tab. The roof-blender scripts talk to that server directly, so Claude needs no MCP configuration for this. If you also want Claude to drive Blender by chat, run `uvx mcp-for-blender setup`.
+3. Get the lab:
    ```
    git clone https://github.com/carson14dy/blender-skills.git
    cd blender-skills
@@ -43,11 +50,12 @@ Run these in PowerShell. Install anything doctor reports missing, then open a ne
    npm install
    cd ..
    ```
-7. **Optional, for scripted screenshots** (`lab/tools/capture.mjs`):
+   The first `git push` opens a browser window to sign in to GitHub.
+4. Optional, for scripted screenshots and GPU timings of the web app (`lab/tools/snapshot.mjs`, `capture.mjs`). `--no-save` keeps it out of `package.json`.
    ```
    cd roof-visualizer
    npm i --no-save playwright
    npx playwright install chromium
    cd ..
    ```
-8. Open the `blender-skills` folder in Claude Code (the Claude desktop app's Code tab, or `claude` in that folder) and say: **"Do the next local item in lab/NEXT.md"**.
+5. Start Claude Code in the `blender-skills` folder: the Claude desktop app's Code tab, or `claude` in PowerShell. Then say: **"Do the next local item in lab/NEXT.md"**.
