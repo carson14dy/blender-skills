@@ -10,8 +10,13 @@
     "swatch": "node scripts/fetch-swatch.mjs",
     "test": "node --test tests/*.test.mjs"
   },
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "optionalDependencies": {
     "@anthropic-ai/sdk": "^1.7.0"
+  },
+  "devDependencies": {
+    "three": "^0.186.1"
   }
 }

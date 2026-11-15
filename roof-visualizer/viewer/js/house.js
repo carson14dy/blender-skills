@@ -77,30 +77,61 @@ function clipPoly3(poly, point, n) {
   return out;
 }
 
-/** Build roof planes (deck baseline) for a preset. */
+/**
+ * Build roof planes (deck baseline) for a preset.
+ * An attached block's roof is clipped where it meets the parent roof (giving
+ * the valleys), and the parent plane gets the matching notch so the area it
+ * hides under the attached roof is not counted as roof, eave or layer.
+ */
 export function buildRoofPlanes(preset, pitch) {
-  const polys = [];
   const blocks = {};
   for (const b of preset.blocks) {
     const r = blockRoof({ ...b, ridgeExtend: b.attachTo ? 12 : 0 }, b.pitch ?? pitch, preset.overhang);
-    blocks[b.id] = { b, ...r, polys: r.roof };
+    blocks[b.id] = { b, ...r, polys: b.attachTo ? [] : r.roof.map((p) => p.slice()) };
   }
+  const wingPolys = [];
   for (const b of preset.blocks) {
-    const blk = blocks[b.id];
-    if (!b.attachTo) { polys.push(...blk.roof); continue; }
-    // clip the attached block's roof against the parent's roof planes that face it
-    const parent = blocks[b.attachTo];
+    if (!b.attachTo) continue;
+    const blk = blocks[b.id], parent = blocks[b.attachTo];
     const toward = new THREE.Vector3(b.cx - parent.b.cx, 0, b.cz - parent.b.cz).normalize();
+    const facing = parent.polys.map((pp, i) => ({ pp, i, n: polyNormal(pp) }))
+      .filter(({ n }) => new THREE.Vector3(n.x, 0, n.z).normalize().dot(toward) >= 0.7);
+    const clipped = [];
     for (let poly of blk.roof) {
-      for (const pp of parent.roof) {
-        const n = polyNormal(pp);
-        if (new THREE.Vector3(n.x, 0, n.z).normalize().dot(toward) < 0.7) continue;
-        poly = clipPoly3(poly, pp[0], n);
-      }
-      if (poly.length >= 3) polys.push(poly);
+      for (const { pp, n } of facing) poly = clipPoly3(poly, pp[0], n);
+      if (poly.length >= 3) clipped.push(poly);
+    }
+    wingPolys.push(...clipped);
+    for (const f of facing) {
+      const notched = notchParent(f.pp, f.n, clipped);
+      if (notched) parent.polys[f.i] = notched;
     }
   }
+  const polys = [...Object.values(blocks).flatMap((x) => x.polys), ...wingPolys];
   return polys.map((p, i) => RoofPlane.fromPolygon(p, i));
+}
+
+/** Insert the valley triangle (foot, apex, foot) into the parent's eave edge. */
+function notchParent(pp, n, wingPolys) {
+  const onPlane = [];
+  for (const poly of wingPolys) for (const p of poly) {
+    if (Math.abs(p.clone().sub(pp[0]).dot(n)) < 1e-4 && !onPlane.some((q) => q.distanceTo(p) < 1e-3)) onPlane.push(p);
+  }
+  if (onPlane.length < 3) return null;
+  onPlane.sort((a, b) => b.y - a.y);
+  const apex = onPlane[0];
+  const feet = onPlane.slice(1).filter((p) => Math.abs(p.y - onPlane[onPlane.length - 1].y) < 0.01);
+  if (feet.length !== 2) return null;
+  for (let i = 0; i < pp.length; i++) {
+    const a = pp[i], b = pp[(i + 1) % pp.length];
+    if (Math.abs(a.y - feet[0].y) > 0.01 || Math.abs(b.y - feet[0].y) > 0.01) continue; // not the eave
+    const ab = b.clone().sub(a), len2 = ab.lengthSq();
+    const t = (p) => p.clone().sub(a).dot(ab) / len2;
+    if (!feet.every((f) => t(f) > 0 && t(f) < 1)) continue;
+    const [f1, f2] = feet.slice().sort((x, y) => t(x) - t(y));
+    return [...pp.slice(0, i + 1), f1, apex, f2, ...pp.slice(i + 1)];
+  }
+  return null;
 }
 
 function polyNormal(pts) {

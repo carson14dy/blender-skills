@@ -29,7 +29,8 @@ export function autoPlan(layers, { product } = {}) {
   const opt = layers.options;
   const sq = m.squares;
   const has = (id) => layers.layers.has(id);
-  const isMetal = product?.category === 'metal';
+  const cat = product?.category || 'shingle';
+  const isMetal = cat === 'metal';
   const lf = (x) => `${Math.round(x / 0.3048)} ft`;
   const scale = (base, perSq) => +(base + perSq * sq).toFixed(1);
   const steps = [];
@@ -50,7 +51,10 @@ export function autoPlan(layers, { product } = {}) {
   });
   steps.push({
     id: 'deck', title: 'Inspect and repair the deck', camera: 'top', duration: 3,
-    detail: `Walk the deck for soft spots and delamination. ${layers.layers.get('deckRepair')?.info.spec || 'Damaged sheets'} replaced, re-nailed 6" edges / 12" field.`,
+    detail: (() => {
+      const n = layers.layers.get('deckRepair')?.count ?? 0;
+      return `Walk the deck for soft spots and delamination. ${n ? `Allowance shown: ${n} sheet${n > 1 ? 's' : ''} of 7/16" OSB replaced; the real count is set on site.` : 'No sheet replacement allowed for.'} Deck re-nailed where loose.`;
+    })(),
     actions: [{ layer: 'deckRepair', op: 'install' }],
   });
   if (has('dripEdge')) steps.push({
@@ -60,7 +64,11 @@ export function autoPlan(layers, { product } = {}) {
   });
   if (has('iceWater')) steps.push({
     id: 'ice', title: 'Ice & water shield', duration: scale(2, 0.05),
-    detail: `${opt.iceRows} row${opt.iceRows > 1 ? 's' : ''} of 36" self-adhered membrane at the eaves (24" past the warm wall)${opt.valleys && m.valleyM > 0 ? `, plus ${lf(m.valleyM)} of valley centered 18" each side` : ''}. 3" side laps, 6" end laps.`,
+    detail: (() => {
+      const { rows, reachIn } = layers.iceRowsNeeded ? layers.iceRowsNeeded() : { rows: opt.iceRows, reachIn: null };
+      const reach = reachIn ? ` reaching ${reachIn}" up the slope, 24" inside the exterior wall` : '';
+      return `${rows} row${rows > 1 ? 's' : ''} of 36" self-adhered membrane at the eaves${reach}${opt.valleys && m.valleyM > 0 ? `, plus ${lf(m.valleyM)} of valley centered 18" each side` : ''}. 3" side laps, 6" end laps.`;
+    })(),
     actions: [{ layer: 'iceWater', op: 'install' }],
   });
   if (has('underlayment')) steps.push({
@@ -81,10 +89,12 @@ export function autoPlan(layers, { product } = {}) {
   const covering = layers.layers.get('covering');
   const exposure = covering?.rowH || inToM(5.625);
   steps.push({
-    id: 'field', title: isMetal ? 'Metal panels' : 'Shingles, course by course', camera: 'orbit', duration: scale(5, 0.35),
+    id: 'field', title: isMetal ? 'Metal panels' : cat === 'shingle' ? 'Shingles, course by course' : `${cat === 'tile' ? 'Tile' : cat === 'slate' ? 'Slate' : 'Shakes'}, course by course`, camera: 'orbit', duration: scale(5, 0.35),
     detail: isMetal
       ? 'Panels set left to right, each seam clipped 24" o.c. and mechanically seamed.'
-      : `${Math.ceil(sq * 3 * 1.12)} bundles. ${fmtFtIn(exposure)} exposure, ${opt.nailsPerShingle} nails per shingle on the nail line, 6" minimum offset between courses.`,
+      : cat === 'shingle'
+        ? `${Math.ceil(sq * 3 * (1 + (layers.suggestedWaste?.() ?? 0.12)))} bundles. ${fmtFtIn(exposure)} exposure, ${opt.nailsPerShingle} nails per shingle on the nail line${opt.nailsPerShingle >= 6 ? ' (high-wind pattern)' : ''}, 6" minimum offset between courses.`
+        : `${fmtFtIn(exposure)} exposure, laid from the eaves up and fastened per the manufacturer's instructions for ${cat}.`,
     actions: [{ layer: 'covering', op: 'install' }, { layer: 'nails', op: 'install' }],
   });
   if (has('ridgeVent')) steps.push({
@@ -111,19 +121,31 @@ export function autoPlan(layers, { product } = {}) {
 }
 
 /** Validate and normalise a plan loaded from JSON. Throws with a readable message. */
+export const PLAN_OPS = ['install', 'remove', 'show', 'hide'];
+
+/** Validate and normalise a plan loaded from JSON. Throws with a readable message. */
 export function normalizePlan(plan) {
   if (!plan || !Array.isArray(plan.steps)) throw new Error('Plan needs a "steps" array.');
+  if (plan.steps.length > 200) throw new Error('Plan has more than 200 steps.');
+  const num = (v, d, i, k) => {
+    if (v === undefined || v === null) return d;
+    const n = Number(v);
+    if (!Number.isFinite(n)) throw new Error(`Step ${i + 1}: "${k}" must be a number.`);
+    return n;
+  };
   const steps = plan.steps.map((s, i) => {
     const actions = (s.actions || []).map((a) => {
-      if (!a.layer) throw new Error(`Step ${i + 1}: every action needs a "layer".`);
-      return { layer: a.layer, op: a.op || 'install', from: clamp(a.from ?? 0), to: clamp(a.to ?? 1) };
+      if (!a || typeof a.layer !== 'string' || !a.layer) throw new Error(`Step ${i + 1}: every action needs a "layer".`);
+      const op = a.op || 'install';
+      if (!PLAN_OPS.includes(op)) throw new Error(`Step ${i + 1}: unknown op "${op}" (use ${PLAN_OPS.join(', ')}).`);
+      return { layer: a.layer, op, from: clamp(num(a.from, 0, i, 'from')), to: clamp(num(a.to, 1, i, 'to')) };
     });
     return {
-      id: s.id || `step${i + 1}`, title: s.title || `Step ${i + 1}`, detail: s.detail || '',
-      duration: Math.max(0.2, Number(s.duration) || 2), camera: s.camera || null, actions,
+      id: String(s.id || `step${i + 1}`), title: String(s.title || `Step ${i + 1}`), detail: String(s.detail || ''),
+      duration: Math.min(120, Math.max(0.2, num(s.duration, 2, i, 'duration'))), camera: s.camera || null, actions,
     };
   });
-  return { title: plan.title || 'Build plan', summary: plan.summary || '', generator: plan.generator || 'file', steps };
+  return { title: String(plan.title || 'Build plan'), summary: String(plan.summary || ''), generator: plan.generator || 'file', steps };
 }
 
 export class BuildPlayer extends Emitter {
@@ -139,6 +161,9 @@ export class BuildPlayer extends Emitter {
 
   setPlan(plan) {
     this.plan = normalizePlan(plan);
+    // layers the model does not have (e.g. ridgeVent on a gable without vent) are skipped, and reported
+    const known = this.layers ? new Set(this.layers.layers.keys()) : null;
+    this.unknownLayers = known ? [...new Set(this.plan.steps.flatMap((s) => s.actions.map((a) => a.layer)).filter((id) => !known.has(id)))] : [];
     let acc = 0;
     this.starts = this.plan.steps.map((s) => { const st = acc; acc += s.duration; return st; });
     this.duration = acc;

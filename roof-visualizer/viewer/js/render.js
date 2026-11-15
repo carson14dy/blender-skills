@@ -117,13 +117,19 @@ export async function snapshot({ renderer, scene, camera, width, height, tile = 
       const k = Math.min(1, max / Math.max(width, height));
       const w = Math.floor(width * k), h = Math.floor(height * k);
       renderer.setSize(w, h, false);
+      const pt = pathTracer.pt;
+      const fade = pt?.fadeDuration;
+      if (pt) pt.fadeDuration = 0; // no raster-to-trace fade in the exported image
       pathTracer.updateCamera();
       pathTracer.reset();
-      while (pathTracer.samples < samples) {
+      // draw in the same task as the last sample: the canvas buffer is cleared once the browser composites
+      for (;;) {
         pathTracer.render();
         onProgress?.(Math.min(1, pathTracer.samples / samples));
+        if (pathTracer.samples >= samples) break;
         await new Promise((r) => requestAnimationFrame(r));
       }
+      if (pt) pt.fadeDuration = fade;
       ctx.drawImage(renderer.domElement, 0, 0, w, h, 0, 0, width, height);
     } else {
       const tw = Math.min(tile, width), th = Math.min(tile, height);

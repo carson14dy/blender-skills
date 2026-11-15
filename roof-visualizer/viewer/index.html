@@ -262,6 +262,8 @@ dialog::backdrop { background: rgba(8, 12, 18, 0.55); }
             <div class="row"><label for="tuneContrast">Contrast</label><input class="grow" id="tuneContrast" type="range" min="-0.5" max="0.8" step="0.01" value="0"></div>
             <div class="row"><label for="tuneSat">Saturation</label><input class="grow" id="tuneSat" type="range" min="-1" max="1" step="0.01" value="0"></div>
             <div class="row"><label for="tuneSeamless">Seamless</label><input id="tuneSeamless" type="checkbox"><span class="hint">blend the photo edges so it repeats without seams</span></div>
+            <div class="row"><label for="tuneExposure">Exposure</label><input id="tuneExposure" type="number" min="3" max="14" step="0.125" value="5.625" style="width:80px"><span class="hint">inches of each course showing in the photo</span></div>
+            <div class="row"><label for="tuneCourses">3D courses</label><input id="tuneCourses" type="checkbox" checked><span class="hint">turn off when the photo's courses do not line up</span></div>
           </div>
         </div>
       </div>
@@ -286,7 +288,7 @@ dialog::backdrop { background: rgba(8, 12, 18, 0.55); }
         </div>
         <div class="sec">
           <h3>Material takeoff</h3>
-          <div class="row"><label for="waste">Waste</label><input id="waste" type="number" min="0" max="40" value="12" style="width:70px"><span class="hint">% added to bundles</span></div>
+          <div class="row"><label for="waste">Waste</label><input id="waste" type="number" min="0" max="40" value="12" style="width:70px"><span class="hint">% suggested from the hips and valleys; type to override</span></div>
           <table class="takeoff" id="takeoff"></table>
           <p class="hint">Measured from the 3D model. Check against your own measurements before ordering.</p>
         </div>
@@ -377,6 +379,7 @@ dialog::backdrop { background: rgba(8, 12, 18, 0.55); }
     <h2>Add a supplier product</h2>
     <p class="hint">Paste a product page or an image link. With the local server running, the page is scanned for product photos; otherwise paste a direct image link or upload a file. Pick a straight-on, flat photo of the shingles: a whole-house photo or a rendered sphere will not map correctly.</p>
     <div class="row"><input id="impUrl" class="grow" type="url" placeholder="https://supplier.example/products/shingle-color" aria-label="Product page or image URL"><button class="btn" id="impScan" type="button">Find images</button></div>
+    <div class="row"><label class="btn" for="impFile" style="margin:0">Choose a photo file</label><input id="impFile" type="file" accept="image/*" hidden><span class="hint">or use a photo from this computer</span></div>
     <div class="found" id="impFound"></div>
     <div class="row"><label for="impName">Product</label><input id="impName" class="grow" type="text" placeholder="Product and colour name"></div>
     <div class="row"><label for="impSupplier">Supplier</label><input id="impSupplier" class="grow" type="text" placeholder="Manufacturer or distributor"></div>

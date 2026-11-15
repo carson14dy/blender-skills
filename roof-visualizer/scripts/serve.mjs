@@ -25,6 +25,12 @@ const arg = (n, d) => { const i = args.indexOf(`--${n}`); return i === -1 ? d : 
 const PORT = Number(arg('port', process.env.PORT || 8080));
 const HOST = arg('host', '127.0.0.1');
 const ALLOW_PRIVATE = args.includes('--allow-private');
+// Requests must come from the studio page itself: these Host values only (blocks DNS rebinding),
+// and no foreign Origin (blocks other websites calling the API from the contractor's browser).
+const LOOPBACK = ['127.0.0.1', 'localhost', '[::1]'];
+const ALLOWED_HOSTS = new Set([...LOOPBACK, ...(LOOPBACK.includes(HOST) || HOST === '0.0.0.0' ? [] : [HOST]), ...args.filter((a, i) => args[i - 1] === '--allow-host')].map((h) => `${h}:${PORT}`));
+const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif']);
+const MAX_AI_PLANS = 20;
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
@@ -34,7 +40,7 @@ const TYPES = {
 };
 
 const send = (res, status, body, headers = {}) => {
-  res.writeHead(status, { 'cache-control': 'no-store', ...headers });
+  res.writeHead(status, { 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', ...headers });
   res.end(body);
 };
 const json = (res, status, obj) => send(res, status, JSON.stringify(obj), { 'content-type': 'application/json; charset=utf-8' });
@@ -79,9 +85,32 @@ async function serveStatic(req, res, urlPath) {
   }
 }
 
+/** Same-origin checks for API calls. Returns an error message, or null when the request is allowed. */
+function rejectReason(req) {
+  if (!ALLOWED_HOSTS.has(String(req.headers.host || '').toLowerCase())) return 'Unexpected Host header.';
+  const origin = req.headers.origin;
+  if (origin && origin !== 'null' && !ALLOWED_HOSTS.has(origin.replace(/^https?:\/\//, '').toLowerCase())) return 'Cross-site requests are not allowed.';
+  const site = req.headers['sec-fetch-site'];
+  if (site && !['same-origin', 'none'].includes(site)) return 'Cross-site requests are not allowed.';
+  if (req.method === 'POST' && !String(req.headers['content-type'] || '').startsWith('application/json')) return 'Send JSON.';
+  return null;
+}
+
+async function pruneAiPlans() {
+  const dir = path.join(VIEWER, 'plans');
+  const files = [];
+  for (const f of await fs.readdir(dir)) if (/^ai-.*\.json$/.test(f)) files.push({ f, t: (await fs.stat(path.join(dir, f))).mtimeMs });
+  files.sort((a, b) => b.t - a.t);
+  for (const { f } of files.slice(MAX_AI_PLANS)) await fs.rm(path.join(dir, f), { force: true });
+}
+
 const server = http.createServer(async (req, res) => {
-  const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  const u = new URL(req.url, 'http://localhost');
   const p = u.pathname;
+  if (p.startsWith('/api/')) {
+    const why = rejectReason(req);
+    if (why) return json(res, 403, { error: why });
+  }
   try {
     if (p === '/api/health') return json(res, 200, await health());
     if (p === '/api/scan') {
@@ -93,9 +122,10 @@ const server = http.createServer(async (req, res) => {
       const target = u.searchParams.get('url');
       if (!target) return json(res, 400, { error: 'Add ?url=' });
       const r = await safeFetch(target, { accept: 'image/*', allowPrivate: ALLOW_PRIVATE });
-      const type = (r.res.headers.get('content-type') || '').split(';')[0];
-      if (!type.startsWith('image/')) return json(res, 415, { error: 'That link is not an image.' });
-      return send(res, 200, r.buffer, { 'content-type': type, 'access-control-allow-origin': '*', 'cache-control': 'max-age=3600' });
+      const type = (r.res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+      // raster images only: an SVG served from this origin could run script next to the API
+      if (!IMAGE_TYPES.has(type)) return json(res, 415, { error: 'That link is not a JPG, PNG, WebP, AVIF or GIF image.' });
+      return send(res, 200, r.buffer, { 'content-type': type, 'x-content-type-options': 'nosniff', 'content-security-policy': "sandbox; default-src 'none'", 'cache-control': 'max-age=3600' });
     }
     if (p === '/api/swatch' && req.method === 'POST') {
       const body = await readBody(req);
@@ -110,6 +140,7 @@ const server = http.createServer(async (req, res) => {
         const plan = await generatePlan(body);
         const file = `ai-${slugify(plan.title)}-${Date.now().toString(36)}.json`;
         await fs.writeFile(path.join(VIEWER, 'plans', file), JSON.stringify(plan, null, 2) + '\n');
+        await pruneAiPlans(); // keep the newest 20 Claude-written plans
         return json(res, 200, { plan, saved: true, file });
       } catch (e) {
         const { status, error } = await explainError(e);

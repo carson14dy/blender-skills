@@ -137,8 +137,13 @@ class Plane:
 
     @staticmethod
     def from_polygon(pts, pid=0):
-        tris = [[pts[0], pts[i], pts[i + 1]] for i in range(1, len(pts) - 1)]  # convex roof faces
-        n = (pts[1] - pts[0]).cross(pts[2] - pts[0]).normalized()
+        from mathutils.geometry import tessellate_polygon
+        n = Vector()
+        for i in range(len(pts)):  # Newell normal works for non-convex polygons too
+            a, b = pts[i], pts[(i + 1) % len(pts)]
+            n += Vector(((a.y - b.y) * (a.z + b.z), (a.z - b.z) * (a.x + b.x), (a.x - b.x) * (a.y + b.y)))
+        n.normalize()
+        tris = [[pts[i] for i in t] for t in tessellate_polygon([pts])]
         return Plane(tris, n, pid)
 
     def to3(self, u, v, off=0.0):
@@ -216,7 +221,11 @@ def inward2(P, a, b):
 
 def analyze_roof(planes, tol=0.03):
     segs = {"eave": [], "rake": [], "ridge": [], "hip": [], "valley": [], "top": []}
-    seen = set()
+    shared = []  # shared edges are found from both sides; match them by distance, not rounded keys
+
+    def seen_before(A, B):
+        return any(((s["A"] - A).length < tol and (s["B"] - B).length < tol) or ((s["A"] - B).length < tol and (s["B"] - A).length < tol) for s in shared)
+
     for P in planes:
         for e in P.edges:
             mid = (e["A"] + e["B"]) / 2
@@ -242,10 +251,10 @@ def analyze_roof(planes, tol=0.03):
                     convex = match.distance(probe) < 0
                     kind = ("ridge" if horizontal else "hip") if convex else "valley"
                 e["type"] = kind
-                key = tuple(sorted([tuple(round(x * 50) for x in e["A"]), tuple(round(x * 50) for x in e["B"])]))
-                if key not in seen:
-                    seen.add(key)
-                    segs[kind].append({"A": e["A"].copy(), "B": e["B"].copy(), "planes": [P, match]})
+                if not seen_before(e["A"], e["B"]):
+                    seg = {"A": e["A"].copy(), "B": e["B"].copy(), "planes": [P, match]}
+                    shared.append(seg)
+                    segs[kind].append(seg)
             else:
                 kind = ("eave" if inward[1] > 0 else "top") if horizontal else "rake"
                 e["type"] = kind
@@ -587,6 +596,32 @@ def _clip_poly3(poly, point, n):
     return out
 
 
+def _notch_parent(pp, n, wing_polys):
+    """Insert the valley triangle (foot, apex, foot) into the parent plane's eave edge."""
+    on = []
+    for poly in wing_polys:
+        for p in poly:
+            if abs((p - pp[0]).dot(n)) < 1e-4 and not any((q - p).length < 1e-3 for q in on):
+                on.append(p)
+    if len(on) < 3:
+        return None
+    on.sort(key=lambda p: -p.z)
+    apex, low = on[0], on[-1].z
+    feet = [p for p in on[1:] if abs(p.z - low) < 0.01]
+    if len(feet) != 2:
+        return None
+    for i in range(len(pp)):
+        a, b = pp[i], pp[(i + 1) % len(pp)]
+        if abs(a.z - low) > 0.01 or abs(b.z - low) > 0.01:
+            continue
+        ab = b - a
+        t = lambda p: (p - a).dot(ab) / ab.length_squared
+        if all(0 < t(f) < 1 for f in feet):
+            f1, f2 = sorted(feet, key=t)
+            return pp[:i + 1] + [f1, apex, f2] + pp[i + 1:]
+    return None
+
+
 def make_demo_house(pitch=6.0, preset="ranch-hip"):
     """Ranch with a hip roof and a front-gable garage (valleys included)."""
     blocks = {
@@ -595,32 +630,39 @@ def make_demo_house(pitch=6.0, preset="ranch-hip"):
         "two-story": [dict(id="main", cx=0, cy=0, w=12.5, d=9, wall=5.6, roof="gable")],
         "cottage": [dict(id="main", cx=0, cy=0, w=11, d=9, wall=2.9, roof="hip")],
     }[preset]
-    overhang = 0.4
+    overhang = 0.45  # same as the web viewer's presets
     coll = ensure_collection("RT_House")
     for o in list(coll.objects):
         bpy.data.objects.remove(o, do_unlink=True)
     roofs = {}
     for b in blocks:
         roofs[b["id"]] = blk_roof(b, pitch, overhang)
-    polys = []
+    own = {b["id"]: [list(p) for p in roofs[b["id"]][0]] for b in blocks if not b.get("attach")}
+    wing_polys = []
     for b in blocks:
-        roof, _ = roofs[b["id"]]
         if not b.get("attach"):
-            polys += roof
             continue
         parent = next(x for x in blocks if x["id"] == b["attach"])
         toward = Vector((b["cx"] - parent["cx"], b["cy"] - parent["cy"], 0)).normalized()
-        for poly in roof:
-            for pp in roofs[parent["id"]][0]:
-                n = (pp[1] - pp[0]).cross(pp[2] - pp[0]).normalized()
-                if n.z < 0:
-                    n = -n
-                hn = Vector((n.x, n.y, 0)).normalized()
-                if hn.dot(toward) < 0.7:
-                    continue
+        facing = []
+        for i, pp in enumerate(own[parent["id"]]):
+            n = (pp[1] - pp[0]).cross(pp[2] - pp[0]).normalized()
+            if n.z < 0:
+                n = -n
+            if Vector((n.x, n.y, 0)).normalized().dot(toward) >= 0.7:
+                facing.append((i, pp, n))
+        clipped = []
+        for poly in roofs[b["id"]][0]:
+            for _, pp, n in facing:
                 poly = _clip_poly3(poly, pp[0], n)
             if len(poly) >= 3:
-                polys.append(poly)
+                clipped.append(poly)
+        wing_polys += clipped
+        for i, pp, n in facing:  # the parent loses the part hidden under the attached roof
+            notched = _notch_parent(pp, n, clipped)
+            if notched:
+                own[parent["id"]][i] = notched
+    polys = [p for lst in own.values() for p in lst] + wing_polys
     # roof object (faces = roof planes at rafter height)
     bm = bmesh.new()
     for poly in polys:
@@ -686,7 +728,7 @@ def make_demo_house(pitch=6.0, preset="ranch-hip"):
 def simple_material(name, rgb, rough=0.5, metal=0.0):
     m = bpy.data.materials.get(name) or bpy.data.materials.new(name)
     _use_nodes(m)
-    bsdf = m.node_tree.nodes.get("Principled BSDF")
+    bsdf = next(n for n in m.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
     bsdf.inputs["Base Color"].default_value = (*rgb, 1)
     bsdf.inputs["Roughness"].default_value = rough
     bsdf.inputs["Metallic"].default_value = metal
@@ -907,10 +949,14 @@ def build_layers(cfg):
     segs = analyze_roof(planes)
     coll = ensure_collection()
     for o in list(coll.objects):
+        data = o.data
         bpy.data.objects.remove(o, do_unlink=True)
+        if data is not None and data.users == 0 and isinstance(data, bpy.types.Mesh):
+            bpy.data.meshes.remove(data)
     exposure = cfg.get("exposure_in", 5.625) * IN
+    metal = cfg.get("category") == "metal"
     ice_rows = int(cfg.get("ice_rows", 2))
-    nails_per = int(cfg.get("nails_per_shingle", 6))
+    nails_per = int(cfg.get("nails_per_shingle", 4))  # 4 standard, 6 for high-wind zones
     made = {}
 
     def add(lid, buf, mat, row_h, key_max):
@@ -938,12 +984,18 @@ def build_layers(cfg):
     add("iceWater", build_surface(ice, H["iceWater"]), layer_material("RT_iceWater", (0.025, 0.028, 0.035), roll - lap, 0.85), roll - lap, ice_rows + 1)
     und_h = 44 * IN
     add("underlayment", build_surface(full_parts(planes), H["underlayment"]), layer_material("RT_underlayment", (0.26, 0.28, 0.30), und_h, 0.7), und_h, rows(und_h))
-    starter = strip_parts(planes, segs["eave"], 7 * IN) + strip_parts(planes, segs["rake"], 7 * IN)
-    add("starter", build_surface(starter, H["starter"]), layer_material("RT_starter", (0.03, 0.03, 0.03), 1000.0, 0.85), 1000.0, 1)
-    spacing = 39.375 * IN / (6 if nails_per >= 6 else 4)
-    add("nails", nail_buf(planes, exposure, spacing, H["nails"]), layer_material("RT_nails", (0.55, 0.56, 0.58), exposure, 0.35, 0.9), exposure, rows(exposure))
-    cov_mat = layer_material("RT_covering", row_h=exposure, procedural={"exposure": exposure, "palette": cfg.get("palette") or ["#3a3d42", "#2b2d30", "#4d5157", "#1f2124"]})
-    add("covering", build_surface(full_parts(planes), H["covering"], exposure, 0.005), cov_mat, exposure, rows(exposure))
+    if metal:
+        # standing seam: concealed clips every 16" along the seams, 24" up the slope; flat panels
+        add("nails", nail_buf(planes, 0.6, 16 * IN, H["underlayment"] + 0.003), layer_material("RT_nails", (0.55, 0.56, 0.58), 0.6, 0.35, 0.9), 0.6, rows(0.6))
+        color = hex_rgb((cfg.get("palette") or ["#40464d"])[0])
+        add("covering", build_surface(full_parts(planes), H["covering"]), layer_material("RT_covering", color, 1000.0, 0.35, 0.6), 1000.0, 1)
+    else:
+        starter = strip_parts(planes, segs["eave"], 7 * IN) + strip_parts(planes, segs["rake"], 7 * IN)
+        add("starter", build_surface(starter, H["starter"]), layer_material("RT_starter", (0.03, 0.03, 0.03), 1000.0, 0.85), 1000.0, 1)
+        spacing = 39.375 * IN / (6 if nails_per >= 6 else 4)
+        add("nails", nail_buf(planes, exposure, spacing, H["nails"]), layer_material("RT_nails", (0.55, 0.56, 0.58), exposure, 0.35, 0.9), exposure, rows(exposure))
+        cov_mat = layer_material("RT_covering", row_h=exposure, procedural={"exposure": exposure, "palette": cfg.get("palette") or ["#3a3d42", "#2b2d30", "#4d5157", "#1f2124"]})
+        add("covering", build_surface(full_parts(planes), H["covering"], exposure, 0.005), cov_mat, exposure, rows(exposure))
     has_vent = bool(segs["ridge"]) and cfg.get("ridge_vent", True)
     if has_vent:
         vent_lines = []
@@ -963,8 +1015,11 @@ def build_layers(cfg):
         cap.up += extra.up
         cap.along += extra.along
     add("ridgeCap", cap, layer_material("RT_ridgeCap", row_h=1000.0, procedural={"exposure": 5 * IN, "palette": cfg.get("palette") or ["#3a3d42", "#2b2d30", "#4d5157"]}), 1000.0, 1)
-    for s in srcs:
-        s.hide_render = True
+    if any(any(k in s.name.lower() for k in ("roof", "shingle")) for s in srcs):
+        for s in srcs:
+            s.hide_render = True  # a dedicated roof object: the layer stack replaces it
+    else:
+        log("roof found by slope: house meshes stay visible. Name the roof object 'Roof' so it can be hidden.")
     area = sum(p.area for p in planes)
     measure = {k: sum((s["A"] - s["B"]).length for s in v) for k, v in segs.items()}
     log(f"layers: {len(made)} on {len(planes)} planes, {area / 9.290304:.1f} squares")
@@ -991,8 +1046,15 @@ def apply_material(cfg):
                              metal=0.5 if cfg.get("category") == "metal" else 0.0, bump=float(cfg.get("relief", 0.4)), rotation_deg=float(cfg.get("rotation", 0)))
     else:
         mat = layer_material("RT_covering", row_h=row_h, procedural={"exposure": row_h, "palette": cfg.get("palette") or ["#3a3d42", "#2b2d30", "#4d5157", "#1f2124"]})
+    keys = _reveal_keys(ob)
     ob.data.materials.clear()
     ob.data.materials.append(mat)
+    if keys:  # a build was already keyframed: carry it over to the new material
+        sock = mat.node_tree.nodes["RT_Reveal"].outputs[0]
+        for frame, value in keys:
+            sock.default_value = value
+            sock.keyframe_insert("default_value", frame=frame)
+        _linear(mat.node_tree)
     log(f"covering material: {img or 'procedural'}")
     return {"material": mat.name, "image": img}
 
@@ -1025,6 +1087,15 @@ def _reveal_node(ob):
 
 
 def animate_build(cfg):
+    _clear_labels()
+    for o in bpy.data.objects:
+        if o.get("rt_layer"):
+            o.animation_data_clear()  # drop explode keys from an earlier run
+            o.location.z = 0
+            o.hide_render = False
+    bpy.context.scene["rt_explode_height"] = 0.0
+    if not bpy.data.objects.get("RT_CamPivot"):
+        _camera(cfg)
     plan = cfg.get("plan") or default_plan()
     if isinstance(plan, str):
         with open(os.path.expanduser(plan)) as f:
@@ -1072,7 +1143,7 @@ def animate_build(cfg):
         if nt.animation_data:
             nt.animation_data_clear()
         for frame, frac in ks:
-            sock.default_value = -0.001 if frac <= 0 else (km + 1.0 if frac >= 1 else frac * km)
+            sock.default_value = -0.001 if frac <= 0 else frac * km  # keys are < km, so frac 1 shows everything
             sock.keyframe_insert("default_value", frame=frame)
         _linear(nt)
     scene.frame_start, scene.frame_end = start, end
@@ -1082,29 +1153,64 @@ def animate_build(cfg):
     return {"frame_start": start, "frame_end": end, "steps": len(plan["steps"])}
 
 
-def _linear(idblock):
+def _fcurves(idblock):
     ad = idblock.animation_data
     action = ad.action if ad else None
     if not action:
-        return
+        return []
     curves = []
-    if hasattr(action, "fcurves"):
-        try:
-            curves = list(action.fcurves)
-        except Exception:
-            curves = []
+    try:
+        curves = list(action.fcurves)
+    except Exception:
+        curves = []
     if not curves and hasattr(action, "layers"):  # Blender 4.4+/5.x layered actions
         for layer in action.layers:
             for strip in layer.strips:
                 for bag in getattr(strip, "channelbags", []):
                     curves += list(bag.fcurves)
-    for fc in curves:
+    return curves
+
+
+def _reveal_keys(ob):
+    if not ob.data.materials or not ob.data.materials[0] or not ob.data.materials[0].node_tree:
+        return []
+    return [(kp.co[0], kp.co[1]) for fc in _fcurves(ob.data.materials[0].node_tree) for kp in fc.keyframe_points]
+
+
+def _linear(idblock):
+    for fc in _fcurves(idblock):
         for kp in fc.keyframe_points:
             kp.interpolation = "LINEAR"
 
 
+def _clear_labels():
+    for o in [o for o in bpy.data.objects if o.name.startswith("RT_label_")]:
+        data = o.data
+        bpy.data.objects.remove(o, do_unlink=True)
+        if data is not None and data.users == 0:
+            bpy.data.curves.remove(data)
+
+
+def _set_reveal(ob, value):
+    node = _reveal_node(ob)
+    if node:
+        nt = ob.data.materials[0].node_tree
+        if nt.animation_data:
+            nt.animation_data_clear()
+        node.outputs[0].default_value = value
+
+
 def explode(cfg):
     gap = float(cfg.get("gap", 0.8))
+    # the existing roof would sit on the deck level and hide it: take it off for this view
+    for o in bpy.data.objects:
+        if o.get("rt_layer") in ("oldShingles", "oldFelt"):
+            _set_reveal(o, -0.001)
+            o.hide_render = True
+        elif o.get("rt_layer"):
+            _set_reveal(o, 1e6)
+            o.hide_render = False
+    _clear_labels()
     animate = cfg.get("animate", True)
     fps = bpy.context.scene.render.fps
     obs = sorted([o for o in bpy.data.objects if o.get("rt_layer") and o["rt_layer"] not in ("oldFelt", "oldShingles", "deckRepair")], key=lambda o: o["rt_level"])
@@ -1126,6 +1232,9 @@ def explode(cfg):
             _label(o, lbl_mat, cam, animate, (start, f_open, f_hold, f_close, f_end))
     if animate:
         bpy.context.scene.frame_start, bpy.context.scene.frame_end = start, f_end
+    bpy.context.scene["rt_explode_height"] = max(0, len(obs) - 1) * gap  # the camera fit makes room for this
+    if cam:
+        _camera({"keep": True})
     log(f"explode: {len(obs)} layers, gap {gap} m")
     return {"layers": [o["rt_layer"] for o in obs], "frame_end": f_end if animate else None}
 
@@ -1167,27 +1276,33 @@ def setup_scene(cfg):
     sc.render.engine = "CYCLES"
     cy = sc.cycles
     cy.samples = int(cfg.get("samples", 128))
+    # hidden layers are transparent surfaces stacked 8+ deep; the default 8 bounces rendered black bands
+    cy.transparent_max_bounces = int(cfg.get("transparent_bounces", 64))
     cy.use_denoising = True
     cy.use_adaptive_sampling = True
-    device = "CPU"
+    device, backend, names = "CPU", "CPU", []
     try:
         prefs = bpy.context.preferences.addons["cycles"].preferences
         for kind in ("OPTIX", "CUDA", "HIP", "METAL", "ONEAPI"):
             try:
                 prefs.compute_device_type = kind
                 prefs.get_devices()
-                if any(d.type == kind for d in prefs.devices):
+                gpus = [d for d in prefs.devices if d.type == kind]
+                if gpus:
                     for d in prefs.devices:
-                        d.use = True
-                    device = "GPU"
+                        d.use = d.type == kind  # GPU only: adding the CPU usually slows OptiX/CUDA down
+                    device, backend, names = "GPU", kind, [d.name for d in gpus]
                     break
             except Exception:
                 continue
     except Exception:
         pass
     cy.device = device
+    sc["rt_device"] = f"{backend}: {', '.join(names) or 'CPU'}"
     sc.render.resolution_x, sc.render.resolution_y = cfg.get("resolution", (3840, 2160))
     sc.render.resolution_percentage = int(cfg.get("percentage", 100))
+    if hasattr(sc.render.image_settings, "media_type"):
+        sc.render.image_settings.media_type = "IMAGE"  # Blender 5.x: PNG is refused while the type is VIDEO
     sc.render.image_settings.file_format = "PNG"
     for vt in ("AgX", "Filmic"):
         try:
@@ -1224,7 +1339,7 @@ def setup_scene(cfg):
         sc.collection.objects.link(sun)
     sun.data.energy = float(cfg.get("sun_strength", 4.0))
     sun.data.angle = math.radians(0.6)
-    sun.rotation_euler = (math.pi / 2 - elev, 0, rot)
+    sun.rotation_euler = (math.pi / 2 - elev, 0, math.pi - rot)  # matches the sky texture's sun
     if cfg.get("ground", True) and not bpy.data.objects.get("RT_Ground"):
         me = bpy.data.meshes.new("RT_Ground")
         s = 400
@@ -1233,35 +1348,48 @@ def setup_scene(cfg):
         g.data.materials.append(simple_material("RT_Grass", (0.10, 0.16, 0.06), 0.95))
         sc.collection.objects.link(g)
     _camera(cfg)
-    log(f"scene: Cycles {device}, {cy.samples} spp, {sc.render.resolution_x}x{sc.render.resolution_y}")
-    return {"device": device}
+    log(f"scene: Cycles {backend} {names}, {cy.samples} spp, {sc.render.resolution_x}x{sc.render.resolution_y}")
+    return {"device": device, "backend": backend, "devices": names, "blender": bpy.app.version_string}
 
 
 def _scene_center():
-    pts = [o.matrix_world @ Vector(c) for o in bpy.data.objects if o.type == "MESH" and o.name != "RT_Ground" for c in o.bound_box]
+    pts = [o.matrix_world @ Vector(c) for o in bpy.data.objects if o.type in ("MESH", "FONT") and o.name != "RT_Ground" and not o.hide_render for c in o.bound_box]
     if not pts:
         return Vector((0, 0, 3)), 10.0
     mn = Vector((min(p.x for p in pts), min(p.y for p in pts), min(p.z for p in pts)))
     mx = Vector((max(p.x for p in pts), max(p.y for p in pts), max(p.z for p in pts)))
+    if not _exploded_now():  # an animated explode is collapsed at frame 1: leave room for its open state
+        mx.z += bpy.context.scene.get("rt_explode_height", 0.0)
     return (mn + mx) / 2, (mx - mn).length
+
+
+def _exploded_now():
+    deck = bpy.data.objects.get("RT_layer_ridgeCap") or bpy.data.objects.get("RT_layer_covering")
+    return bool(deck and deck.location.z > 0.01)
 
 
 def _camera(cfg):
     sc = bpy.context.scene
+    if cfg.get("keep") and sc.get("rt_cam_cfg"):
+        cfg = dict(sc["rt_cam_cfg"])
+    else:
+        sc["rt_cam_cfg"] = {k: cfg[k] for k in ("lens", "distance", "view_azimuth", "view_elevation") if k in cfg}
     cam = bpy.data.objects.get("RT_Camera")
     if not cam:
         cam = bpy.data.objects.new("RT_Camera", bpy.data.cameras.new("RT_Camera"))
         sc.collection.objects.link(cam)
     cam.data.lens = float(cfg.get("lens", 35))
     center, size = _scene_center()
-    fov = 2 * math.atan(cam.data.sensor_width / 2 / cam.data.lens)
+    hfov = 2 * math.atan(cam.data.sensor_width / 2 / cam.data.lens)
+    aspect = sc.render.resolution_y / max(1, sc.render.resolution_x)
+    fov = 2 * math.atan(math.tan(hfov / 2) * min(1.0, aspect))  # fit the narrower (vertical) view
     pivot = bpy.data.objects.get("RT_CamPivot")
     if not pivot:
         pivot = bpy.data.objects.new("RT_CamPivot", None)
         sc.collection.objects.link(pivot)
     pivot.location = center
     # fit the bounding sphere, then scale by `distance` (1.0 = tight fit)
-    dist = (size / 2) / math.tan(fov / 2) * float(cfg.get("distance", 1.0)) * 1.08
+    dist = (size / 2) / math.tan(fov / 2) * float(cfg.get("distance", 0.85)) * 1.08
     az = math.radians(float(cfg.get("view_azimuth", -35)))
     el = math.radians(float(cfg.get("view_elevation", 24)))
     cam.parent = pivot
@@ -1269,6 +1397,10 @@ def _camera(cfg):
     direction = -cam.location
     cam.rotation_euler = direction.to_track_quat("-Z", "Y").to_euler()
     sc.camera = cam
+    for o in bpy.data.objects:  # labels made before the camera existed face it now
+        if o.name.startswith("RT_label_"):
+            c = o.constraints.get("Track To") or o.constraints.new("TRACK_TO")
+            c.target, c.track_axis, c.up_axis = cam, "TRACK_Z", "UP_Y"
     return cam
 
 
@@ -1285,24 +1417,36 @@ def _orbit_camera(start, end, degrees):
 
 
 def render(cfg):
+    """Render a still or the animation. Returns paths plus timing, device and Blender version."""
+    import time
     sc = bpy.context.scene
     out = os.path.abspath(os.path.expanduser(cfg.get("output", "//roof_render")))
+    meta = {"blender": bpy.app.version_string, "device": sc.get("rt_device", sc.cycles.device), "samples": sc.cycles.samples,
+            "resolution": [sc.render.resolution_x * sc.render.resolution_percentage // 100, sc.render.resolution_y * sc.render.resolution_percentage // 100]}
     if cfg.get("animation"):
         os.makedirs(out, exist_ok=True)
+        for f in os.listdir(out):  # stale frames from an earlier run would end up in the video
+            if f.startswith("frame_") and f.endswith(".png"):
+                os.remove(os.path.join(out, f))
         sc.render.filepath = os.path.join(out, "frame_")
-        if cfg.get("frame_step"):
-            sc.frame_step = int(cfg["frame_step"])
+        sc.frame_step = int(cfg.get("frame_step") or 1)
+        t0 = time.time()
         bpy.ops.render.render(animation=True)
-        log(f"frames -> {out}")
-        return {"frames": out}
+        secs = time.time() - t0
+        frames = len([f for f in os.listdir(out) if f.startswith("frame_") and f.endswith(".png")])
+        log(f"frames -> {out} ({frames} frames, {secs:.1f} s)")
+        return {"frames": out, "count": frames, "seconds": round(secs, 1), "seconds_per_frame": round(secs / max(1, frames), 2),
+                "fps": sc.render.fps, "frame_step": sc.frame_step, **meta}
     if cfg.get("frame") is not None:
         sc.frame_set(int(cfg["frame"]))
     path = out if out.lower().endswith(".png") else out + ".png"
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     sc.render.filepath = path
+    t0 = time.time()
     bpy.ops.render.render(write_still=True)
-    log(f"still -> {path}")
-    return {"still": path}
+    secs = time.time() - t0
+    log(f"still -> {path} ({secs:.1f} s)")
+    return {"still": path, "seconds": round(secs, 1), **meta}
 
 
 def export_glb(cfg):

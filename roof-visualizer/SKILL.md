@@ -10,12 +10,12 @@ A browser app (Three.js, MIT) that rebuilds a roof as real layers on top of a 3D
 | Layer (bottom to top) | Built from |
 |---|---|
 | Existing shingles + felt | the whole roof, used for the tear-off |
-| Roof deck (OSB / plywood, 4x8 sheets) + repair sheets | every roof plane, with edge thickness |
+| Roof deck (OSB / plywood, 4x8 sheets) + repair allowance | every roof plane, with edge thickness; the number of replacement sheets is an input |
 | Drip edge | eaves (under ice & water) and rakes (over underlayment) |
-| Ice & water shield | 1-3 rows at the eaves plus 36" centered in valleys |
+| Ice & water shield | rows at the eaves (auto: enough to reach 24" inside the exterior wall, from the overhang and pitch) plus 36" centered in valleys, applied after the eave rows |
 | Underlayment | synthetic gray/blue/black or #30 felt |
 | Starter strip | eaves and rakes |
-| Fasteners | every nail on the nail line, 4 or 6 per shingle (about 11,000 on the demo house) |
+| Fasteners | every nail on the nail line, 4 per shingle (6 for high-wind zones) |
 | Shingles / metal / tile / slate / shake | course-by-course stepped geometry at the product's exposure |
 | Ridge vent, hip & ridge cap | ridge and hip lines found from the geometry |
 
@@ -34,18 +34,35 @@ Tests: `npm test` (build player, plan files, supplier parser, SSRF guard).
 ## What the user can do
 
 - **Materials tab**: built-in procedural products (architectural laminate in 7 colors, 3-tab, standing seam in 4 colors, clay tile, slate, cedar shake) and imported supplier products. "Fit to roof" adjusts scale, rotation, course-line alignment, relief and tint; photos also get width in inches, brightness, contrast, saturation and seamless blending. Normal and roughness maps are generated from the photo.
-- **Add supplier product**: paste a supplier product page, pick the swatch from the images found, name it, confirm rights, and it is saved into `viewer/catalog/` and applied. Drag a photo onto the 3D view to try it immediately.
-- **Layers tab**: show/hide each layer, change products per layer (deck, underlayment, ice & water type and rows, valleys, drip edge color, nails per shingle, ridge vent), add custom layers (radiant barrier, insulation board, etc.), and read the material takeoff (squares, bundles, LF of eaves/rakes/ridges/hips/valleys, drip edge pieces, ice & water and underlayment rolls, starter, cap, nails).
+- **Add supplier product:**
+  - Paste a supplier product page or pick a file, choose the swatch, name it and confirm rights. It is saved into `viewer/catalog/` and applied.
+  - A photo dragged onto the 3D view is only tried for that session; nothing is saved without the rights confirmation.
+  - For photos, set the photo width, the course exposure visible in the photo, and whether the courses are drawn in 3D.
+- **Layers tab:**
+  - Show or hide each layer, and change products per layer: deck and repair allowance, underlayment, ice & water type and rows, valleys, drip edge colour, nails per shingle, ridge vent.
+  - Add custom layers (radiant barrier, insulation board, etc.).
+  - Read the material takeoff: squares, a waste allowance suggested from the hips and valleys, covering quantity by product type, LF of eaves, rakes, ridges, hips, valleys and ridge vent, drip edge pieces, ice & water and underlayment rolls, starter, cap and field nails.
+  - Measurements are checked against hand calculations in `tests/geometry.test.mjs`.
 - **Layers view** (toolbar, key E): layers float apart with a spacing slider and callout labels; press again to close them back down.
 - **Cutaway** (key C): stepped cut from the right side of the current view showing every layer at once.
 - **Before** (key B): the existing roof; press again for the new roof.
 - **Watch build** (Space): tear-off to finish, course by course, with captions and a slowly orbiting camera. Scrub, step, change speed in the Build tab.
-- **Render tab**: AgX/ACES/Neutral tone mapping, exposure, physical sky or Poly Haven HDRI (CC0), path tracing (three-gpu-pathtracer, MIT), and snapshots at 1080p/4K/8K/square rendered in tiles (no GPU size limit) with layer labels burned in.
+- **Render tab:**
+  - AgX, ACES or Neutral tone mapping, and exposure.
+  - Physical sky, or a Poly Haven HDRI (CC0).
+  - Path tracing (three-gpu-pathtracer, MIT). It pauses while a layer is part-built or cut away, because it can only draw whole layers.
+  - Snapshots at 1080p, 4K, 8K or square, rendered in tiles (no GPU size limit) with layer labels burned in.
+  - The view renders only while something changes, and phones start on Standard quality.
 - **Project tab**: house presets (ranch hip + garage gable, two-story gable, cottage hip), pitch 3/12-14/12, load a house model (.glb/.gltf, units selectable), sun by latitude, date, solar time and which way the house faces, export layers as GLB for Blender.
 
 ## Using a real house model
 
-Load a `.glb` in the Project tab (or `?glb=path/to/house.glb`). Roof faces are found by mesh or material name (`roof`, `shingle`) or, failing that, by slope and height. They are clustered into planes, the original roof is hidden ("Original roof" toggle brings it back), and every layer is rebuilt on those planes. Name the roof mesh `Roof` in Blender/SketchUp/your capture tool for the most reliable result. Meshes named `RT_layer_*` (exported by this viewer or roof-blender) are ignored and rebuilt.
+Load a `.glb` in the Project tab (or `?glb=path/to/house.glb`); Draco, KTX2 and meshopt compression are supported.
+
+1. Roof faces are found by mesh or material name (`roof`, `shingle`) or, failing that, by slope and height. Mirrored meshes are handled.
+2. They are clustered into planes.
+3. Only the roof triangles are removed from the model, so walls in the same mesh stay. The "Original roof" toggle brings the roof back.
+4. Every layer is rebuilt on those planes. Name the roof mesh `Roof` in Blender/SketchUp/your capture tool for the most reliable result. Meshes named `RT_layer_*` (exported by this viewer or roof-blender) are ignored and rebuilt.
 
 ## Build plans (the "AI generated build")
 
@@ -104,7 +121,20 @@ node roof-visualizer/scripts/fetch-swatch.mjs --file ./sample.jpg --name "Job 11
 
 ## Server endpoints (scripts/serve.mjs)
 
-`GET /api/health`, `GET /api/scan?url=`, `GET /api/image?url=` (CORS-safe proxy for textures), `POST /api/swatch`, `GET /api/plans`, `POST /api/plan`. Remote fetches are http(s) only, block private and loopback addresses (re-checked on every redirect), and are capped at 25 MB. `--allow-private` lifts the address check for an internal asset server.
+Endpoints: `GET /api/health`, `GET /api/scan?url=`, `GET /api/image?url=` (raster images only, for textures), `POST /api/swatch`, `GET /api/plans`, `POST /api/plan`.
+
+The server answers only its own page:
+- `Host` must be the loopback address and port (defeats DNS rebinding).
+- A foreign `Origin` or a cross-site `Sec-Fetch-Site` is refused.
+- POST bodies must be JSON. Add `--allow-host <name>` to serve it on a LAN name.
+
+Remote fetches:
+- http(s) only.
+- Private, loopback, link-local and IPv6-mapped addresses are blocked. This is checked before connecting, at connect time (so DNS answers cannot switch to a private address), and on every redirect.
+- Capped at 25 MB.
+- `--allow-private` lifts the address check for an internal asset server.
+
+Claude-written plans keep only the newest 20 files.
 
 ## Files
 

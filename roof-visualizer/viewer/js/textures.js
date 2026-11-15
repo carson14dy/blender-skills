@@ -452,12 +452,12 @@ export function starterStrip({ res = 512 } = {}) {
   return set;
 }
 
-/** Hip & ridge cap shingles; u runs along the ridge, 5" exposure per piece. */
+/** Hip & ridge cap shingles; u runs along the ridge, 5-5/8" exposure per piece. */
 export function ridgeCap({ palette = ['#3a3d42', '#2b2d30', '#4d5157'], seed = 13, res = 1024 } = {}) {
   const key = 'cap:' + palette.join() + seed + res;
   if (cache.has(key)) return cache.get(key);
   const pieces = 8;
-  const sizeM = [inToM(5) * pieces, 0.16];
+  const sizeM = [inToM(5.625) * pieces, 0.16]; // 5-5/8" exposure per cap piece
   const w = res, h = Math.max(64, Math.round(res * sizeM[1] / sizeM[0]));
   const pal = palette.map(hexToRgb); const r = rng(seed);
   const tints = Array.from({ length: pieces }, () => [Math.floor(r() * pal.length), 0.9 + r() * 0.2]);

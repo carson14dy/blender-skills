@@ -2,6 +2,7 @@
 // materials, and drives visibility, build reveal, cutaway and exploded view.
 
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import {
   buildSurface, fullParts, stripParts, eaveParts, dripEdgeGeometry, capGeometry,
   ridgeVentGeometry, nailLayout, nailGeometry, deckPatches, measureRoof,
@@ -25,7 +26,7 @@ export const LAYER_INFO = {
   iceWater: { label: 'Ice & water shield', spec: 'Self-adhered, eaves + valleys' },
   underlayment: { label: 'Underlayment', spec: 'Synthetic, 4" laps' },
   starter: { label: 'Starter strip', spec: 'Eaves + rakes, sealant to edge' },
-  nails: { label: 'Fasteners', spec: '1-1/4" coil nails, 6 per shingle' },
+  nails: { label: 'Fasteners', spec: '1-1/4" coil nails, 4 per shingle' },
   covering: { label: 'Shingles', spec: 'Architectural laminate' },
   ridgeVent: { label: 'Ridge vent', spec: 'Shingle-over, 18 NFA/ft' },
   ridgeCap: { label: 'Hip & ridge cap', spec: 'Matching cap shingles' },
@@ -65,14 +66,17 @@ export class RoofLayers {
   /**
    * @param {object} ctx  planes, segs, renderer
    */
-  constructor({ planes, segs, renderer }) {
+  constructor({ planes, segs, renderer, overhangM = null }) {
+    this.overhangM = overhangM; // horizontal eave overhang when known (demo houses), for the 24" ice & water rule
     this.planes = planes;
     this.segs = segs;
     this.renderer = renderer;
     this.root = new THREE.Group();
     this.root.name = 'roofLayers';
     this.layers = new Map(); // id -> layer record
-    this.options = { iceRows: 2, valleys: true, nailsPerShingle: 6, deck: 'osb', underlayment: 'syn-gray', iceWater: 'granular', dripEdge: 'white' };
+    // iceRows: 'auto' = enough rows to reach 24" inside the exterior wall (needs the overhang); nails: 4 standard, 6 high wind
+    this.options = { iceRows: 'auto', valleys: true, nailsPerShingle: 4, deckRepairSheets: 3, deck: 'osb', underlayment: 'syn-gray', iceWater: 'granular', dripEdge: 'white' };
+    this._customSeq = 0;
     this.product = null;
     this.explode = 0; this.explodeTarget = 0; this.gap = 0.85;
     this.cut = 1; this.cutTarget = 1;
@@ -128,7 +132,10 @@ export class RoofLayers {
     const rec = this.layers.get(id);
     if (!rec) return;
     rec.obj.traverse((o) => {
-      if (o.isMesh) { o.geometry.dispose(); o.customDepthMaterial?.dispose(); }
+      if (!o.isMesh) return;
+      o.geometry.dispose();
+      o.customDepthMaterial?.dispose();
+      for (const m of [].concat(o.material)) disposeMaterial(m);
     });
     this.root.remove(rec.obj);
     this.layers.delete(id);
@@ -163,10 +170,11 @@ export class RoofLayers {
     const g = buildSurface(fullParts(this.planes), { offset: H.deck, thickness: H.deck });
     this._rec('deck', new THREE.Mesh(g, mat), { rowH: 1.2192, keyMax: this._rowsMax(1.2192), info: { spec: `${opt.label} sheathing, 4×8 sheets` } });
     // repair patches: new sheets that appear during the deck repair step
-    const patches = deckPatches(this.planes, 3);
+    const patches = deckPatches(this.planes, Math.max(0, Math.round(this.options.deckRepairSheets)));
     const pm = this._material(TX.osb({ fresh: true, seed: 6 }));
     const pg = buildSurface(patches, { offset: H.deck + 0.0006 });
-    this._rec('deckRepair', new THREE.Mesh(pg, pm), { rowH: 1e3, keyMax: 1, info: { spec: `${patches.length} replacement sheets` } });
+    this._rec('deckRepair', new THREE.Mesh(pg, pm), { rowH: 1e3, keyMax: 1, info: { spec: `Allowance: ${patches.length} replacement sheet${patches.length === 1 ? '' : 's'}` } });
+    this.layers.get('deckRepair').count = patches.length;
   }
 
   _buildDrip() {
@@ -177,17 +185,36 @@ export class RoofLayers {
     this._rec('dripEdge', new THREE.Mesh(g, m), { rowH: 1, keyMax: 2, info: { spec: `${opt.label}, eaves under / rakes over` } });
   }
 
+  /** Rows of 36" membrane at the eaves. 'auto' reaches 24" inside the exterior wall (IRC R905.1.2). */
+  iceRowsNeeded() {
+    if (this.options.iceRows !== 'auto') return { rows: Number(this.options.iceRows), reachIn: null };
+    if (this.overhangM == null) return { rows: 2, reachIn: null };
+    const roll = inToM(36), lap = inToM(3);
+    const steepest = Math.max(...this.planes.map((p) => p.slope));
+    const upSlope = (this.overhangM + inToM(24)) / Math.cos(steepest); // horizontal reach measured along the slope
+    const rows = Math.max(1, Math.ceil((upSlope - lap) / (roll - lap)));
+    return { rows, reachIn: Math.round(upSlope / inToM(1)) };
+  }
+
   _buildIceWater() {
     const opt = LAYER_OPTIONS.iceWater.find((o) => o.id === this.options.iceWater) || LAYER_OPTIONS.iceWater[0];
     const roll = inToM(36), lap = inToM(3);
-    const rows = this.options.iceRows;
-    const parts = eaveParts(this.planes, this.segs, rows * (roll - lap) + lap);
-    if (this.options.valleys && this.segs.valley.length) parts.push(...stripParts(this.planes, this.segs.valley, roll / 2));
-    const g = buildSurface(parts, { offset: H.iceWater });
+    const { rows, reachIn } = this.iceRowsNeeded();
+    const rowH = roll - lap;
+    const geoms = [buildSurface(eaveParts(this.planes, this.segs, rows * rowH + lap), { offset: H.iceWater })];
+    const valleys = this.options.valleys && this.segs.valley.length;
+    if (valleys) {
+      // valley sheets go on after the eave rows: give them the last key row
+      const vg = buildSurface(stripParts(this.planes, this.segs.valley, roll / 2), { offset: H.iceWater + 0.0003 });
+      vg.attributes.aUp.array.fill(rows * rowH + 1e-3);
+      geoms.push(vg);
+    }
+    const g = geoms.length > 1 ? mergeGeometries(geoms) : geoms[0];
     const set = opt.tex();
+    this.iceRows = rows;
     this._rec('iceWater', new THREE.Mesh(g, this._material(set)), {
-      rowH: roll - lap, keyMax: rows + 1,
-      info: { spec: `${opt.label}: ${rows} row${rows > 1 ? 's' : ''} at eaves${this.options.valleys && this.segs.valley.length ? ' + valleys' : ''}` },
+      rowH, keyMax: rows + (valleys ? 1 : 0),
+      info: { spec: `${opt.label}: ${rows} row${rows > 1 ? 's' : ''} at eaves${reachIn ? ` (${reachIn}" up the slope)` : ''}${valleys ? ' + valleys' : ''}` },
     });
   }
 
@@ -240,7 +267,8 @@ export class RoofLayers {
 
     // the covering itself
     const parts = fullParts(this.planes);
-    const g = isMetal ? buildSurface(parts, { offset: H.covering }) : buildSurface(parts, { offset: H.covering, courseH: exposure, stepH });
+    const flat = isMetal || p.flat;
+    const g = flat ? buildSurface(parts, { offset: H.covering }) : buildSurface(parts, { offset: H.covering, courseH: exposure, stepH });
     const mat = this._material(set, { side: THREE.FrontSide, metal: isMetal ? 0.55 : 0, rough: 1, physical: isMetal });
     if (p.tint) mat.color.set(p.tint);
     this._applyTransform(mat, p);
@@ -260,11 +288,16 @@ export class RoofLayers {
     }
     const capSet = isMetal ? null : TX.ridgeCap({ palette: palette.length > 1 ? palette : shadesOf(palette[0]) });
     const capMat = this._material(capSet, { color: isMetal ? (p.procedural?.color || '#40464d') : '#ffffff', metal: isMetal ? 0.55 : 0, rough: isMetal ? 0.4 : 1, side: THREE.FrontSide });
-    const capLines = [...this.segs.hip, ...(hasVent ? [] : this.segs.ridge)];
+    // hips are capped first (bottom up), then the ridge: ridge pieces get key row 1 when hips exist
     const grp = new THREE.Group();
-    if (capLines.length) grp.add(new THREE.Mesh(capGeometry(capLines, { off: H.cap }), capMat));
-    if (hasVent) grp.add(new THREE.Mesh(capGeometry(this.segs.ridge, { off: H.covering + 0.004 + 0.032 + 0.004, width: 0.17 }), capMat));
-    if (grp.children.length) this._rec('ridgeCap', grp, { rowH: 1e3, keyMax: 1, info: { spec: isMetal ? 'Matching metal ridge cap' : 'Matching cap shingles, 5" exposure' } });
+    const hips = this.segs.hip.length > 0, ridges = this.segs.ridge.length > 0;
+    if (hips) grp.add(new THREE.Mesh(capGeometry(this.segs.hip, { off: H.cap }), capMat));
+    if (ridges) {
+      const rg = capGeometry(this.segs.ridge, hasVent ? { off: H.covering + 0.004 + 0.032 + 0.004, width: 0.17 } : { off: H.cap });
+      if (hips) rg.attributes.aUp.array.fill(1);
+      grp.add(new THREE.Mesh(rg, capMat));
+    }
+    if (grp.children.length) this._rec('ridgeCap', grp, { rowH: 1, keyMax: hips && ridges ? 2 : 1, info: { spec: isMetal ? 'Matching metal ridge cap' : 'Matching cap shingles, 5-5/8" exposure' } });
     this._applyState();
   }
 
@@ -329,6 +362,7 @@ export class RoofLayers {
       valleys: () => { this._remove('iceWater'); this._buildIceWater(); },
       dripEdge: () => { this._remove('dripEdge'); this._buildDrip(); },
       nailsPerShingle: () => this._buildCovering(),
+      deckRepairSheets: () => { this._remove('deck'); this._remove('deckRepair'); this._buildDeck(); },
       ridgeVent: () => this._buildCovering(),
     }[key];
     rebuild?.();
@@ -336,7 +370,7 @@ export class RoofLayers {
   }
 
   addCustomLayer(c) {
-    const id = 'custom' + (this.custom.length + 1);
+    const id = 'custom' + (++this._customSeq); // never reused, even after a removal
     this.custom.push({ id, ...c });
     LAYER_INFO[id] = { label: c.label, spec: c.spec || 'Custom layer' };
     this._buildCustom([this.custom[this.custom.length - 1]]);
@@ -499,30 +533,58 @@ export class RoofLayers {
   // -------------------------------------------------------------------------
   // takeoff (material quantities) for the estimate panel
 
-  takeoff({ waste = 0.12 } = {}) {
+  /** Suggested waste: 10% on simple gables, 15% with hips or valleys, up to 20% on cut-up roofs. */
+  suggestedWaste() {
+    const m = this.measure;
+    if (!m.hipM && !m.valleyM) return 0.10;
+    const cut = (m.hipM + m.valleyM) / Math.max(1, m.eaveM + m.rakeM);
+    return cut > 0.8 ? 0.20 : cut > 0.4 ? 0.17 : 0.15;
+  }
+
+  takeoff({ waste = this.suggestedWaste() } = {}) {
     const m = this.measure;
     const sq = m.squares;
     const lf = (x) => x / 0.3048;
     const p = this.product || {};
-    const isMetal = p.category === 'metal';
+    const cat = p.category || 'shingle';
+    const isMetal = cat === 'metal', isShingle = cat === 'shingle';
     const ice = this.layers.get('iceWater');
-    let iceArea = 0;
-    if (ice) iceArea = geomArea(ice.obj.geometry);
+    const iceArea = ice ? geomArea(ice.obj.geometry) : 0;
     const nails = this.layers.get('nails')?.count || 0;
+    const vent = this.layers.get('ridgeVent');
+    const covering = isShingle ? ['Shingle bundles (3 per sq, incl. waste)', `${Math.ceil(sq * (1 + waste) * 3)}`]
+      : isMetal ? ['Metal panels (sq, incl. waste)', (sq * (1 + waste)).toFixed(1)]
+        : [`${cat === 'tile' ? 'Tile' : cat === 'slate' ? 'Slate' : 'Shakes'} (sq, incl. waste)`, (sq * (1 + waste)).toFixed(1)];
     const rows = [
       ['Roof area', `${m.areaM2.toFixed(1)} m² · ${(m.areaM2 * 10.7639).toFixed(0)} sq ft`],
       ['Squares (before waste)', sq.toFixed(2)],
-      [isMetal ? 'Panels area incl. waste' : 'Shingle bundles (3/sq + waste)', isMetal ? `${(sq * (1 + waste)).toFixed(1)} sq` : `${Math.ceil(sq * (1 + waste) * 3)}`],
+      [`Waste allowance`, `${Math.round(waste * 100)}%`],
+      covering,
       ['Eaves', fmtLen(m.eaveM)], ['Rakes', fmtLen(m.rakeM)], ['Ridges', fmtLen(m.ridgeM)], ['Hips', fmtLen(m.hipM)], ['Valleys', fmtLen(m.valleyM)],
       ['Drip edge (10\' pieces)', `${Math.ceil(lf(m.eaveM + m.rakeM) * 1.05 / 10)}`],
-      ['Starter (LF)', isMetal ? '—' : `${Math.ceil(lf(m.eaveM + m.rakeM) * 1.05)}`],
-      ['Ice & water (2 sq rolls)', `${Math.max(1, Math.ceil(iceArea * 10.7639 * 1.1 / 200))}`],
+      ['Starter (LF)', isShingle ? `${Math.ceil(lf(m.eaveM + m.rakeM) * 1.05)}` : '—'],
+      ['Ice & water (2 sq rolls, approx.)', `${Math.max(1, Math.ceil(iceArea * 10.7639 * 1.1 / 200))}`],
       ['Underlayment (10 sq rolls)', `${Math.max(1, Math.ceil(sq * 1.1 / 10))}`],
+      ['Ridge vent (LF)', vent ? `${Math.ceil(lf(m.ridgeM) - 2 * lf(0.3))}` : '—'],
       ['Hip & ridge cap (LF)', `${Math.ceil(lf(m.ridgeM + m.hipM) * 1.05)}`],
-      [isMetal ? 'Panel clips' : 'Coil nails (approx.)', nails.toLocaleString()],
+      ['Deck repair allowance (sheets)', `${this.layers.get('deckRepair')?.count ?? 0}`],
+      [isMetal ? 'Panel clips' : isShingle ? 'Field nails (shingles only)' : 'Fasteners', nails.toLocaleString()],
     ];
     return rows;
   }
+
+  /** True while any visible layer is only partly built (the path tracer cannot show that). */
+  isPartial() {
+    for (const rec of this.layers.values()) if (rec.visible && rec.reveal > 0 && rec.reveal < 1) return true;
+    return false;
+  }
+}
+
+/** Dispose a material and every texture it holds. */
+export function disposeMaterial(m) {
+  if (!m) return;
+  for (const k of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap', 'alphaMap', 'bumpMap']) m[k]?.dispose?.();
+  m.dispose();
 }
 
 function fmtLen(m) { return `${(m / 0.3048).toFixed(1)} ft · ${m.toFixed(2)} m`; }

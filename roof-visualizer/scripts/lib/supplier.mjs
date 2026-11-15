@@ -12,63 +12,117 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import dns from 'node:dns/promises';
+import { lookup as dnsLookup } from 'node:dns';
 import net from 'node:net';
+import http from 'node:http';
+import https from 'node:https';
 
 export const USER_AGENT = 'RoofLayerStudio/1.0 (+contractor roof visualizer)';
 const MAX_HTML = 4 * 1024 * 1024;
 const MAX_IMAGE = 25 * 1024 * 1024;
 
-export function isPrivateAddress(ip) {
-  if (net.isIPv4(ip)) {
-    const [a, b] = ip.split('.').map(Number);
-    return a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31)
-      || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) || a >= 224;
-  }
+// Addresses a supplier page must never point the server at (RFC 1918, loopback,
+// link-local, CGNAT, multicast, unique-local, site-local, documentation, ...).
+const BLOCK = new net.BlockList();
+for (const [a, p] of [['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8], ['169.254.0.0', 16], ['172.16.0.0', 12],
+  ['192.0.0.0', 24], ['192.0.2.0', 24], ['192.168.0.0', 16], ['198.18.0.0', 15], ['198.51.100.0', 24], ['203.0.113.0', 24], ['224.0.0.0', 3]]) BLOCK.addSubnet(a, p, 'ipv4');
+for (const [a, p] of [['::', 128], ['::1', 128], ['fc00::', 7], ['fe80::', 10], ['fec0::', 10], ['ff00::', 8], ['2001:db8::', 32], ['100::', 64]]) BLOCK.addSubnet(a, p, 'ipv6');
+
+/** IPv4 hidden inside an IPv6 address (mapped ::ffff:a.b.c.d / ::ffff:xxxx:xxxx, NAT64 64:ff9b::/96), or null. */
+function embeddedV4(ip) {
   const v = ip.toLowerCase();
-  return v === '::1' || v === '::' || v.startsWith('fc') || v.startsWith('fd') || v.startsWith('fe80') || v.startsWith('::ffff:127.') || v.startsWith('::ffff:10.') || v.startsWith('::ffff:192.168.');
+  const m = v.match(/^(?:::ffff:|64:ff9b::|::)(\d+\.\d+\.\d+\.\d+)$/);
+  if (m) return m[1];
+  const h = v.match(/^(?:::ffff:|64:ff9b::)([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+  if (h) { const a = parseInt(h[1], 16), b = parseInt(h[2], 16); return `${a >> 8}.${a & 255}.${b >> 8}.${b & 255}`; }
+  return null;
 }
 
+export function isPrivateAddress(ip) {
+  if (net.isIPv4(ip)) return BLOCK.check(ip, 'ipv4');
+  if (!net.isIPv6(ip)) return true; // not an IP: refuse
+  const v4 = embeddedV4(ip);
+  if (v4) return BLOCK.check(v4, 'ipv4');
+  return BLOCK.check(ip, 'ipv6');
+}
+
+const viaProxy = () => !!(process.env.HTTPS_PROXY || process.env.https_proxy);
+
+/** Scheme and address checks before any request. Direct connections are checked again at connect time. */
 async function checkHost(url, { allowPrivate = false } = {}) {
   if (!/^https?:$/.test(url.protocol)) throw new Error('Only http and https links are supported.');
+  if (url.username || url.password) throw new Error('Links with a user name or password are not supported.');
   if (allowPrivate) return;
   const host = url.hostname.replace(/^\[|\]$/g, '');
-  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.internal')) throw new Error('Local addresses are not allowed.');
+  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.internal') || host.endsWith('.local')) throw new Error('Local addresses are not allowed.');
   if (net.isIP(host)) { if (isPrivateAddress(host)) throw new Error('Private network addresses are not allowed.'); return; }
-  try {
-    const addrs = await dns.lookup(host, { all: true });
-    if (addrs.some((a) => isPrivateAddress(a.address))) throw new Error('That host resolves to a private network address.');
-  } catch (e) {
-    // Behind an outbound proxy the name may not resolve locally; the proxy resolves it instead.
-    if (e.message.includes('private')) throw e;
-    if (!process.env.HTTPS_PROXY && !process.env.https_proxy) throw new Error(`Could not resolve ${host}.`);
+  let addrs;
+  try { addrs = await dns.lookup(host, { all: true }); } catch {
+    // behind an outbound proxy the name may only resolve at the proxy
+    if (viaProxy()) return;
+    throw new Error(`Could not resolve ${host}.`);
   }
+  if (addrs.some((a) => isPrivateAddress(a.address))) throw new Error('That host resolves to a private network address.');
 }
 
-/** fetch with SSRF checks, manual redirects and a size cap. Returns { res, url, buffer }. */
-export async function safeFetch(rawUrl, { accept = '*/*', maxBytes = MAX_IMAGE, allowPrivate = false, timeoutMs = 20000 } = {}) {
-  let url = new URL(rawUrl);
-  for (let hop = 0; hop < 6; hop++) {
-    await checkHost(url, { allowPrivate });
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-    let res;
-    try {
-      res = await fetch(url, { redirect: 'manual', signal: ctrl.signal, headers: { 'user-agent': USER_AGENT, accept } });
-    } finally { clearTimeout(timer); }
-    if (res.status >= 300 && res.status < 400 && res.headers.get('location')) {
-      url = new URL(res.headers.get('location'), url);
-      continue;
-    }
-    if (!res.ok) throw new Error(`The site answered ${res.status} ${res.statusText}.`);
+/**
+ * DNS lookup that refuses private addresses at connect time, so a host cannot
+ * pass the check with a public address and then connect to a private one (DNS rebinding).
+ */
+function guardedLookup(hostname, options, cb) {
+  dnsLookup(hostname, { ...options, all: true }, (err, addrs) => {
+    if (err) return cb(err);
+    const bad = addrs.find((a) => isPrivateAddress(a.address));
+    if (bad) return cb(Object.assign(new Error('That host resolves to a private network address.'), { code: 'EPRIVATE' }));
+    if (options.all) return cb(null, addrs);
+    cb(null, addrs[0].address, addrs[0].family);
+  });
+}
+
+/** One request with node:http(s) and the guarded lookup. Resolves { status, headers, body, url }. */
+function directGet(url, { accept, maxBytes, timeoutMs, allowPrivate }) {
+  return new Promise((resolve, reject) => {
+    const mod = url.protocol === 'https:' ? https : http;
+    const req = mod.get(url, { headers: { 'user-agent': USER_AGENT, accept }, lookup: allowPrivate ? undefined : guardedLookup, timeout: timeoutMs }, (res) => {
+      const len = Number(res.headers['content-length'] || 0);
+      if (len > maxBytes) { res.destroy(); return reject(new Error(`The file is larger than ${Math.round(maxBytes / 1048576)} MB.`)); }
+      const chunks = []; let total = 0;
+      res.on('data', (c) => { total += c.length; if (total > maxBytes) { res.destroy(); reject(new Error(`The file is larger than ${Math.round(maxBytes / 1048576)} MB.`)); } else chunks.push(c); });
+      res.on('end', () => resolve({ status: res.statusCode, headers: new Headers(Object.entries(res.headers).flatMap(([k, v]) => [].concat(v).map((x) => [k, String(x)]))), body: Buffer.concat(chunks) }));
+      res.on('error', reject);
+    });
+    req.on('timeout', () => req.destroy(new Error('The site did not answer in time.')));
+    req.on('error', (e) => reject(e.code === 'EPRIVATE' ? e : new Error(`Could not fetch ${url.hostname}: ${e.message}`)));
+  });
+}
+
+/** Same request through fetch (used behind an outbound proxy, where the proxy resolves names). */
+async function proxiedGet(url, { accept, maxBytes, timeoutMs }) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { redirect: 'manual', signal: ctrl.signal, headers: { 'user-agent': USER_AGENT, accept } });
     const len = Number(res.headers.get('content-length') || 0);
     if (len > maxBytes) throw new Error(`The file is larger than ${Math.round(maxBytes / 1048576)} MB.`);
     const chunks = []; let total = 0;
-    for await (const chunk of res.body) {
+    if (res.body) for await (const chunk of res.body) {
       total += chunk.length;
       if (total > maxBytes) throw new Error(`The file is larger than ${Math.round(maxBytes / 1048576)} MB.`);
       chunks.push(chunk);
     }
-    return { res, url: url.href, buffer: Buffer.concat(chunks) };
+    return { status: res.status, headers: res.headers, body: Buffer.concat(chunks) };
+  } finally { clearTimeout(timer); }
+}
+
+/** fetch with SSRF checks, manual redirects and a size cap. Returns { res: {status, headers}, url, buffer }. */
+export async function safeFetch(rawUrl, { accept = '*/*', maxBytes = MAX_IMAGE, allowPrivate = false, timeoutMs = 20000 } = {}) {
+  let url = new URL(rawUrl);
+  for (let hop = 0; hop < 6; hop++) {
+    await checkHost(url, { allowPrivate });
+    const r = viaProxy() ? await proxiedGet(url, { accept, maxBytes, timeoutMs }) : await directGet(url, { accept, maxBytes, timeoutMs, allowPrivate });
+    if (r.status >= 300 && r.status < 400 && r.headers.get('location')) { url = new URL(r.headers.get('location'), url); continue; }
+    if (r.status < 200 || r.status >= 300) throw new Error(`The site answered ${r.status}.`);
+    return { res: { status: r.status, headers: r.headers }, url: url.href, buffer: r.body };
   }
   throw new Error('Too many redirects.');
 }

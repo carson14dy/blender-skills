@@ -25,7 +25,8 @@ test('extractImages ranks product images and drops logos and icons', () => {
 });
 
 test('private and loopback addresses are recognised', () => {
-  for (const ip of ['127.0.0.1', '10.1.2.3', '192.168.0.10', '172.20.1.1', '169.254.169.254', '::1', 'fd00::1']) assert.ok(isPrivateAddress(ip), ip);
+  for (const ip of ['127.0.0.1', '10.1.2.3', '192.168.0.10', '172.20.1.1', '169.254.169.254', '::1', 'fd00::1',
+    '::ffff:7f00:1', '::ffff:127.0.0.1', '::ffff:a9fe:a9fe', 'fec0::1', '64:ff9b::7f00:1', 'fe90::1', '100.64.0.1']) assert.ok(isPrivateAddress(ip), ip);
   for (const ip of ['8.8.8.8', '151.101.1.1', '2606:4700::1111']) assert.ok(!isPrivateAddress(ip), ip);
 });
 

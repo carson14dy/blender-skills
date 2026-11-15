@@ -73,9 +73,19 @@ export class RoofPlane {
 
   distance(p) { return p.clone().sub(this.origin).dot(this.n); }
 
+  /**
+   * Is (u, v) on the plane? A positive margin keeps the point that far inside the
+   * plane's outer boundary (interior triangle diagonals are ignored); a negative
+   * margin acts as a tolerance.
+   */
   contains2(u, v, margin = 0) {
-    for (const t of this.tris) if (pointInTri(u, v, t, margin)) return true;
-    return false;
+    if (margin <= 0 || !this.edges) {
+      for (const t of this.tris) if (pointInTri(u, v, t, Math.min(0, margin))) return true;
+      return false;
+    }
+    if (!this.contains2(u, v, 0)) return false;
+    for (const e of this.edges) if (segDist2(u, v, e.a, e.b) < margin) return false;
+    return true;
   }
 
   /** Polygons (2D) = this plane's triangles clipped by half-planes [a,b,c] meaning a*u + b*v + c >= 0. */
@@ -95,7 +105,10 @@ export class RoofPlane {
 
 export function analyzeRoof(planes, tol = 0.03) {
   const segs = { eave: [], rake: [], ridge: [], hip: [], valley: [], top: [] };
-  const seenShared = new Set();
+  // shared edges are found once from each side; remember them by geometry, not by rounded keys
+  // (rounding at a grid boundary gave two keys for one edge and double-counted ridges and hips)
+  const sharedSeen = [];
+  const sameSeg = (s, A, B) => (s.A.distanceTo(A) < tol && s.B.distanceTo(B) < tol) || (s.A.distanceTo(B) < tol && s.B.distanceTo(A) < tol);
   for (const P of planes) {
     for (const e of P.edges) {
       const mid = e.A.clone().add(e.B).multiplyScalar(0.5);
@@ -121,10 +134,10 @@ export function analyzeRoof(planes, tol = 0.03) {
           const convex = match.Q.distance(probe) < 0;
           e.type = convex ? (horizontal ? 'ridge' : 'hip') : 'valley';
         }
-        const key = segKey(e.A, e.B);
-        if (!seenShared.has(key)) {
-          seenShared.add(key);
-          segs[e.type].push({ A: e.A.clone(), B: e.B.clone(), planes: [P, match.Q] });
+        if (!sharedSeen.some((s) => sameSeg(s, e.A, e.B))) {
+          const seg = { A: e.A.clone(), B: e.B.clone(), planes: [P, match.Q] };
+          sharedSeen.push(seg);
+          segs[e.type].push(seg);
         }
       } else {
         if (horizontal) e.type = inward[1] > 0 ? 'eave' : 'top';
@@ -385,6 +398,26 @@ export function nailLayout(planes, { exposure = 0.1429, spacing = 0.17, off = 0.
   return { matrices: new Float32Array(mats), keys: new Float32Array(keys), count: keys.length };
 }
 
+/**
+ * Copy of `geom` without the given triangles (numbers in index order), keeping
+ * material groups. Used to remove only the roof from an imported house mesh.
+ */
+export function withoutTriangles(geom, drop) {
+  const g = geom.clone();
+  const idx = g.index ? Array.from(g.index.array) : Array.from({ length: g.attributes.position.count }, (_, i) => i);
+  const groups = geom.groups.length ? geom.groups : [{ start: 0, count: idx.length, materialIndex: 0 }];
+  const out = [], newGroups = [];
+  for (const gr of groups) {
+    const s0 = out.length;
+    for (let i = gr.start; i < Math.min(idx.length, gr.start + gr.count); i += 3) if (!drop.has(i / 3)) out.push(idx[i], idx[i + 1], idx[i + 2]);
+    newGroups.push({ start: s0, count: out.length - s0, materialIndex: gr.materialIndex });
+  }
+  g.setIndex(out);
+  g.clearGroups();
+  if (geom.groups.length) for (const x of newGroups) g.addGroup(x.start, x.count, x.materialIndex);
+  return g;
+}
+
 /** A roofing nail: 3/8" head, 1-1/4" shank, pointing down -Y in local space (head at origin). */
 export function nailGeometry() {
   // low-poly on purpose: a roof carries ~10k of these
@@ -429,7 +462,7 @@ export function deckPatches(planes, count = 3, seed = 3) {
 /**
  * @param {THREE.Object3D} root
  * @param {object} opts  nameHint regex, minUp (normal.y threshold), topFraction
- * @returns {{planes: RoofPlane[], sourceMeshes: THREE.Mesh[]}}
+ * @returns {{planes: RoofPlane[], roofTris: Map<THREE.Mesh, Set<number>>}} roofTris: which triangles of each mesh became roof
  */
 export function extractRoofPlanes(root, opts = {}) {
   const nameHint = opts.nameHint ?? /roof|shingle|tile|metal_roof/i;
@@ -449,19 +482,20 @@ export function extractRoofPlanes(root, opts = {}) {
   const named = meshes.filter((m) => nameHint.test(m.name) || nameHint.test(m.material?.name || ''));
   const useNamed = named.length > 0;
   const tris = [];
-  const sourceMeshes = new Set();
+  const roofTris = new Map(); // mesh -> Set of triangle numbers used as roof
   const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
   for (const mesh of useNamed ? named : meshes) {
     const g = mesh.geometry;
     const posA = g.attributes.position;
     const index = g.index;
     const triCount = index ? index.count / 3 : posA.count / 3;
+    const mirrored = mesh.matrixWorld.determinant() < 0; // negative scale flips the winding
     for (let i = 0; i < triCount; i++) {
       const ia = index ? index.getX(i * 3) : i * 3, ib = index ? index.getX(i * 3 + 1) : i * 3 + 1, ic = index ? index.getX(i * 3 + 2) : i * 3 + 2;
       a.fromBufferAttribute(posA, ia).applyMatrix4(mesh.matrixWorld);
       b.fromBufferAttribute(posA, ib).applyMatrix4(mesh.matrixWorld);
       c.fromBufferAttribute(posA, ic).applyMatrix4(mesh.matrixWorld);
-      const t = [a.clone(), b.clone(), c.clone()];
+      const t = mirrored ? [a.clone(), c.clone(), b.clone()] : [a.clone(), b.clone(), c.clone()];
       const n = triNormal(t);
       const ar = triArea(t);
       if (ar < 1e-5) continue;
@@ -472,7 +506,8 @@ export function extractRoofPlanes(root, opts = {}) {
       // walls, fascia and the underside of thick roof meshes never become roof planes
       if (n.y < 0.05) continue;
       tris.push({ t, n, d: n.dot(t[0]) });
-      sourceMeshes.add(mesh);
+      if (!roofTris.has(mesh)) roofTris.set(mesh, new Set());
+      roofTris.get(mesh).add(i);
     }
   }
   // cluster by normal + offset
@@ -489,7 +524,7 @@ export function extractRoofPlanes(root, opts = {}) {
   const planes = clusters
     .filter((cl) => cl.area > 0.5)
     .map((cl, i) => new RoofPlane(cl.tris.map((t) => t.map((p) => projectToPlane(p, cl.n, cl.d))), cl.n, i));
-  return { planes, sourceMeshes: [...sourceMeshes] };
+  return { planes, roofTris };
 }
 
 // ---------------------------------------------------------------------------
@@ -571,6 +606,13 @@ function pointInTri(u, v, t, margin = 0) {
     if (cross < margin - 1e-9) return false;
   }
   return true;
+}
+
+function segDist2(u, v, a, b) {
+  const dx = b[0] - a[0], dy = b[1] - a[1];
+  const l2 = dx * dx + dy * dy || 1e-12;
+  const t = Math.max(0, Math.min(1, ((u - a[0]) * dx + (v - a[1]) * dy) / l2));
+  return Math.hypot(u - (a[0] + dx * t), v - (a[1] + dy * t));
 }
 
 function clipHalf(poly, [a, b, c]) {
@@ -660,8 +702,3 @@ function segmentsOverlap(e, f, tol) {
   return onSeg(s.A, l) && onSeg(s.B, l);
 }
 
-function segKey(A, B) {
-  const k = (p) => `${Math.round(p.x * 50)},${Math.round(p.y * 50)},${Math.round(p.z * 50)}`;
-  const [x, y] = [k(A), k(B)].sort();
-  return x + '|' + y;
-}
