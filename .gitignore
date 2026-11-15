@@ -1,0 +1,6 @@
+
+# lab outputs (renders, videos, .blend files, real house models)
+out/
+lab/**/out/
+__pycache__/
+*.blend1

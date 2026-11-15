@@ -1,5 +1,7 @@
 # Blender Skills for Claude Code
 
+> **You are on `rooftec-lab`**, the research and testing branch for RoofTec 3D homes. Start with [CLAUDE.md](CLAUDE.md), [lab/GOALS.md](lab/GOALS.md) and [lab/LOG.md](lab/LOG.md). Do not merge this branch; promote finished pieces through their own pull requests.
+
 A collection of Claude Code skills for automating 3D product workflows in Blender via MCP.
 
 ## Skills
