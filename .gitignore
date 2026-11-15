@@ -1,7 +1,6 @@
-
-# lab outputs (renders, videos, .blend files, real house models)
+# dependencies and lab outputs (renders, videos, .blend files, real house models)
+node_modules/
 out/
 lab/**/out/
 __pycache__/
 *.blend1
-node_modules/
