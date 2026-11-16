@@ -4,7 +4,7 @@ Research and testing sandbox for RoofTec 3D-home features before they go into th
 
 **Start every session with `lab/NEXT.md`**: it holds the current to-do list for each kind of session. Then read the newest entry in `lab/LOG.md`, and `lab/GOALS.md` when choosing new work.
 
-**Local session on the user's Windows PC:** run `node lab/tools/doctor.mjs`, fix what it lists, then do the first open "Local session" item in `lab/NEXT.md`. Ask the user only for what needs their eyes or hands (opening Blender, judging how something looks, exporting a house model).
+**Local session on the user's Windows PC:** follow `LOCAL-SESSION.md`, the full runbook (setup, every local step with exact commands, wrap-up). In short: run `node lab/tools/doctor.mjs`, fix what it lists, then do the first open "Local session" item in `lab/NEXT.md`. Ask the user only for what needs their eyes or hands (opening Blender, judging how something looks, exporting a house model).
 
 ## Layout
 

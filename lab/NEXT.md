@@ -4,6 +4,8 @@ The current to-do list for both sessions. Do the first open item for your kind o
 
 ## Local session (Windows PC "Omen")
 
+The full runbook, with commands in order, is `LOCAL-SESSION.md` at the repository root.
+
 - [ ] **Setup, once (about 30 minutes):** follow "Set up this PC" below, then run `node lab/tools/doctor.mjs` until it shows no `NO` lines.
 - [ ] **Steel panels and edge profiles on the GPU (about 15 minutes, after 001):**
   1. In the studio (`cd roof-visualizer && npm start`), pick Menards Pro-Rib on the Materials tab and the Style-D drip edge. Copy the command from the **Blender command** button.
@@ -46,6 +48,7 @@ Run these in PowerShell. Open a new PowerShell window after installing, so PATH 
    ```
    winget install --id Git.Git -e
    winget install --id OpenJS.NodeJS.LTS -e
+   winget install --id Python.Python.3.12 -e
    winget install --id BlenderFoundation.Blender -e
    winget install --id Gyan.FFmpeg -e
    winget install --id astral-sh.uv -e
