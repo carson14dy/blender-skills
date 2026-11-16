@@ -7,7 +7,7 @@ import {
   buildSurface, fullParts, stripParts, eaveParts, dripEdgeGeometry, capGeometry,
   ridgeVentGeometry, nailLayout, nailGeometry, deckPatches, measureRoof,
 } from './roof-geometry.js';
-import { profileFor, ribbedSurface, rakeTrimGeometry, metalCapProfile, onRibs } from './profiles.js';
+import { profileFor, ribbedSurface, rakeTrimGeometry, metalCapProfile, onRibs, dripReach } from './profiles.js';
 import * as TX from './textures.js';
 import { inToM, fmtFtIn, easeInOutCubic, hexToRgb, rgbToHex } from './util.js';
 import { toQuantities } from './quote.js';
@@ -184,12 +184,17 @@ export class RoofLayers {
   }
 
   _buildDrip() {
-    const v = this.options.dripEdge; // an option id, or a store product's option object { id, label, color, metal, profile }
-    const opt = v && typeof v === 'object' ? v : LAYER_OPTIONS.dripEdge.find((o) => o.id === v) || LAYER_OPTIONS.dripEdge[0];
+    const opt = this._dripOption();
     const g = dripEdgeGeometry(this.segs, { offEave: H.dripEave, offRake: H.dripRake, profile: opt.profile || null });
     const m = this._material(null, { color: opt.color, metal: opt.metal, rough: 0.35 });
     // eave pieces have aUp = 0, rake pieces aUp = 1 -> keys 0..1 then 1..2
     this._rec('dripEdge', new THREE.Mesh(g, m), { rowH: 1, keyMax: 2, info: { spec: `${opt.label}, eaves under / rakes over` } });
+  }
+
+  /** The drip edge drawn: a LAYER_OPTIONS.dripEdge entry, or a store product's option object { id, label, color, metal, profile }. */
+  _dripOption() {
+    const v = this.options.dripEdge;
+    return v && typeof v === 'object' ? v : LAYER_OPTIONS.dripEdge.find((o) => o.id === v) || LAYER_OPTIONS.dripEdge[0];
   }
 
   /** Rows of 36" membrane at the eaves. 'auto' reaches 24" inside the exterior wall (IRC R905.1.2). */
@@ -287,7 +292,8 @@ export class RoofLayers {
     const top = onRibs(H.covering, prof);
     if (prof && this.segs.rake.length) {
       const tm = this._material(null, { color: p.procedural?.color || palette[0], metal: p.pbr?.metallic ?? 0.55, rough: p.pbr?.roughness ?? 0.4 });
-      cov.add(Object.assign(new THREE.Mesh(rakeTrimGeometry(this.segs.rake, { top }), tm), { name: 'rakeTrim' }));
+      // the bend clears the drip edge's kick by 1/8 in.
+      cov.add(Object.assign(new THREE.Mesh(rakeTrimGeometry(this.segs.rake, { top, clear: dripReach(this._dripOption().profile) }), tm), { name: 'rakeTrim' }));
     }
     this._rec('covering', cov, {
       rowH: isMetal ? 1e3 : exposure, keyMax: isMetal ? 1 : this._rowsMax(exposure),
@@ -308,8 +314,8 @@ export class RoofLayers {
     // hips are capped first (bottom up), then the ridge: ridge pieces get key row 1 when hips exist
     const grp = new THREE.Group();
     const hips = this.segs.hip.length > 0, ridges = this.segs.ridge.length > 0;
-    // on ribs: the metal cap profile at the rib tops; over a vent, the vent cap lifted with the vent
-    const capOn = prof ? { profile: metalCapProfile(top, this.options.capWidthIn > 0 ? this.options.capWidthIn / 2 : 6) } : { off: H.cap };
+    // metal roofs: the metal cap profile on the rib tops (flat panels: maxH 0); over a vent, the vent cap lifted with the vent
+    const capOn = isMetal ? { profile: metalCapProfile(top, this.options.capWidthIn > 0 ? this.options.capWidthIn / 2 : 6) } : { off: H.cap };
     const overVent = prof ? CAP_OVER_VENT.map(([w, h]) => [w, h + prof.maxH]) : CAP_OVER_VENT;
     if (hips) grp.add(new THREE.Mesh(capGeometry(this.segs.hip, capOn), capMat));
     if (ridges) {
@@ -380,7 +386,7 @@ export class RoofLayers {
       iceWater: () => { this._remove('iceWater'); this._buildIceWater(); },
       iceRows: () => { this._remove('iceWater'); this._buildIceWater(); },
       valleys: () => { this._remove('iceWater'); this._buildIceWater(); },
-      dripEdge: () => { this._remove('dripEdge'); this._buildDrip(); },
+      dripEdge: () => { this._remove('dripEdge'); this._buildDrip(); if (this.layers.get('covering')?.obj.getObjectByName('rakeTrim')) this._buildCovering(); }, // the trim clears the kick
       nailsPerShingle: () => this._buildCovering(),
       deckRepairSheets: () => { this._remove('deck'); this._remove('deckRepair'); this._buildDeck(); },
       ridgeVent: () => this._buildCovering(),

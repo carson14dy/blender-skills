@@ -114,15 +114,35 @@ export function metalCapProfile(top, halfWidthIn = 6) {
   return [[0, top + 0.010], [w - 0.0127, top + 0.002], [w, top - 0.006]];
 }
 
+/** How far the drip edge reaches past the deck edge (m): its 1.5 mm bend plus the kick (today's 12 mm without a profile). */
+export const dripReach = (edgeProfile) => 0.0015 + (edgeProfile?.kickOutIn != null ? edgeProfile.kickOutIn * IN : 0.012);
+
 /**
- * Metal rake trim over the panel edge along every rake segment. Cross-section from inside to outside:
- * a top leg legIn long lying at `top` in the roof plane, the bend outIn outside the panel edge, a face
- * faceIn straight down (world vertical), a hem hemIn back toward the house (horizontal). The front side
- * looks out and up (outW * (-dUp) + up * dOut, the leg the plane normal), as the drip edge.
+ * Metal rake trim over the panel edge along every rake segment (same as rake_trim_buf in roof_core.py).
+ * Cross-section from inside to outside: a top leg lying at `top` in the roof plane, its inner end
+ * legIn - outIn inside the panel edge; the bend outIn past the edge, or 1/8 in. past `clear` (how far the
+ * drip edge under it reaches) when that is further, so the drip edge's kick stays inside the trim; a face
+ * faceIn straight down (world vertical); a hem hemIn back toward the house (horizontal). The front side looks
+ * out and up (outW * (-dUp) + up * dOut; the leg the plane normal), as the drip edge. Where two rakes meet
+ * (a gable peak) both ends are mitered onto the plane bisecting them, so no notch opens at the apex.
  */
-export function rakeTrimGeometry(rakes, { top, legIn = 1.5, outIn = 0.25, faceIn = 3.5, hemIn = 0.5, along = 0.9999 } = {}) {
+export function rakeTrimGeometry(rakes, { top, clear = 0, legIn = 1.5, outIn = 0.25, faceIn = 3.5, hemIn = 0.5 } = {}) {
   const pos = [], nor = [], uv = [], up = [], al = [];
-  const add = (p, n, u, v) => { pos.push(p.x, p.y, p.z); nor.push(n.x, n.y, n.z); uv.push(u, v); up.push(0); al.push(along); };
+  const out = Math.max(outIn * IN, clear + 0.125 * IN);
+  const dir = (E, F) => E.clone().sub(F).normalize();
+  /** Slide a trim end at X along its rake (d points to X) onto the plane bisecting it and the rake that meets it there. */
+  const miter = (X, d) => {
+    for (const t of rakes) {
+      for (const [E, F] of [[t.A, t.B], [t.B, t.A]]) {
+        const e = dir(E, F);
+        if (E.distanceTo(X) < 0.03 && Math.abs(e.dot(d)) < 0.999) {
+          const m = d.clone().sub(e).normalize();
+          return (p) => p.addScaledVector(d, X.clone().sub(p).dot(m) / d.dot(m));
+        }
+      }
+    }
+    return (p) => p;
+  };
   for (const s of rakes) {
     const P = s.planes[0];
     const len = s.A.distanceTo(s.B);
@@ -130,24 +150,26 @@ export function rakeTrimGeometry(rakes, { top, legIn = 1.5, outIn = 0.25, faceIn
     const inward = inwardDir2(P, { a: a2, b: b2 });
     const outW = P.h.clone().multiplyScalar(-inward[0]).addScaledVector(P.b, -inward[1]);
     outW.y = 0; outW.normalize();
-    const at = (q, d) => P.to3(q[0] + inward[0] * d, q[1] + inward[1] * d, top); // d > 0: inside the edge
-    // section points at each end, and the front normal of each leg
-    const sec = (q) => {
-      const leg = at(q, (legIn - outIn) * IN), bend = at(q, -outIn * IN);
+    const at = (q, d) => P.to3(q[0] - inward[0] * d, q[1] - inward[1] * d, top); // d: distance out past the edge
+    const sec = (q, m) => {
+      const leg = at(q, (outIn - legIn) * IN), bend = at(q, out);
       const foot = bend.clone(); foot.y -= faceIn * IN;
       const hem = foot.clone().addScaledVector(outW, -hemIn * IN);
-      return [leg, bend, foot, hem];
+      return [leg, bend, foot, hem].map(m);
     };
-    const sa = sec(a2), sb = sec(b2);
-    const down = outW.clone().set(0, -1, 0);
-    const normals = [P.n, outW, down];
+    const sa = sec(a2, miter(s.A, dir(s.A, s.B))), sb = sec(b2, miter(s.B, dir(s.B, s.A)));
+    const normals = [P.n, outW, outW.clone().set(0, -1, 0)]; // leg up the roof, face out, hem down
+    // build attributes as the panels under it (aUp = v, aAlong = u / uMax at each end)
+    const k = (q) => [q[1], P.uMax > EPS ? Math.min(0.9999, q[0] / P.uMax) : 0];
+    const ka = k(a2), kb = k(b2);
+    const add = (p, n, u, v, kk) => { pos.push(p.x, p.y, p.z); nor.push(n.x, n.y, n.z); uv.push(u, v); up.push(kk[0]); al.push(kk[1]); };
     let w = 0;
     for (let i = 0; i < 3; i++) {
       const wl = sa[i].distanceTo(sa[i + 1]);
       if (wl < 1e-6) continue;
       const n = normals[i];
-      add(sa[i], n, 0, w); add(sb[i], n, len, w); add(sb[i + 1], n, len, w + wl);
-      add(sa[i], n, 0, w); add(sb[i + 1], n, len, w + wl); add(sa[i + 1], n, 0, w + wl);
+      add(sa[i], n, 0, w, ka); add(sb[i], n, len, w, kb); add(sb[i + 1], n, len, w + wl, kb);
+      add(sa[i], n, 0, w, ka); add(sb[i + 1], n, len, w + wl, kb); add(sa[i + 1], n, 0, w + wl, ka);
       w += wl;
     }
   }

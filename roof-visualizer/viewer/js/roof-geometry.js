@@ -268,14 +268,12 @@ export function eaveParts(planes, segs, dist) {
 // ---------------------------------------------------------------------------
 // Edge profiles: drip edge (L flange) and ridge / hip caps.
 
-// profile (020, inches, from edgeProfileFor): { flangeIn, faceIn, kickOutIn, kickDownIn, hemIn }; none keeps today's shape
+// profile (020, inches, from edgeProfileFor): { flangeIn, faceIn, kickOutIn, kickDownIn, hemIn }; none keeps today's
+// shape, and a missing key keeps today's value (as drip_edge_buf in roof_core.py)
 export function dripEdgeGeometry(segs, { offEave = 0.013, offRake = 0.019, flange = 0.05, drop = 0.045, profile = null } = {}) {
-  const IN = 0.0254;
-  let kickOut = 0.012, kickDown = 0.006, hem = 0;
-  if (profile) {
-    flange = profile.flangeIn * IN; drop = profile.faceIn * IN;
-    kickOut = (profile.kickOutIn || 0) * IN; kickDown = (profile.kickDownIn || 0) * IN; hem = (profile.hemIn || 0) * IN;
-  }
+  const p = profile || {}, m = (k, today) => (p[k] != null ? p[k] * 0.0254 : today);
+  flange = m('flangeIn', flange); drop = m('faceIn', drop);
+  const kickOut = m('kickOutIn', 0.012), kickDown = m('kickDownIn', 0.006), hem = m('hemIn', 0);
   const pos = [], nor = [], uv = [], up = [], along = [];
   const add = (p, n, u, v, kUp, kAl) => { pos.push(p.x, p.y, p.z); nor.push(n.x, n.y, n.z); uv.push(u, v); up.push(kUp); along.push(kAl); };
   const quad = (a, b, c, d, n, len, kUp, k0, k1) => {

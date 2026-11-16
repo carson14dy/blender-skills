@@ -131,23 +131,45 @@ test('ranch demo: ribbed covering triangle budget, caps above the rib tops, rake
   assert.ok(counts.corrugated <= 60000, `corrugated ${counts.corrugated} triangles (budget about 60k)`);
 });
 
-test('rake trim: top leg at the top height, face 3.5 in. down, bend 1/4 in. outside the panel edge', () => {
+test('rake trim: top leg at the top height, face 3.5 in. down, bend clear of the drip edge kick, mitered at the peak', () => {
   const planes = buildRoofPlanes(HOUSE_PRESETS['ranch-hip'], 6);
   const segs = analyzeRoof(planes);
   const top = onRibs(COVERING, panelProfile('proRib'));
-  const g = rakeTrimGeometry(segs.rake.slice(0, 1), { top });
-  const p = g.attributes.position, n = g.attributes.normal;
-  const P = segs.rake[0].planes[0];
+  // the garage gable: both rakes lie in one vertical plane, the trims bend out of it (+z)
+  const gableZ = segs.rake[0].A.z;
+  for (const [edge, out] of [[null, 0.0015 + 0.012 + 0.125 * IN], [{ kickOutIn: 0.5 }, 0.0015 + 0.5 * IN + 0.125 * IN], [{ kickOutIn: 0 }, 0.25 * IN]]) {
+    const g = rakeTrimGeometry(segs.rake, { top, clear: dripReach(edge) });
+    const p = g.attributes.position, n = g.attributes.normal, uv = g.attributes.uv;
+    const v = new THREE.Vector3();
+    let onTop = 0, zMax = -Infinity;
+    const faceTop = new Map(), faceFoot = [];
+    for (let i = 0; i < p.count; i++) {
+      v.fromBufferAttribute(p, i);
+      const P = segs.rake[Math.floor(i / 18)].planes[0];
+      if (n.getY(i) > 0.5 && Math.abs(P.distance(v) - top) < 1e-6) onTop++;
+      zMax = Math.max(zMax, v.z);
+      if (Math.abs(n.getY(i)) < 1e-6) (Math.abs(v.z - zMax) < 1e-9 && false ? null : faceFoot.push([Math.floor(i / 18), uv.getX(i), uv.getY(i), v.y]));
+    }
+    assert.equal(onTop, 12, 'top legs lie at `top` in the plane');
+    near(zMax - gableZ, out, 1e-6, `bend past the panel edge (kick ${edge?.kickOutIn ?? 'default'})`);
+    // face: the same corner of the quad at the bend and at the foot is 3.5 in. apart vertically
+    for (const [s, u, w, y] of faceFoot) { const k = `${s}:${u.toFixed(6)}`; const o = faceTop.get(k); if (o) near(Math.abs(o[1] - y), 3.5 * IN, 1e-6, 'face drop'); else faceTop.set(k, [w, y]); }
+    assert.ok(faceTop.size >= 4, 'face corners found');
+  }
+  // miter: at the peak the two trims end on one plane, every section point shared (no notch at the apex)
+  const g = rakeTrimGeometry(segs.rake, { top, clear: dripReach(null) });
+  const p = g.attributes.position;
+  const [s0, s1] = segs.rake;
+  const peak = [s0.A, s0.B].find((X) => X.distanceTo(s1.A) < 0.03 || X.distanceTo(s1.B) < 0.03);
+  const near0 = [[], []];
   const v = new THREE.Vector3();
-  let yMax = -Infinity, yMin = Infinity, onTop = 0;
   for (let i = 0; i < p.count; i++) {
     v.fromBufferAttribute(p, i);
-    if (n.getY(i) > 0.5 && Math.abs(P.distance(v) - top) < 1e-6) onTop++;
-    if (Math.abs(n.getY(i)) < 1e-6) { yMax = Math.max(yMax, v.y); yMin = Math.min(yMin, v.y); }
+    const set = near0[Math.floor(i / 18)];
+    if (v.distanceTo(peak) < 0.25 && !set.some((q) => q.distanceTo(v) < 1e-7)) set.push(v.clone());
   }
-  assert.equal(onTop, 6, 'top leg lies at `top` in the plane');
-  const rise = Math.abs(segs.rake[0].A.y - segs.rake[0].B.y);
-  near(yMax - yMin - rise, 3.5 * IN, 1e-4, 'face drop');
+  assert.equal(near0[0].length, 4, 'four section points at the peak end');
+  for (const q of near0[0]) assert.ok(near0[1].some((r) => r.distanceTo(q) < 1e-6), `section point ${q.toArray().map((x) => x.toFixed(4))} shared at the peak`);
 });
 
 // ---------------------------------------------------------------------------
