@@ -26,7 +26,7 @@ Roof geometry, the layer stack (deck to ridge cap), supplier materials at true s
 - GPU work belongs to the local session on the Windows PC. From a cloud session, write it under "Needs local" in `lab/LOG.md` with exact steps.
 
 ## Cloud command for any script
-Cloud sessions have pip `bpy`, not a Blender install:
+Cloud sessions have pip `bpy`, not a Blender install. `LAB_BPY_PYTHON` is not set by default: `bash lab/tools/setup-cloud.sh` creates the Python and prints the path to export.
 ```
 BLENDER_BPY_PYTHON=$LAB_BPY_PYTHON python .claude/skills/blender-suite/scripts/run_in_blender.py --blend out/qa/roof.blend .claude/skills/blender-suite/scripts/qa_check.py -- --profile render
 ```

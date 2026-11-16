@@ -18,7 +18,8 @@ import sys
 import bpy  # first: bmesh, mathutils and addon_utils only resolve after it under pip bpy
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-HOST_PY = shutil.which("python3") or shutil.which("python") or sys.executable
+HOST_PY = (shutil.which("python") if sys.platform == "win32" else shutil.which("python3") or shutil.which("python")) \
+    or sys.executable  # on Windows, "python3" can be the Microsoft Store stub
 HELP_BOOT = ("import bpy, runpy, sys; p = sys.argv[1]; sys.argv = [p, '--', '--help']; "
              "runpy.run_path(p, run_name='__main__')")
 NO_USAGE_OK = {"track_camera.py"}        # needs a window: answers with a JSON error instead of usage

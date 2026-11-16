@@ -7,6 +7,7 @@ From Claude Blender Skills by Mr omi (MIT). How the film examples got through ov
 ```
 BENCH='{"samples":128,"denoiser":"OPENIMAGEDENOISE"}' blender -b scene/forest.blend --python pipelines/forest/scripts/look.py --python pipelines/forest/scripts/bench.py -- <out_dir> <frame> [frame ...]
 ```
+PowerShell has no `VAR=value command` form: set it first, `$env:BENCH='{"samples":128,"denoiser":"OPENIMAGEDENOISE"}'`, then run the same `blender -b ...` line. The same goes for `CAM` in `blender-forest`.
 - **Six test stills at final quality**, checked by eye (`pipelines/car-film/scripts/render_stills.py` renders one per shot).
 - **Tell the user the estimate** (seconds a frame × frames) and ask before starting.
 

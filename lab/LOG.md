@@ -4,6 +4,47 @@ Newest first. One entry per session: date, cloud or local, what changed, results
 
 ---
 
+## 2026-11-16 · cloud (5)
+
+**Changed**
+- New skill **blender-suite** in `.claude/skills/blender-suite/`. It loads by itself in every Claude session opened in this repo. It merges four MIT sources into one skill:
+  - EL4CTEO/blender-skills 1.3.1: the newest code for all 43 shared scripts, and the test suite;
+  - the user's uploaded blender-master 1.2.1: router, local TRELLIS.2 photo to 3D (the Meshy script is dropped), Poly Haven, camera moves, web viewer;
+  - mromidev/claude-blender-skills: the film, car-film and forest pipelines, unedited;
+  - the synced blender-master 1.0.0, which nothing was copied from because the upload replaces it.
+- Planned by Fable 5.2 and built by Opus 5.5 to the plan. Fable reviewed the build: it matches the plan, and its 4 Windows fixes are applied.
+- New in the skill:
+  - `scripts/blender_send.py` sends code to the open Blender through the MCP for Blender add-on (port 9876), keeping names between files;
+  - `scripts/blend_audit.py` is a safety check for downloaded .blend files;
+  - `run_in_blender.py` falls back to pip `bpy` in the cloud;
+  - six new references: `blender-film`, `blender-forest`, `long-renders`, `film-sound`, `asset-safety`, `rooftec`.
+- `lab/tools/roof_qa.py` now imports the skill's `qa_check.py`. The vendored copy in `lab/tools/vendor/` is removed.
+- `.ps1` and `.cmd` files check out with Windows line endings.
+
+**Results (cloud, pip bpy 5.2.4)**
+- `check_skill.py --strict`: 211 files, 1.1 MB, 0 errors, 0 warnings.
+- `smoke.py`: 6 host tools and 46 bpy scripts load and print `--help`; 92 files compile; 0 failures.
+- Test suite: 71 passed, 0 failed, 2 skipped. The two skips need a Blender executable.
+- `blender_send.py` against the stand-in add-on: ping and a two-file run sharing a function both work.
+- `roof QA passed`; web 13/13; `test_roof_core` passed.
+
+**Next:** run the four local checks below. Then pick the next experiment.
+
+**Needs local (Windows, from the repo folder, about 10 minutes)**
+```
+python .claude\skills\blender-suite\tests\check_skill.py --strict
+python .claude\skills\blender-suite\tests\run_tests.py
+blender -b --factory-startup --python-exit-code 1 -P .claude\skills\blender-suite\tests\smoke.py
+python .claude\skills\blender-suite\scripts\blender_send.py --ping
+```
+- Expect `OK`, then `73 passed, 0 failed` (GPU), then `"failures": 0`.
+- The last command needs Blender open with the MCP for Blender add-on running, and should print the Blender version.
+- Report the last line of each in this log.
+
+**For the user:** 31 separate `blender-*` skills and the synced `blender-master` also still load, wherever they were installed. They are older copies of the same material; `CLAUDE.md` says to use `blender-suite`. Removing them is the user's call.
+
+---
+
 ## 2026-11-16 · cloud (4)
 
 **Changed**

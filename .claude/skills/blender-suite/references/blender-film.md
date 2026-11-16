@@ -4,7 +4,7 @@ From Claude Blender Skills by Mr omi (MIT). Two examples with the scripts that m
 
 ## Use the pipelines
 1. Copy the folder into the project: film to `~/blender-film` or set `FILM_ROOT` (the film scripts load `tools/lib.py` from there); car film to `~/blender-car-film` (hard-coded).
-2. Open Blender with the MCP for Blender add-on (port 9876) and send the numbered scripts in order, in one session: `python scripts/blender_send.py 01_world.py 02_car.py`. Names stay defined between calls, so later scripts reuse `pbr()`, `col()`.
+2. Open Blender with the MCP for Blender add-on (port 9876) and send the numbered scripts in order, in one session: from the project folder, `python <skill_dir>/scripts/blender_send.py ./scripts/01_world.py ./scripts/02_car.py`. Names stay defined between calls, so later scripts reuse `pbr()`, `col()`.
 3. Work on copies of the .blend: several passes edit materials and break if re-run after a crash.
 
 ## Rules
