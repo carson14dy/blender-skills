@@ -1,6 +1,7 @@
 // Normalize store catalogs (Menards CSV package, Home Depot materials.json) into one studio catalog.
 // Pure functions, no dependencies: the build script and the tests both use them.
 // Product photos and swatches stay links: nothing here downloads or stores an image.
+import { nameCheck, colorFromName } from './swatch-color.mjs';
 
 /** RFC 4180 CSV -> array of objects (BOM stripped, quoted fields, embedded commas and newlines). */
 export function parseCSV(text) {
@@ -28,8 +29,8 @@ const num = (v) => {
   const n = Number(String(v).replace(/[$,]/g, ''));
   return Number.isFinite(n) ? n : null;
 };
-/** A price is a positive number or null: unknown is never zero. */
-const price = (v) => { const n = num(v); return n && n > 0 ? n : null; };
+/** A price is a positive number or null: unknown is never zero. 50,000 or more is a placeholder (Menards 9,999,999.99), not a price. */
+const price = (v) => { const n = num(v); return n && n > 0 && n < 50000 ? n : null; };
 
 /** "32.8 square foot" -> {sqft: 32.8}; "31 linear foot" -> {lf: 31}; anything else -> null. */
 export function parseCoverage(text) {
@@ -44,7 +45,9 @@ export function parseCoverage(text) {
 /** Coverage stated in a product name, e.g. "(33.33 sq. ft. per Bundle)", "(25 lin. ft. per Bundle)", "1000 sq. ft. Roll". */
 export function coverageFromName(name) {
   const t = String(name || '');
-  let m = t.match(/([\d.,]+)\s*sq\.?\s*ft\.?(?:\s*(?:per|\/)\s*(?:bundle|roll|box|carton|pack|package))?/i);
+  let m = t.match(/(\d+(?:\.\d+)?)\s*BD\s*\/\s*SQ/i); // "(3 BD/SQ)": bundles per square
+  if (m && num(m[1]) > 0) return { sqft: Math.round((100 / num(m[1])) * 10) / 10 };
+  m = t.match(/([\d.,]+)\s*sq\.?\s*ft\.?(?:\s*(?:per|\/)\s*(?:bundle|roll|box|carton|pack|package))?/i);
   if (m) return { sqft: num(m[1]) };
   m = t.match(/([\d.,]+)\s*sq\.?\s*(?:per|\/)\s*roll/i) || t.match(/\b(\d+(?:\.\d+)?)\s*(?:square|sq\.?)s?\s+roll/i);
   if (m) return { sqft: num(m[1]) * 100 };
@@ -70,6 +73,25 @@ export function pieceFeet(name) {
   m = t.match(/(\d+(?:\.\d+)?)\s*in\.?(?=[^x]*$)/i);
   if (m && num(m[1]) >= 36 && num(m[1]) <= 600) return num(m[1]) / 12;
   return null;
+}
+
+/** Pieces in one sold package ("(4-Pack)", "10PCS", "Carton of 10", "10-Piece"), 2-100, else null. */
+export function packCount(name) {
+  const t = String(name || '');
+  for (const re of [/(\d+)[- ]?Pack\b/i, /(\d+)\s*PCS?\b/i, /Carton of (\d+)/i, /(\d+)[- ]?Piece/i, /\((\d+)-?Pk\)/i]) {
+    const m = t.match(re);
+    if (m) { const n = Number(m[1]); if (n >= 2 && n <= 100) return n; }
+  }
+  return null;
+}
+
+/** Gross area of a sold package of metal panels from "W ft x L ft" in the name (x the pack count); a length alone -> null. */
+export function panelCoverage(name) {
+  const m = String(name || '').match(/(\d+(?:\.\d+)?)\s*ft\.{0,2}\s*x\s*(\d+(?:\.\d+)?)\s*ft\b/i);
+  if (!m) return null;
+  const one = num(m[1]) * num(m[2]);
+  if (!(one >= 1 && one <= 60)) return null;
+  return { sqft: Math.round(one * (packCount(name) || 1) * 10) / 10, basis: 'gross' };
 }
 
 const UNIT = { '/bndl': 'bundle', '/100sq. ft.': '100 sq ft', '/roll': 'roll', each: 'each', '/lin.ft.': 'lin ft', '/pkg': 'package', '/box': 'box' };
@@ -127,6 +149,27 @@ export function homeDepotLayer(p) {
 
 const compact = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== null && v !== undefined && v !== '' && !(Array.isArray(v) && !v.length)));
 
+/** PBR starting values from a material_library.csv row: { metallic, roughness, type }, or null. */
+function menardsPbr(m) {
+  if (!m) return null;
+  const pbr = compact({ metallic: num(m.metallic), roughness: num(m.roughness), type: m.material_type || null });
+  return Object.keys(pbr).length ? pbr : null;
+}
+
+const PAINT_WORD = /\b(black|gr[ae]y|white|red|reddish|green|evergreen|forest|hunter|blue|brown|bronze|charcoal|slate|tan|beige|burgundy|ivory|almond|clay|pewter|copper|barn)\b/i;
+/** Home Depot has no material table: PBR starting values by rule. Sheet metal is painted unless the name says bare metal
+ *  (galvalume, galvanized, mill) and gives no paint color. */
+function homeDepotPbr(map, p) {
+  const text = `${p.name || ''} ${p.color || ''}`;
+  if (map.category === 'metal' || ['metalCap', 'metalTrim'].includes(map.kind) || ['dripEdge', 'valley'].includes(map.layer)) {
+    if (/vinyl|plastic|pvc/i.test(text)) return null;
+    return /galvalume|galvanized|mill\b/i.test(text) && !PAINT_WORD.test(text)
+      ? { metallic: 0.9, roughness: 0.35, type: 'galvanized' } : { metallic: 0.3, roughness: 0.45, type: 'painted_metal' };
+  }
+  if (map.category === 'shingle' || map.kind === 'shingleCap' || map.kind === 'starter') return { metallic: 0, roughness: 0.9, type: 'asphalt_granule' };
+  return null;
+}
+
 /** Menards package (products.csv, variations.csv, material_library.csv, asset_manifest.csv texts) -> products. */
 export function menardsProducts({ products, variations, materials, manifest }, store = 'menards-3064') {
   const P = parseCSV(products), V = parseCSV(variations), ML = parseCSV(materials), AM = parseCSV(manifest);
@@ -143,10 +186,10 @@ export function menardsProducts({ products, variations, materials, manifest }, s
       if (seen.has(v.value)) continue;
       seen.add(v.value);
       const m = mat.get(v.item_id);
-      colors.push(compact({ name: v.value, itemId: v.item_id, swatch: v.swatch_large || v.swatch_small, material: m?.material_type, hex: m?.base_color_hex || null }));
+      colors.push(compact({ name: v.value, itemId: v.item_id, swatch: v.swatch_large || v.swatch_small, material: m?.material_type, hex: m?.base_color_hex || null, pbr: menardsPbr(m) }));
     }
     const shown = r['Color / finish shown'];
-    if (shown && !seen.has(shown)) colors.unshift(compact({ name: shown, itemId: id, hex: mat.get(id)?.base_color_hex || null }));
+    if (shown && !seen.has(shown)) colors.unshift(compact({ name: shown, itemId: id, hex: mat.get(id)?.base_color_hex || null, pbr: menardsPbr(mat.get(id)) }));
     let per = UNIT[r.Unit] || (r.Unit ? r.Unit.replace(/^\//, '') : null);
     const coverage = parseCoverage(r['Coverage area']) || coverageFromName(r.Product);
     if (map.layer === 'covering' && map.category === 'shingle' && coverage?.sqft && coverage.sqft < 60) per = 'bundle'; // listed "each" = one bundle
@@ -158,7 +201,9 @@ export function menardsProducts({ products, variations, materials, manifest }, s
         rebate: price(r['11% rebate ($)']), rebateThrough: r['Rebate good through'], afterRebate: price(r['Value after rebate ($)']),
         per, startingAt: /yes/i.test(r['Starting at?'] || '') || undefined,
       }),
-      coverage, pieceFt: ['dripEdge', 'ridgeVent', 'valley'].includes(map.layer) || map.kind === 'metalCap' ? (num(r['Length (in)']) ? num(r['Length (in)']) / 12 : pieceFeet(r.Product)) : null,
+      coverage: map.kind === 'metalCap' ? null : coverage, // a square-foot figure means nothing for a ridge cap
+      pieceFt: ['dripEdge', 'ridgeVent', 'valley'].includes(map.layer) || map.kind === 'metalCap' ? (num(r['Length (in)']) ? num(r['Length (in)']) / 12 : pieceFeet(r.Product)) : null,
+      packCount: packCount(r.Product),
       size: compact({
         lengthIn: num(r['Length (in)']), widthIn: num(r['Width (in)']), exposureIn: num(r['Exposure (in)']) || null,
         ribHeightIn: num(r['Rib height (in)']), ribSpacingIn: num(r['Rib spacing o.c. (in)']), gauge: num(r.Gauge),
@@ -177,7 +222,10 @@ export function homeDepotProducts(json, store = 'homedepot-4301') {
   for (const p of json.products || []) {
     const map = homeDepotLayer(p);
     if (!map) continue;
-    const coverage = coverageFromName(p.name);
+    let coverage = coverageFromName(p.name);
+    // metal panels: "W ft x L ft" times the pack count (gross area). Checked before the roll rule, which reads
+    // "3 ft. x 10 ft. ... 50PCS" as one 30 sq ft roll.
+    if (map.layer === 'covering' && map.category === 'metal') coverage = panelCoverage(p.name) || coverage;
     let per = p.price_per || null;
     if (map.layer === 'covering' && map.category === 'shingle' && coverage?.sqft && coverage.sqft < 60) per = 'bundle';
     if (map.layer === 'ridgeCap' && coverage?.lf && coverage.lf < 60 && per === 'each') per = 'bundle';
@@ -188,7 +236,8 @@ export function homeDepotProducts(json, store = 'homedepot-4301') {
       id: `hd-${p.id}`, store, ...map, name: p.name, brand: p.brand, itemId: p.id, url: p.url, image: p.image, color: p.color,
       price: price(p.price) ? compact({ shelf: price(p.price), per, unitPrice: price(p.unit_price), unit: p.unit || null, unitsPerPackage: num(p.units_per_package) || null }) : null,
       coverage, pieceFt: ['dripEdge', 'ridgeVent', 'valley'].includes(map.layer) || map.kind === 'metalCap' ? pieceFeet(p.name) : null,
-      colors, availability: p.availability,
+      packCount: packCount(p.name),
+      colors, pbr: homeDepotPbr(map, p), availability: p.availability,
       stock: compact({ inStock: p.in_stock_sioux_falls === true, qty: num(p.qty_sioux_falls) }),
     }));
   }
@@ -205,9 +254,63 @@ export const STORES = {
       'Pro and volume pricing can be lower; color variants can cost more or less than the listed color.'] },
 };
 
-/** Build the studio catalog. */
-export function buildCatalog({ menards, homeDepot, sources = {} }) {
+/** Layers whose products get a color sampled from a store image (build plan section 5.1). */
+export const COLOR_LAYERS = ['covering', 'ridgeCap', 'dripEdge', 'valley', 'ridgeVent'];
+
+/** The color entry a product is listed (and photographed) in: its `color`, the entry with its own item id, or its only entry; else null. */
+export function listedColor(p) {
+  const cs = p.colors || [];
+  return (p.color && cs.find((c) => c.name === p.color)) || cs.find((c) => c.itemId && c.itemId === p.itemId) || (cs.length === 1 ? cs[0] : null);
+}
+
+/** The images to sample for a product: a variant's swatch link, else the product photo for its listed color.
+ *  `name: null` is the product's own photo when it lists no color. Variants with neither get a name color at merge. */
+export function colorJobs(p) {
+  if (!COLOR_LAYERS.includes(p.layer)) return [];
+  const listed = listedColor(p), jobs = [];
+  for (const c of p.colors || []) {
+    if (c.swatch) jobs.push({ name: c.name ?? null, url: c.swatch, source: 'swatch', listed: c === listed });
+    else if (c === listed && p.image) jobs.push({ name: c.name ?? null, url: p.image, source: 'photo', listed: true });
+  }
+  if (!listed && p.image) jobs.push({ name: null, url: p.image, source: 'photo', listed: true });
+  return jobs;
+}
+
+/** Color of one entry: override, else the sampled image, else a name rule; null when none applies. */
+function entryColor(p, c, isListed, colors, overrides) {
+  const ov = overrides[`${p.id}|${c.name ?? ''}`];
+  if (ov?.hex) return compact({ hex: ov.hex.toLowerCase(), palette: ov.palette, colorSource: 'override' });
+  const url = c.swatch || (isListed ? p.image : null);
+  const s = url ? colors[url] : null;
+  if (s?.hex) {
+    const check = [...(s.check || [])];
+    const said = c.name || (isListed ? p.name : ''); // a product with no color name is checked against its own name
+    if (said && !nameCheck(said, s.hex).ok) check.push('name-mismatch');
+    return compact({ hex: s.hex, palette: s.palette, colorSource: c.swatch ? 'swatch' : 'photo', colorCheck: check });
+  }
+  // the product name describes the listed color, not the other variants
+  const hex = colorFromName(c.name, isListed ? p.name : '');
+  return hex ? { hex, colorSource: 'name' } : null;
+}
+
+/** Put hex, palette, colorSource and colorCheck on each color entry of a product, and its listed color's on the product. */
+export function mergeColors(p, colors = {}, overrides = {}) {
+  if (!COLOR_LAYERS.includes(p.layer)) return p;
+  const entries = p.colors || [];
+  let listed = listedColor(p);
+  const created = !listed;
+  if (created) listed = { name: null }; // the product photo with no color name; kept only when it gets a color
+  for (const c of created ? [...entries, listed] : entries) Object.assign(c, entryColor(p, c, c === listed, colors, overrides) || {});
+  if (created && listed.hex) p.colors = [listed, ...entries];
+  if (listed.hex) Object.assign(p, compact({ hex: listed.hex, palette: listed.palette, colorSource: listed.colorSource }));
+  if (!p.pbr) { const withPbr = listed.pbr ? listed : entries.find((c) => c.pbr); if (withPbr) p.pbr = withPbr.pbr; }
+  return p;
+}
+
+/** Build the studio catalog. `colors` is the sampler cache (scripts/data/supplier-colors.json), `overrides` the hand corrections. */
+export function buildCatalog({ menards, homeDepot, sources = {}, colors = {}, overrides = {} }) {
   const products = [...(menards ? menardsProducts(menards) : []), ...(homeDepot ? homeDepotProducts(homeDepot) : [])];
+  for (const p of products) mergeColors(p, colors, overrides);
   const counts = {};
   for (const p of products) {
     const k = `${p.store}/${p.layer}`;
@@ -216,9 +319,10 @@ export function buildCatalog({ menards, homeDepot, sources = {} }) {
     if (p.price?.shelf) counts[k].priced++;
   }
   return {
-    version: 1,
+    version: 2,
     project: 'Sioux Falls supplier studio (lab/projects/sioux-falls-studio/PLAN.md)',
-    rules: ['Prices are snapshots: re-capture before quoting.', 'A missing price is null, never 0.', 'Images and swatches are links to the stores; none are stored here.'],
+    rules: ['Prices are snapshots: re-capture before quoting.', 'A missing price is null, never 0.', 'Images and swatches are links to the stores; none are stored here.',
+      'hex and palette are sampled from the store images (colorSource swatch or photo), guessed from the color name (name) or set by hand (override); no hex means not sampled.'],
     stores: STORES, sources, counts, products,
   };
 }

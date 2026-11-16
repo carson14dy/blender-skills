@@ -3,7 +3,7 @@
 **Goal:** put real products from the two Sioux Falls stores on the 3D roof, in their real colors and sizes, and turn the measured roof into a priced materials list. Build it in the studio first (`roof-visualizer/`, then Blender); once it holds up, port it to the Rooftec app under that app's design rules.
 
 **Status:** plan written 2026-11-16 (cloud). Done in the same session:
-- step 015, data intake: 453 roof products, 338 priced;
+- step 015, data intake: 453 roof products, 337 priced (338 until step 016 dropped a 9,999,999.99 placeholder price);
 - the studio's Project tab has a Job section: Sioux Falls is the default location, and a line shows the store prices loaded.
 
 Everything else is open.

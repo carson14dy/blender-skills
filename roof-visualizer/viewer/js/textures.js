@@ -283,11 +283,11 @@ export function slate({ palette = ['#3b4048', '#454a52', '#33373e', '#4f4a52'], 
 }
 
 /** Cedar shake: random widths, 7-1/2" exposure, vertical grain. */
-export function cedarShake({ palette = ['#8a6a4a', '#7b5e43', '#9a7a58', '#6e5a48'], seed = 21, res = 1024 } = {}) {
-  const key = 'shake:' + palette.join() + seed + res;
+export function cedarShake({ palette = ['#8a6a4a', '#7b5e43', '#9a7a58', '#6e5a48'], seed = 21, exposureIn = 7.5, res = 1024 } = {}) {
+  const key = 'shake:' + palette.join() + seed + ':' + exposureIn + ':' + res;
   if (cache.has(key)) return cache.get(key);
   const courses = 3;
-  const sizeM = [inToM(40), inToM(7.5) * courses];
+  const sizeM = [inToM(40), inToM(exposureIn) * courses];
   const w = res, h = Math.round(res * sizeM[1] / sizeM[0]);
   const ch = h / courses, pxPerM = w / sizeM[0];
   const pal = palette.map(hexToRgb);
@@ -667,5 +667,103 @@ export function proceduralFor(recipe = {}) {
   if (k === 'synthetic') return syntheticUnderlayment(recipe);
   if (k === 'felt') return felt(recipe);
   if (k === 'iceWater') return iceWater(recipe);
+  if (k === 'ribbedPanel') return ribbedPanel(recipe);
+  if (k === 'corrugatedPanel') return corrugatedPanel(recipe);
   return architecturalShingle(recipe);
+}
+
+// ---------------------------------------------------------------------------
+// Store metal panels (Sioux Falls studio). Measured profiles drawn as normal-mapped
+// textures; real rib geometry is later. Heights are in inches and the normal
+// strength is pxPerIn / 8 (Sobel), so rib sides tilt the light by their true slope.
+
+/**
+ * Exposed-fastener ribbed steel panel (Pro-Rib style): trapezoid major ribs centred on
+ * every multiple of ribSpacingIn, `minorRibs` low stiffening ribs (0.12 of the rib height,
+ * 0.6" wide) evenly between, painted screw heads beside each major rib at 24" o.c.
+ * Tile width = coverIn, so on the roof the ribs repeat exactly every ribSpacingIn.
+ */
+export function ribbedPanel({ color = '#6f7378', coverIn = 36, ribSpacingIn = 9, ribHeightIn = 0.75, ribTopIn = 0.75, ribBaseIn = 1.75, minorRibs = 2, seed = 9, res = 1024 } = {}) {
+  const key = 'rib:' + [color, coverIn, ribSpacingIn, ribHeightIn, ribTopIn, ribBaseIn, minorRibs, seed, res].join();
+  if (cache.has(key)) return cache.get(key);
+  const lengthIn = 48; // two purlin rows of screws
+  const sizeM = [inToM(coverIn), inToM(lengthIn)];
+  const w = res, h = Math.round(res * sizeM[1] / sizeM[0]);
+  const pxPerIn = w / coverIn;
+  const ribs = Math.max(1, Math.round(coverIn / ribSpacingIn));
+  const top = ribTopIn / 2, foot = Math.max(top + 0.05, ribBaseIn / 2), minorW = 0.6, minorH = 0.12;
+  const minor = Array.from({ length: minorRibs }, (_, k) => ribSpacingIn * (k + 1) / (minorRibs + 1));
+  // per column: rib height (0..1) and distance to the nearest major rib centre (inches)
+  const prof = new Float32Array(w), dist = new Float32Array(w);
+  for (let x = 0; x < w; x++) {
+    const pos = ((x + 0.5) / pxPerIn) % ribSpacingIn;
+    const d = Math.min(pos, ribSpacingIn - pos);
+    let v = d <= top ? 1 : d < foot ? 1 - (d - top) / (foot - top) : 0;
+    for (const c of minor) { const dm = Math.abs(pos - c); if (dm < minorW / 2) v = Math.max(v, minorH * 0.5 * (1 + Math.cos(Math.PI * dm / (minorW / 2)))); }
+    prof[x] = v; dist[x] = d;
+  }
+  const screwX = Array.from({ length: ribs }, (_, k) => (k * ribSpacingIn + foot + 0.6) * pxPerIn);
+  const screwY = [6, 30].map((yi) => yi / lengthIn * h);
+  const rScrew = 0.25 * pxPerIn;
+  const base = hexToRgb(color);
+  const noise = makeNoise(seed, 4);
+  let roughSum = 0;
+  const set = paint(w, h, sizeM, (x, y) => {
+    const v = prof[x], d = dist[x];
+    const oil = noise.fbm(x / w * 4, y / h * 4, 3); // soft oil-canning in the flats
+    let shade = 0.95 + oil * 0.08;
+    if (d > foot) shade *= 1 - 0.1 * Math.exp(-(((d - foot) / 0.35) ** 2)); // contact shade at the foot of a rib
+    let hh = v * ribHeightIn + (1 - v) * (oil - 0.5) * 0.012;
+    let ro = 0.4 + (oil - 0.5) * 0.06 - v * 0.03;
+    for (const sx of screwX) {
+      let dx = Math.abs(x - sx); dx = Math.min(dx, w - dx);
+      if (dx > rScrew * 1.4) continue;
+      for (const sy of screwY) {
+        let dy = Math.abs(y - sy); dy = Math.min(dy, h - dy);
+        const r = Math.hypot(dx, dy) / rScrew;
+        if (r < 1) { hh += 0.08 * Math.sqrt(1 - r * r); shade *= r > 0.78 ? 0.72 : 1.05; ro = 0.36; } else if (r < 1.4) shade *= 0.9 + (r - 1) * 0.25;
+      }
+    }
+    roughSum += ro;
+    return [base[0] * shade, base[1] * shade, base[2] * shade, hh, ro];
+  }, { normalStrength: pxPerIn / 8 });
+  Object.assign(set, { metal: true, ribsPerTile: ribs, ribSpacingM: inToM(ribSpacingIn), roughMean: roughSum / (w * h) });
+  cache.set(key, set);
+  return set;
+}
+
+/** Corrugated steel panel: sine profile, `pitchIn` crest to crest, `depthIn` deep. Tile = 8 pitches square. */
+export function corrugatedPanel({ color = '#b5b9bd', pitchIn = 2.67, depthIn = 0.5, seed = 9, res = 1024 } = {}) {
+  const key = 'corr:' + [color, pitchIn, depthIn, seed, res].join();
+  if (cache.has(key)) return cache.get(key);
+  const waves = 8;
+  const sizeM = [inToM(pitchIn * waves), inToM(pitchIn * waves)];
+  const w = res, h = res;
+  const pxPerIn = w / (pitchIn * waves);
+  const base = hexToRgb(color);
+  const noise = makeNoise(seed, 4);
+  let roughSum = 0;
+  const set = paint(w, h, sizeM, (x, y) => {
+    const c = Math.cos(((x + 0.5) / w) * waves * Math.PI * 2); // 1 on a crest, -1 in a valley
+    const oil = noise.fbm(x / w * 4, y / h * 4, 3);
+    const shade = (0.93 + 0.07 * (c * 0.5 + 0.5)) * (0.96 + oil * 0.08); // valleys a little darker
+    const ro = 0.38 + (oil - 0.5) * 0.08;
+    roughSum += ro;
+    return [base[0] * shade, base[1] * shade, base[2] * shade, depthIn * 0.5 * (1 + c), ro];
+  }, { normalStrength: pxPerIn / 8 });
+  Object.assign(set, { metal: true, pitchM: inToM(pitchIn), roughMean: roughSum / (w * h) });
+  cache.set(key, set);
+  return set;
+}
+
+/** Mean of a TexSet's roughness map (0..1), cached on the set, so a product's measured roughness can set the base. */
+export function roughMean(set) {
+  if (!set) return 1;
+  if (set.roughMean == null) {
+    const c = set.rough;
+    let s = 0, n = 1;
+    if (c) { const px = c.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, c.width, c.height).data; n = px.length / 4; for (let i = 0; i < px.length; i += 4) s += px[i]; s /= 255; } else s = 1;
+    set.roughMean = Math.max(0.05, s / n);
+  }
+  return set.roughMean;
 }

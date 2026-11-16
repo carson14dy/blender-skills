@@ -32,7 +32,7 @@ Can both Sioux Falls store captures become one catalog the studio can use, with 
 
 ## Result
 
-**453 roof products, 338 with a price.**
+**453 roof products, 338 with a price.** (Corrected in 016: 337 priced; one Menards price was a 9,999,999.99 placeholder.)
 
 | Layer | Menards (priced) | Home Depot (priced) |
 |---|---|---|
