@@ -35,7 +35,7 @@ Total: about 4 to 6 hours for you and about 12 to 14 hours for Claude.
 
 ### Step 2. Protect the work and the address (you 5 minutes, Claude 1.5 hours)
 
-- **Do (you):** decide whether `carson14dy/blender-skills` becomes private, or whether the studio's measured house address is yours to publish. Approve a push.
+- **Settled (2026-11-16):** the studio's measured house is a test house the owner has full permission to use and publish, so the repository can stay public and no history rewrite is needed. Keep real customer addresses out of git. Approve a push.
 - **Do (Claude):** copy the lab studio from the temporary folder into the repository, push the tags `roof-measure-v1` to `v6`, and keep customer addresses out of every committed file from now on.
 - **Done when:** a fresh clone of the repository holds the lab studio and the six tags, and no committed file names a customer's address unless you allowed it.
 - **Why here:** the temporary folder can be wiped at any time, and a public address cannot be taken back later.
@@ -131,7 +131,7 @@ On a fail, stop studio work and look at which part failed (outline, pitch or lin
 
 ## Not checked
 
-- Whether the studio's measured house is a customer's house or your own.
+- (Settled: the studio's measured house is a test house with full permission.)
 - What `SiouxFallsApp` already does; it is not in this repository.
 - The licence reading; it is not legal advice.
 - Current GitHub Pages terms for private repositories.
