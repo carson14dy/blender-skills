@@ -3,7 +3,7 @@
 
     python3 scripts/benchmark.py --out out/benchmark [--json results.json] [--compare old.json]
 
-It measures the 12 benchmark footprints with --lidar (cached after the first run) and prints sloped
+It measures the 13 benchmark footprints with --lidar (cached after the first run) and prints sloped
 area, predominant pitch, the pitch of every plane of 215 sq ft or more, the line totals and the flags.
 With --compare it adds the change against an earlier --json file, which is what a review round reports.
 """
@@ -15,7 +15,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from roofmeasure import cityapi, pipeline  # noqa: E402
 
-BENCHMARK = [177261, 218452, 175156, 235245, 235246, 235247, 235248, 176864, 204065, 250390, 363469, 363456]
+BENCHMARK = [177261, 218452, 175156, 235245, 235246, 235247, 235248, 176864, 204065, 250390, 363469, 363456,
+             199138]   # added in review round 2: an Addition permit issued after the June 2023 capture
 MAIN_PLANE_FT2 = 215.0
 
 

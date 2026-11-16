@@ -1,6 +1,6 @@
 # Review benchmark
 
-Use these 12 buildings and 1 missing-data point for every review round, and do not change the list. A round reports its change level from the difference between two runs of this benchmark.
+Use these 13 buildings and 1 missing-data point for every review round, and do not change the list. Review round 2 added building 14, because no building covered a roof changed under a permit after the capture. A round reports its change level from the difference between two runs of this benchmark.
 
 Buildings are listed by city footprint id only. Addresses are kept out of this file on purpose.
 
@@ -10,7 +10,7 @@ Buildings are listed by city footprint id only. Addresses are kept out of this f
 python3 scripts/benchmark.py --out out/benchmark --json out/benchmark/round-N.json --compare out/benchmark/round-N-1.json
 ```
 
-The first run makes about 150 small requests and takes about 3 minutes. Later runs use the cache and take about 10 seconds. To compare two code versions fairly, copy the `raw/` and `_ept/` cache folders so both read the same city answers and the same lidar points.
+The first run makes about 180 small requests and takes about 3 minutes. Later runs use the cache and take about 10 seconds. To compare two code versions fairly, copy the `raw/` and `_ept/` cache folders so both read the same city answers and the same lidar points.
 
 A "main plane" is a plane of 215 sq ft (20 m²) or more. That is the size from which the plan's 1 degree pitch target applies.
 
@@ -31,8 +31,9 @@ A "main plane" is a plane of 215 sq ft (20 m²) or more. That is the size from w
 | 11 | 363469 | House occupied September 2023, after the June 2023 capture and after the 2020 lidar. The city has a solid, but lidar has no roof points. Must end as `site-check`. |
 | 12 | 363456 | House occupied December 2025. Lidar sees the lot before the house. Must end as `site-check`. |
 | 13 | lat/lon 43.4460, -96.8390 | A point outside the city data. Must fail with the "no city footprint within 100 ft" message and write nothing. |
+| 14 | 199138 | Added in round 2. A house with an `Addition` permit issued in March 2024, after the June 2023 capture, on a footprint the city has not redrawn. Must end as `site-check` with the `permit-since-capture` flag, with and without `--lidar`. |
 
-Buildings 11 and 12 were found with the query `OCCUPIEDDATE > DATE '2023-09-01' AND STRUCTURE = 110` on the footprint layer, and building 8 with `STRUCTURE = 121`.
+Building 14 was found with a permit query for `WORKCLASS = 'Addition'` issued from March to May 2024; it is the first result whose footprint id is older than the permit. Buildings 11 and 12 were found with the query `OCCUPIEDDATE > DATE '2023-09-01' AND STRUCTURE = 110` on the footprint layer, and building 8 with `STRUCTURE = 121`.
 
 ## Results by round
 
@@ -52,6 +53,28 @@ Sloped area is in square feet. Pitch is the predominant pitch in inches per 12. 
 | 250390 | 14,985.0 | 14,985.8 | +0.01% | 0.02 | 0.02 | 0.36 | Site check |
 | 363469 | 4,586.8 | 4,586.8 | 0.00% | 5.94 | 5.94 | 0.00 | Site check |
 | 363456 | 3,685.6 | 3,685.6 | 0.00% | 6.01 | 6.01 | 0.00 | Site check |
+
+### Round 2 (2026-11-16)
+
+No number changed on any building: sloped area 0.00%, every main-plane pitch 0.00 in 12, every line total 0.0 ft. Round 2 changed what the tool detects and says, not what it measures.
+
+| Footprint | Area (v2 = round 2) | Pitch | Result | New flags in round 2 |
+|---|---|---|---|---|
+| 177261 | 1,217.4 | 3.95 | Estimate | `lidar-surface` (a tree over the north plane) |
+| 218452 | 1,540.3 | 4.10 | Estimate | none |
+| 175156 | 1,101.9 | 5.29 | Estimate | none |
+| 235245 | 3,284.1 | 6.03 | Estimate | none |
+| 235246 | 4,796.9 | 3.46 | Estimate | none |
+| 235247 | 3,183.1 | 7.99 | Estimate | `lidar-surface` (something solid above two planes) |
+| 235248 | 3,595.9 | 5.92 | Estimate | none |
+| 176864 | 3,702.9 | 4.66 | Estimate | `lidar-surface` (29% of the largest plane lies 0.4 m lower) |
+| 204065 | 1,767.4 | 10.24 | Site check | none |
+| 250390 | 14,985.8 | 0.02 | Site check | `lidar-surface`, `permit-since-capture` (demolition permits in 2026) |
+| 363469 | 4,586.8 | 5.94 | Site check | `lidar-surface` (ground under every plane) |
+| 363456 | 3,685.6 | 6.01 | Site check | `lidar-surface` (ground under every plane) |
+| 199138 | 2,308.3 | 5.25 | Site check | `permit-since-capture`, `lidar-surface` |
+
+Building 199138 measured with the round 1 code gives the same numbers. With `--lidar` it was already a site check there, because lidar disagrees on two planes; without `--lidar` the round 1 code returned a plain estimate.
 
 ### Line totals in feet, round 1 (v1 in brackets where it changed by more than 1 ft)
 
@@ -76,7 +99,7 @@ Sloped area is in square feet. Pitch is the predominant pitch in inches per 12. 
 
 ## What must stay true in every round
 
-1. Buildings 9 to 12 end as `site-check`, and point 13 fails cleanly.
+1. Buildings 9 to 12 and 14 end as `site-check`, and point 13 fails cleanly. Building 14 does so without `--lidar` too.
 2. Buildings 1 to 8 keep a plan area within 0.5% of the city footprint area.
 3. On buildings 1 to 8, every main plane with a precise lidar fit shows a pitch within 0.25 degree of that lidar pitch.
 4. All unit tests pass with no network.

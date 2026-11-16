@@ -40,7 +40,8 @@ If you have no reports, tape the eaves and rakes of one simple gable from the gr
 
 Three questions the study should settle, because the lidar comparison raised them:
 
-- Is lidar right about the pitch? Review round 1 found the city pitch 0.16 in 12 low against lidar, with lidar landing on whole-number pitches, and switched the tool to the lidar pitch on precise planes. One taped rake confirms or overturns that (`PREFER_LIDAR` in `lidar.py`).
+- Is the outline right? This matters most. Lidar confirms the city roof outline only to about 0.1 m, which is 2 to 4% of the area. Tape at least one full eave and one rake on every study roof.
+- Is lidar right about the pitch? Review round 1 found the city pitch low against lidar and switched the tool to the lidar pitch on precise planes. Review round 2 confirmed it on 30 more houses (0.12 in 12 low, lidar on whole-number pitches 85% of the time) and ruled out snow. One taped rake is still the only direct proof (`PREFER_LIDAR` in `lidar.py`).
 - Are the delivered faces or the cleaned faces closer to the truth? Both sets of numbers are in `roof.json` (`sourcePitchDeg`, and `checks.solid.sourceSlopedAreaM2`).
 - Are the `eave-under-wall` and `roof-step` joints real walls, or valleys and ridges that the city model simplified? The answer decides how those lengths enter a takeoff.
 
@@ -66,9 +67,11 @@ Three questions the study should settle, because the lidar comparison raised the
 
 The ranked list of open issues is kept in `references/review-log.md`. The ones that need code:
 
-1. Permits are not checked. The layer is verified (`Data/Community/MapServer/3`); a flag for an `Addition` or `New` permit after June 2023 is about 1 hour.
-2. Faces that lie partly under another face are kept or dropped whole. Clipping them to the visible surface is about 3 hours and would fix buildings like 204065.
-3. Cleaning the delivered faces moves outline corners; plan area drifts up to 0.33% from the footprint. A first attempt to hold the corners made pitches worse, so this needs a better idea.
+1. Faces that lie partly under another face are kept or dropped whole. Clipping them to the visible surface is about 3 hours and would fix buildings like 204065.
+2. Cleaning the delivered faces moves outline corners; plan area drifts up to 0.33% from the footprint. A first attempt to hold the corners made pitches worse, so this needs a better idea.
+3. A "one house, one pitch" rule for small planes. On houses whose large planes share a pitch, the city pitch of the smaller planes is 0.40 in 12 off that pitch on average. About 2 hours, and it should wait for the accuracy study.
 4. The check in a real browser has not been run. It takes 5 minutes on your PC.
 
 Done in review round 1: the 3D geometry is now re-tilted when lidar supplies a pitch, and houses newer than the lidar are flagged for every kind of lookup.
+
+Done in review round 2: building permits are checked, lidar points off the roof surface are reported, and a blocked roof no longer carries the status "ESTIMATE".

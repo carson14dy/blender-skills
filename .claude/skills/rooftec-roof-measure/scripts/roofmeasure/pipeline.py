@@ -6,6 +6,8 @@ from . import cityapi, esri, export, planes
 from .units import ATTRIBUTION_CITY, ATTRIBUTION_LIDAR, FT_US, m2_to_ft2, m_to_ft
 
 RESIDENTIAL = {110, 121, 122, 130, 140, 150, 190, 210, 220}
+SOLID_CAPTURED_MS = 1685577600000   # 2023-06-01
+PERMIT_WATCH_MS = 1672531200000     # 2023-01-01: work permitted from here on was probably not finished at the June 2023 capture
 LIDAR_FLOWN_MS = 1608336000000   # 2020-12-19 UTC: the GPS times of the lidar points over the benchmark houses are 19 and 20 Dec 2020
 
 
@@ -42,7 +44,7 @@ def model_from_features(footprint, solid):
     return planes.build_model(faces, unit_m=FT_US, ground_z=ground), shape
 
 
-def assess(model, footprint, solid_info=None, lookup=None, lidar=None):
+def assess(model, footprint, solid_info=None, lookup=None, lidar=None, permits=None):
     """Checks and flags. Returns (checks dict, flags list, site check sentence)."""
     fa = (footprint or {}).get("attributes", {})
     flags, checks = [], {}
@@ -105,7 +107,22 @@ def assess(model, footprint, solid_info=None, lookup=None, lidar=None):
     occ = fa.get("OCCUPIEDDATE")
     yb = (lookup or {}).get("yearBuilt")
     yb = int(yb) if yb and str(yb).isdigit() else None
-    if (occ and occ > 1685577600000) or (yb and yb >= 2023):
+    if permits is None:
+        checks["permits"] = {"checked": False}
+        flag("permits-not-checked", "info", "building permits were not looked up (offline, or the service did not answer); "
+             "an addition after June 2023 would not show")
+    else:
+        shape = [p for p in permits if p["workClass"] != "Reshingle"]
+        recent = [p for p in shape if (p["issuedMs"] or 0) >= PERMIT_WATCH_MS]
+        resh = [p for p in permits if p["workClass"] == "Reshingle" and p["issuedMs"]]
+        checks["permits"] = {"checked": True, "roofShapePermits": len(shape),
+                             "sinceCapture": [{"workClass": p["workClass"], "issued": export._date(p["issuedMs"])} for p in recent],
+                             "lastReshingle": export._date(resh[0]["issuedMs"]) if resh else None}
+        if recent:
+            flag("permit-since-capture", "site-check", "a building permit (%s, issued %s) is newer than the city model or was "
+                 "open when it was captured in June 2023; the roof may have changed"
+                 % (recent[0]["workClass"], export._date(recent[0]["issuedMs"])))
+    if (occ and occ > SOLID_CAPTURED_MS) or (yb and yb >= 2023):
         flag("newer-than-solid", "site-check", "built or occupied after the June 2023 capture; the solid may be wrong")
     elif (yb and yb >= 2020) or (occ and occ >= LIDAR_FLOWN_MS):
         flag("newer-than-lidar", "review" if lidar else "info",
@@ -125,6 +142,11 @@ def assess(model, footprint, solid_info=None, lookup=None, lidar=None):
         if sm.get("pitchFromLidar", 0) - sm["override"] > 0:
             flag("lidar-pitch", "info", "%d plane(s) agree with lidar and show the more precise lidar pitch"
                  % (sm["pitchFromLidar"] - sm["override"]))
+        noted = [r for r in lidar["planes"] if r.get("surfaceNote")]
+        if noted:
+            flag("lidar-surface", "review", "lidar sees more than the roof surface on %d plane(s): %s. The area there may be off"
+                 % (len(noted), "; ".join("plane %d, %s" % (r["plane"], r["surfaceNote"]) for r in noted[:3])
+                    + ("; and %d more" % (len(noted) - 3) if len(noted) > 3 else "")))
         if sm["planesChecked"] == 0:
             flag("lidar-no-check", "review", "no plane had enough lidar points; the city numbers are unchecked")
         reg = lidar.get("registration") or {}
@@ -167,7 +189,12 @@ def run(http, out_root, oid=None, latlon=None, address=None, with_lidar=False, f
         lid = L.cross_check(model, pts)
         lid["nodes"] = len(pts.get("nodes", []))
         lid["overridden"] = L.apply_overrides(model, lid)
-    checks, flags, site = assess(model, footprint, solid_info, lookup, lid)
+    try:
+        permits = cityapi.permits_for_footprint(http, footprint, out_root)
+    except (cityapi.LookupError_, KeyError, ValueError) as e:
+        log("permit lookup failed: %s" % e)
+        permits = None
+    checks, flags, site = assess(model, footprint, solid_info, lookup, lid, permits)
     checks["lookup"] = lookup
     doc = export.build_roof_json(model, footprint, solid, solid_info, address=address, lidar=lid, flags=flags,
                                  site_check=site, checks=checks)
@@ -180,7 +207,8 @@ def run(http, out_root, oid=None, latlon=None, address=None, with_lidar=False, f
         json.dump(doc, f, indent=1)
     attribution = ATTRIBUTION_CITY + (" " + ATTRIBUTION_LIDAR if lid else "")
     doc["checks"]["glb"] = export.write_glb(paths["glb"], model, attribution, floor_z=0.0,
-                                            extras={"footprintId": fid, "confidence": doc["summary"]["confidence"]})
+                                            extras={"footprintId": fid, "confidence": doc["summary"]["confidence"],
+                                                    "siteCheckRequired": doc["summary"]["siteCheckRequired"]})
     with open(paths["roof"], "w", encoding="utf-8") as f:
         json.dump(doc, f, indent=1)
     with open(paths["report"], "w", encoding="utf-8") as f:

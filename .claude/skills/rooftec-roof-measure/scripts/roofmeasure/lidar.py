@@ -37,6 +37,9 @@ MIN_INLIER_FRACTION = 0.5       # below this lidar sees no single plane here
 PRECISE_INLIER_FRACTION = 0.8   # a "precise" fit: at least this share of the points on the plane ...
 PRECISE_SE_DEG = 0.25           # ... and a pitch standard error no larger than this
 PREFER_LIDAR = True      # use a precise lidar pitch even when the city pitch agrees with it
+OFF_SURFACE_M = 0.30     # a lidar point this far above or below the fitted plane is not on the roof surface ...
+OFF_SURFACE_SHARE = 0.10  # ... and this share of such points on one plane is worth a look (tree, dormer, lower roof)
+GROUND_SHARE = 0.25      # this share of ground-level points inside a plane: no roof was there when lidar flew
 
 
 class LidarUnavailable(RuntimeError):
@@ -219,6 +222,37 @@ def _inside_with_inset(poly, x, y, inset):
     return inside & (dmin >= inset)
 
 
+def _surface_shares(x, y, z, sel, low, fit):
+    """What lidar sees inside a plane besides the roof surface: shares of points above it, below it and at ground level.
+
+    The plane fit ignores these points, so a plane can "agree" while a tree hangs over it, a dormer the
+    city model does not show sits on it, or half of it was not built yet. `sel` are the points used for
+    the fit, `low` the points inside the same outline that are too low to be roof.
+    """
+    n_all = int(sel.sum() + low.sum())
+    if n_all < MIN_POINTS:
+        return None
+    out = {"groundShare": round(float(low.sum()) / n_all, 3)}
+    if fit and sel.sum():
+        res = (z[sel] - (fit["a"] * x[sel] + fit["b"] * y[sel] + fit["c"])) / math.sqrt(1 + fit["a"] ** 2 + fit["b"] ** 2)
+        out["aboveShare"] = round(float((res > OFF_SURFACE_M).mean()), 3)
+        out["belowShare"] = round(float((res < -OFF_SURFACE_M).mean()), 3)
+    return out
+
+
+def surface_note(surface):
+    """One short reason when the shares from `_surface_shares` are worth a look, else None."""
+    if not surface:
+        return None
+    if surface["groundShare"] >= GROUND_SHARE:
+        return "%.0f%% of the lidar points are at ground level (built after the lidar flight, or a deck or porch under 2 m)" % (100 * surface["groundShare"])
+    if surface.get("aboveShare", 0) >= OFF_SURFACE_SHARE:
+        return "%.0f%% of the lidar points are above the roof surface (a tree over the roof, or a dormer the model does not show)" % (100 * surface["aboveShare"])
+    if surface.get("belowShare", 0) >= OFF_SURFACE_SHARE:
+        return "%.0f%% of the lidar points are below the roof surface (a lower roof or an opening the model does not show)" % (100 * surface["belowShare"])
+    return None
+
+
 def is_precise(fit):
     """True when a lidar fit is good enough to supply the pitch: most points on one plane, small standard error.
 
@@ -272,7 +306,8 @@ def cross_check(model, pts, ground_z_m=None):
            "thresholds": {"minPoints": MIN_POINTS, "agreeDeg": AGREE_DEG, "overrideDeg": OVERRIDE_DEG,
                           "ransacTolM": RANSAC_TOL_M, "edgeInsetM": EDGE_INSET_M, "edgeInsetSmallM": EDGE_INSET_SMALL_M,
                           "preciseInlierFraction": PRECISE_INLIER_FRACTION, "preciseSeDeg": PRECISE_SE_DEG,
-                          "preferLidar": PREFER_LIDAR},
+                          "preferLidar": PREFER_LIDAR, "offSurfaceM": OFF_SURFACE_M,
+                          "offSurfaceShare": OFF_SURFACE_SHARE, "groundShare": GROUND_SHARE},
            "planes": []}
     high = z > ground_z_m + MIN_HEIGHT_M
     rows, dz_rows = [], []
@@ -292,6 +327,7 @@ def cross_check(model, pts, ground_z_m=None):
             if sel.sum() >= 3:
                 fit = fit_plane(np.column_stack([x[sel], y[sel], z[sel]]))
             rec["points"] = int(sel.sum())
+            rec["surface"] = _surface_shares(x, y, z, sel, _inside_with_inset(poly, x, y, inset) & ~high & ~holes, fit)
         status, action, note = reconcile(P["pitchDeg"], fit)
         if fit:
             n = P["normal"]
@@ -309,6 +345,8 @@ def cross_check(model, pts, ground_z_m=None):
                 # city plane as z = a x + b y + c; used to estimate the shift between the two datasets
                 dz_rows.append((-n[0] / n[2], -n[1] / n[2], float(z_lidar - c[2]), fit["inliers"]))
         rec.update({"status": status, "action": action, "note": note})
+        if surface_note(rec.get("surface")):
+            rec["surfaceNote"] = surface_note(rec["surface"])
         out["planes"].append(rec)
         rows.append(rec)
     out["registration"] = _registration(dz_rows)
@@ -323,6 +361,7 @@ def cross_check(model, pts, ground_z_m=None):
         "pitchFromLidar": sum(r["action"] == "use_lidar" for r in rows),
         "siteCheck": sum(r["status"] == "site_check" for r in rows),
         "notChecked": sum(r["status"] == "not_checked" for r in rows),
+        "surfaceNotes": sum("surfaceNote" in r for r in rows),
         "meanAbsPitchDiffDeg": round(float(np.mean([abs(r["pitchDiffDeg"]) for r in checked if "pitchDiffDeg" in r])), 2)
         if any("pitchDiffDeg" in r for r in checked) else None,
     }

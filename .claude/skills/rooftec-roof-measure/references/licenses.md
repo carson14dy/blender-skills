@@ -18,12 +18,22 @@ Keep this skill permissive: Python standard library, numpy, and two optional lid
 
 | Dataset | Licence | Required credit |
 |---|---|---|
-| City 3D solids, footprints, address points | CC BY 4.0 as stated on the city's DataWorks portal; the research note also quotes "not intended for use in mapping products for resale", which review round 1 could not find again | "Contains data from the City of Sioux Falls, CC BY 4.0", with a note that it was changed and is not a survey |
+| City 3D solids, footprints, address points, building permits | CC BY 4.0, with the city's own sentence "This data is not intended for use in mapping products for resale" | "Contains data from the City of Sioux Falls, CC BY 4.0", with a note that it was changed and is not a survey |
 | USGS 3DEP lidar | Public domain | "Lidar: USGS 3DEP" (requested, not required) |
 
 The tool writes both credits into `roof.json`, into the GLB (`asset.copyright` and scene extras) and at the foot of `takeoff.md`. Keep them when you copy numbers elsewhere.
 
-The Building Wireframe layer is not listed on DataWorks and carries no licence statement of its own, so CC BY 4.0 for that layer is an inference from the city's general open-data statement. Ask the city GIS office to confirm it. Reading the city licence as allowing in-house estimating is the research note's interpretation and not legal advice. Do not sell the measurements, the model or a map made from them.
+### What the city licence says, and where
+
+Review round 2 read the licence text on 2026-11-16. Each of the four layers this skill uses carries the same "use limitation" in its own metadata, at `<layer url>/metadata?f=xml` (for example `.../Data/Community/MapServer/66/metadata?f=xml` for the Building Wireframe solids):
+
+- The data is "for public use as described under the Creative Commons Attribution 4.0 United States License", and the link in that sentence goes to `https://creativecommons.org/licenses/by/4.0/`. There is no "United States" edition of version 4.0, so read it as CC BY 4.0 International, which is what the link and the DataWorks portal say.
+- "These drawings and data are neither a legally recorded map nor a survey", and are "for reference purposes only".
+- "This data is not intended for use in mapping products for resale."
+
+Review round 1 reported that the resale sentence could not be found. It looked at `metadata?format=default` and at the layer page, which answer "The administrator has disabled the Services Directory". The `f=xml` form of the same address works. The Building Wireframe layer does carry its own licence statement, so CC BY 4.0 for the solids is no longer an inference.
+
+What is still an interpretation and not legal advice: that in-house estimating is not a "mapping product for resale". Do not sell the measurements, the model or a map made from them, and ask the city GIS office (cityofsfgis@siouxfalls.gov) before any use that comes close.
 
 ## Tools that stay separate programs
 

@@ -119,12 +119,13 @@ def main(argv=None):
         print(json.dumps({"summary": s, "flags": doc["flags"], "paths": paths}, indent=1))
         return 0
     print("Footprint %s, solid %s: %d planes, %.0f sq ft sloped = %.1f squares, predominant pitch %.1f/12  [%s]"
-          % (doc["footprintId"], doc["solidId"], s["planeCount"], s["slopedAreaFt2"], s["squares"], s["predominantPitchIn12"], s["confidence"]))
+          % (doc["footprintId"], doc["solidId"], s["planeCount"], s["slopedAreaFt2"], s["squares"], s["predominantPitchIn12"],
+             "site check required" if s.get("siteCheckRequired") else s["confidence"]))
     print("Lines (ft): " + ", ".join("%s %.1f" % (t, v["lengthFt"]) for t, v in s["edgeTotals"].items() if v["count"]))
     lid = doc["checks"].get("lidar")
     if lid:
         sm = lid["summary"]
-        print("Lidar: %d/%d planes checked (%.0f%% of area): %d agree, %d override, %d site check, %d too small; mean |pitch diff| %s deg"
+        print("Lidar: %d/%d planes checked (%.0f%% of area): %d agree, %d override, %d site check, %d not checked; mean |pitch diff| %s deg"
               % (sm["planesChecked"], sm["planes"], sm["areaCheckedPct"], sm["agree"], sm["override"], sm["siteCheck"], sm["notChecked"], sm["meanAbsPitchDiffDeg"]))
     for f in doc["flags"]:
         print("FLAG %-11s %s: %s" % (f["severity"], f["code"], f["message"]))

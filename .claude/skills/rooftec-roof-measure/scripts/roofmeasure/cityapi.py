@@ -9,6 +9,7 @@ Rules this module keeps (see references/data-sources.md):
 Field names were verified against the live service on 2026-11-16.
 """
 import hashlib
+import http.client
 import json
 import os
 import re
@@ -25,6 +26,10 @@ BASE = "https://gis.siouxfalls.gov/arcgis/rest/services/Data"
 ADDRESS_LAYER = BASE + "/Property/MapServer/0"
 FOOTPRINT_LAYER = BASE + "/Property/MapServer/5"
 SOLID_LAYER = BASE + "/Community/MapServer/66"
+PERMIT_LAYER = BASE + "/Community/MapServer/3"
+# permit work classes that change the shape of a roof ("New ..." covers every kind of new building)
+PERMIT_WHERE = "WORKCLASS IN ('Addition','Razing','Demolition','Relocated Structure','Reshingle') OR WORKCLASS LIKE 'New%'"
+MAX_PERMITS = 25
 USER_AGENT = "rooftec-roof-measure/0.1 (roof measurement skill; python-urllib)"
 ACCESSORY_STRUCTURES = {190, 290, 390}
 MAX_RECORDS = 5
@@ -77,7 +82,8 @@ class Http:
                 err = e
                 if e.code in (400, 401, 403, 404):
                     raise LookupError_("HTTP %d for %s" % (e.code, url.split("?")[0]))
-            except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as e:
+            except (urllib.error.URLError, TimeoutError, ConnectionError, OSError, http.client.HTTPException) as e:
+                # HTTPException covers IncompleteRead: a download cut off half way is retried like a timeout
                 err = e
         else:
             raise LookupError_("no answer from %s after %d tries: %s" % (host, self.retries + 1, err))
@@ -273,3 +279,38 @@ def pick_solid(response, footprint):
         raise LookupError_("the city solid over this footprint could not be decoded")
     return best[0], {"candidates": len(feats), "bboxIoU": round(best[1], 4),
                      "exceededTransferLimit": bool(response.get("exceededTransferLimit"))}
+
+
+# --------------------------------------------------------------------------- building permits
+
+def _in_rings(rings, x, y, tol=3.0):
+    """True when (x, y) is inside the footprint or within `tol` feet of its outline."""
+    inside = False
+    for ring in rings:
+        r = np.asarray(ring, float)[:, :2]
+        for (ax, ay), (bx, by) in zip(r, np.roll(r, -1, axis=0)):
+            if (ay > y) != (by > y) and x < ax + (y - ay) * (bx - ax) / (by - ay):
+                inside = not inside
+    return inside or _ring_distance(rings, x, y) <= tol
+
+
+def permits_for_footprint(http, footprint, out_root):
+    """Building permits whose point lies on this footprint and whose work changes or renews a roof.
+
+    One small request, cached like the others. Returns a list of {"workClass", "issuedMs", "status"},
+    newest first. The permit points sit on the building (checked on 5 benchmark houses in review round 2).
+    """
+    oid = footprint["attributes"]["OBJECTID"]
+    x0, y0, x1, y1 = footprint_bbox(footprint)
+    d = http.get_json(PERMIT_LAYER + "/query", {
+        "geometry": "%.3f,%.3f,%.3f,%.3f" % (x0, y0, x1, y1), "geometryType": "esriGeometryEnvelope", "inSR": 32164,
+        "outSR": 32164, "spatialRel": "esriSpatialRelIntersects", "where": PERMIT_WHERE,
+        "outFields": "WORKCLASS,ISSUEDATE,PERMITSTATUS", "orderByFields": "ISSUEDATE DESC", "returnGeometry": "true",
+        "resultRecordCount": MAX_PERMITS}, os.path.join(out_root, str(oid), "raw", "permits.json"))
+    out = []
+    for f in d.get("features", []):
+        g, a = f.get("geometry") or {}, f.get("attributes") or {}
+        if "x" in g and not _in_rings(footprint["geometry"]["rings"], g["x"], g["y"]):
+            continue   # a neighbour's permit inside this footprint's bounding box
+        out.append({"workClass": a.get("WORKCLASS") or "", "issuedMs": a.get("ISSUEDATE"), "status": a.get("PERMITSTATUS")})
+    return sorted(out, key=lambda p: -(p["issuedMs"] or 0))

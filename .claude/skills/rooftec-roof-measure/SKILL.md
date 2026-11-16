@@ -27,7 +27,7 @@ Keep `--out` in a git-ignored folder, because the folder names and files can ide
 ## Workflow
 
 1. **Measure.** Run `measure` with `--lidar`. A first run takes 8 to 25 seconds and makes about 10 to 20 small requests; a repeat run takes under 1 second.
-2. **Read the flags before the numbers.** Each flag has a severity: `site-check` means do not use the numbers, `review` means look at that item, `info` is context. The flag list is in `references/accuracy.md`.
+2. **Read the flags before the numbers.** Each flag has a severity: `site-check` means do not use the numbers, `review` means look at that item, `info` is context. The flag list is in `references/accuracy.md`. In `roof.json`, `summary.siteCheckRequired` is `true` when any `site-check` flag is set, and the report then opens with "Status: SITE CHECK REQUIRED".
 3. **Report it as an estimate.** Quote the status line from `takeoff.md` with the numbers. Every value is `estimate` until the accuracy study passes (see the decision rules below).
 4. **Hand it to the studio.** Copy `roof.glb` into `roof-visualizer/viewer/` on branch `rooftec-lab` and open `?glb=roof.glb`, or load the file in the Project tab. For Blender, import the GLB; `roof-blender` picks up the object named `Roof`.
 5. **Check the hand-off (1 minute).** Run `node scripts/studio_check.mjs --studio <path to roof-visualizer> --glb <roof.glb> --roof <roof.json>`. It runs the studio's own import code and passes when the studio finds the same plane count and the same area within 1%. It needs `npm install` in the studio folder once.
@@ -54,8 +54,8 @@ Today everything this skill measures is `estimate`, because the accuracy study (
 **When to send someone to verify on site.**
 
 1. Always before a signed contract: confirm one eave length and one pitch, until the study has passed and 10 jobs are logged.
-2. Whenever a flag has severity `site-check`: lidar disagrees with a plane and cannot settle it, the roof plan area does not match the footprint, or the building is newer than the data.
-3. Whenever the roof was replaced, extended or re-framed after June 2023, which the data cannot see.
+2. Whenever a flag has severity `site-check`: lidar disagrees with a plane and cannot settle it, the roof plan area does not match the footprint, the building is newer than the data, or a building permit since January 2023 says the roof may have changed.
+3. Whenever the roof was extended or re-framed after June 2023 without a permit, which the data cannot see.
 4. For flashing details the data never shows: chimneys, pipe boots, skylights and small dormers.
 
 **How lidar sets the pitch of each plane** (planes with 40 or more lidar points):
@@ -64,12 +64,14 @@ Today everything this skill measures is `estimate`, because the accuracy study (
 2. An imprecise fit never supplies the pitch. The city pitch is kept if lidar agrees with it, and the plane needs a site check if it does not.
 3. Beyond 4 degrees, or with no single lidar plane, the plane needs a site check.
 
-The city pitch reads about 0.16 in 12 lower than lidar on average, and lidar lands on whole-number pitches, which is why lidar wins. This rests on indirect evidence until a roof is taped. `references/accuracy.md` has the thresholds, the evidence and the error budget.
+The city pitch reads about 0.13 in 12 lower than lidar on average, and lidar lands on whole-number pitches, which is why lidar wins. Review round 2 confirmed this on 30 more houses and ruled out snow on the flight days. It is still indirect evidence until a roof is taped. `references/accuracy.md` has the thresholds, the evidence and the error budget.
+
+The outline matters more than the pitch. Lidar can confirm the city roof outline only to about 4 in, which is 2 to 4% of the area, so the one site measurement that helps most is a taped eave.
 
 ## License and attribution rules
 
 - Put this line wherever the roof or its numbers are shown: "Contains data from the City of Sioux Falls, CC BY 4.0. Lidar: USGS 3DEP." The tool already writes it into `roof.json`, the GLB and the report.
-- Use the results in-house. The city licence says the data is not for mapping products for resale, so do not sell the measurements or the model as a product.
+- Use the results in-house. Each city layer's metadata says "This data is not intended for use in mapping products for resale", so do not sell the measurements or the model as a product. `references/licenses.md` quotes the text and says where to read it.
 - Be polite to the city service: one house per request, never a bulk pull, and let the cache answer repeat runs. The client already waits 1 second between city requests and retries 3 times.
 - Keep GPL and AGPL tools (`roofer`, Blender add-ons, OpenDroneMap) as separate programs that exchange files with this skill. Nothing copyleft is bundled here; `references/licenses.md` has the matrix.
 
@@ -77,7 +79,8 @@ The city pitch reads about 0.16 in 12 lower than lidar on average, and lidar lan
 
 - It does not make any value `verified`. That needs the accuracy study on 3 to 5 roofs with known measurements, which is the next step in `references/implementation-plan.md`.
 - It does not build tier C (outline plus typed pitch) or tier D (drone or phone capture), and it does not run `roofer`.
-- It does not check building permits, so an addition built after June 2023 is invisible unless the city's occupied date or year built shows it.
+- It checks building permits only for work that changes the roof shape. An addition built after June 2023 without a permit is invisible.
+- It cannot tell a tree over the roof from a dormer the city model lacks. Both raise the `lidar-surface` review flag, and a person must look at a photo.
 - It does not clip faces that lie partly under another face. Such buildings get a `plan-area-mismatch` site check instead of a number.
 - The studio has no wall-flashing class yet, so the studio's own eave and rake totals differ from `roof.json` on houses with roof-to-wall joints. Treat `roof.json` as the reference; `patches/README.md` explains the one-line studio patch that closes most of the gap.
 
@@ -87,9 +90,9 @@ The city pitch reads about 0.16 in 12 lower than lidar on average, and lidar lan
 - `references/accuracy.md`: read when judging whether a number is good enough, or when a flag needs explaining.
 - `references/roof-json.md`: read when another program must read or write `roof.json`.
 - `references/validation.md`: read for the measured results on real houses and how to re-run them.
-- `references/benchmark.md`: read before changing the code; it lists the 12 fixed test buildings and the results each review round must compare against.
+- `references/benchmark.md`: read before changing the code; it lists the 13 fixed test buildings and the results each review round must compare against.
 - `references/review-log.md`: read for what each review round found, fixed and left open.
 - `references/implementation-plan.md`: read to choose the next piece of work; it re-sequences plan experiments 024 to 034.
 - `references/licenses.md`: read before adding a dependency or a data source.
 
-To test the skill offline, run `python3 -m unittest discover -s tests` from the skill folder (51 tests, under 2 seconds).
+To test the skill offline, run `python3 -m unittest discover -s tests` from the skill folder (60 tests, under 2 seconds).

@@ -1,10 +1,10 @@
 # Data sources
 
-Use the three city layers and the one lidar collection below. Everything here was checked against the live services on 2026-11-16 unless a line says "unverified".
+Use the four city layers and the one lidar collection below. Everything here was checked against the live services on 2026-11-16 unless a line says "unverified".
 
 ## Rules for calling the services
 
-1. Ask for one house per request, and never more than 5 records (the footprint search around a point asks for up to 25 outlines).
+1. Ask for one house per request, and never more than 5 records (the footprint search around a point asks for up to 25 outlines, and the permit lookup for up to 25 permits).
 2. Wait at least 1 second between requests to the city host. The client does this.
 3. Cache every answer and reuse it forever. A repeat run of a measured house makes 0 requests.
 4. Never pull the whole city. Ask the city GIS office (cityofsfgis@siouxfalls.gov) for a file instead.
@@ -12,7 +12,7 @@ Use the three city layers and the one lidar collection below. Everything here wa
 
 ## City of Sioux Falls ArcGIS REST
 
-Base: `https://gis.siouxfalls.gov/arcgis/rest/services/Data`. All three layers use EPSG 32164 (NAD83, BLM zone 14N, US survey feet), allow 1,000 records per query and support paging. Licence: the city's DataWorks portal states CC BY 4.0 for its open data. The sentence "not intended for use in mapping products for resale" comes from the research note; review round 1 could not find it again on any reachable page, so treat it as a caution that still applies.
+Base: `https://gis.siouxfalls.gov/arcgis/rest/services/Data`. All layers use EPSG 32164 (NAD83, BLM zone 14N, US survey feet), allow 1,000 records per query and support paging. Licence: CC BY 4.0, "not intended for use in mapping products for resale". Each layer states this in its own metadata at `<layer url>/metadata?f=xml` (read on 2026-11-16; `references/licenses.md` quotes it). The `format=default` form of that address is switched off, which is why review round 1 could not find the text.
 
 ### Address points: `Property/MapServer/0`
 
@@ -27,7 +27,7 @@ Base: `https://gis.siouxfalls.gov/arcgis/rest/services/Data`. All three layers u
 - `objectIds=<id>&outFields=*&returnGeometry=true&outSR=32164&f=json` returns one outline.
 - Verified fields: `STRUCTURE` (110 single family, 121 twin home, 190 accessory structure, 220 multi-family, and more), `NUMBERSTORIES`, `GROUNDELEVATION`, `BUILDINGTOPELEVATION`, `OCCUPIEDDATE`, `STATUS`, `CAPTUREMETH`, `Shape.STArea()` in square feet.
 - The two elevations are feet and agree with NAVD88 to under 1 ft on four houses. The city does not document the datum, so treat NAVD88 as inferred.
-- The outline is the roof edge including overhang, not the wall line. Lidar confirms this within about 0.07 m on 6 houses (`references/validation.md`). The tool uses `GROUNDELEVATION` as z = 0.
+- The outline is the roof edge including overhang, not the wall line. Lidar confirms this to about 0.1 m (4 in) on 8 houses, which is as fine as lidar can see (`references/validation.md`). The tool uses `GROUNDELEVATION` as z = 0.
 - `GROUNDELEVATION` is one height per building. It matches the lidar ground within 0.15 m on level lots and differs by up to 1.1 m on sloping lots.
 
 ### 3D building solids ("Building Wireframe"): `Community/MapServer/66`
@@ -47,9 +47,17 @@ The layer holds 95,901 solids captured in June 2023. Each building is one closed
 - Some solids hold extra faces under the roof, such as a cap polygon at eave level or the floor of a penthouse. The tool keeps only the top surface.
 - The solid's flat base sits 2 to 8 ft below ground, so it is not the ground level.
 
+### Building permits: `Community/MapServer/3`
+
+- One point per permit since September 2014. The point sits on the building (checked on 5 houses). Fields: `MAINADDRESS`, `PERMITNUMBER`, `PERMITTYPE`, `WORKCLASS`, `ISSUEDATE`, `FINALIZEDATE`, `PERMITSTATUS`.
+- The tool asks for the permits inside the footprint's bounding box whose `WORKCLASS` is `Addition`, `Razing`, `Demolition`, `Relocated Structure`, `Reshingle` or starts with `New`, newest first, 25 at most, and keeps those whose point lies on the footprint. That is one small request per house, cached as `raw/permits.json`.
+- A permit of any class but `Reshingle` issued on or after 1 January 2023 raises the `permit-since-capture` site check: the work was probably not finished when the solid was captured in June 2023. The city issued 350 residential `Addition` permits between June 2023 and November 2026.
+- `checks.permits.lastReshingle` gives the date of the newest reshingle permit. It is context for the roofer and changes no number.
+- `Remodel/Renovation` permits are not used: there are thousands and most do not touch the roof.
+
 ## USGS 3DEP lidar
 
-Collection `SD_EasternSD_3_2020` is public domain. The 3DEP index lists it as quality level 2, collected from 2020-04-10 to 2020-12-22, with heights in NAVD88 (GEOID18). The points over the benchmark houses were all flown on 19 and 20 December 2020 (read from their GPS times). No newer 3DEP lidar covers the city (checked 2026-11-16). The public Entwine Point Tile (EPT) root is `https://s3-us-west-2.amazonaws.com/usgs-lidar-public/SD_EasternSD_3_2020/ept.json`.
+Collection `SD_EasternSD_3_2020` is public domain. The 3DEP index lists it as quality level 2, collected from 2020-04-10 to 2020-12-22, with heights in NAVD88 (GEOID18). The points over the benchmark houses were all flown on 19 and 20 December 2020 (read from their GPS times). The roofs were bare on those days: the Sioux Falls airport station (GHCN `USW00014944`) recorded no snowfall and zero snow depth from 15 November to 22 December 2020. No newer 3DEP lidar covers the city (checked 2026-11-16). The public Entwine Point Tile (EPT) root is `https://s3-us-west-2.amazonaws.com/usgs-lidar-public/SD_EasternSD_3_2020/ept.json`.
 
 **How the tool reads it**
 
@@ -64,13 +72,9 @@ Collection `SD_EasternSD_3_2020` is public domain. The 3DEP index lists it as qu
 - The laser spot is about 0.5 m wide. Returns within that distance of a roof edge, ridge or valley mix two surfaces, so the tool fits planes to points at least 0.6 m inside each plane where it can.
 - The lidar roof sits 0.09 to 0.24 m from the city solid horizontally and 0.11 to 0.14 m above it (four houses). No datum correction is applied, and none is needed at that size.
 
-### Building permits: `Community/MapServer/3` (verified, not used yet)
-
-- Point per permit since September 2014. Fields: `MAINADDRESS`, `PERMITNUMBER`, `PERMITTYPE`, `WORKCLASS`, `ISSUEDATE`, `FINALIZEDATE`, `PERMITSTATUS`.
-- Useful `WORKCLASS` values: `Addition`, `New – Single Family`, `Remodel/Renovation`, `Reshingle`. A permit issued after June 2023 for the first three means the solid may be out of date.
-
 ## Sources this skill does not use
 
+- NAIP 2025 aerial photos (0.3 m, flown 28 July 2025, on Microsoft Planetary Computer) are free and newer than the solid. They could show an addition that has no permit. Not used yet; see the open issues in `references/review-log.md`.
 - City imagery layers for 2025 and 2026 are Nearmap tiles that may be viewed and never downloaded.
 - Google Solar API, Google 3D Tiles, Nearmap, EagleView and Hover cost money or need a billing account.
 - OpenStreetMap and Overture buildings carry a share-alike database licence; keep them out of our files.

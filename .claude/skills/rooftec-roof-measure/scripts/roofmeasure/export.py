@@ -54,7 +54,7 @@ def build_roof_json(model, footprint=None, solid=None, solid_info=None, address=
         note = None
         if lr:
             note = {"agree": "pitch cross-checked by lidar", "override": "pitch replaced by lidar; review",
-                    "site_check": "lidar disagrees; site check required", "not_checked": "too small for a lidar check"}[lr["status"]]
+                    "site_check": "lidar disagrees; site check required", "not_checked": "not checked by lidar: too few points on this plane"}[lr["status"]]
             if lr["status"] == "agree" and lr.get("action") == "use_lidar":
                 note = "pitch from lidar; the city pitch agreed within the limit"
         prov = city_prov(note, roof_ok and bool(lr) and lr["status"] == "agree")
@@ -74,7 +74,7 @@ def build_roof_json(model, footprint=None, solid=None, solid_info=None, address=
             rec["cityAreaM2"] = _r(P["cityAreaM2"], 2)
         if lr:
             rec["lidar"] = {k: lr[k] for k in ("status", "action", "points", "inliers", "rmseM", "pitchSeDeg", "precise",
-                                                    "lidarPitchDeg", "pitchDiffDeg") if k in lr}
+                                                    "lidarPitchDeg", "pitchDiffDeg", "surface", "surfaceNote") if k in lr}
         planes.append(rec)
     edges = [{"id": e["id"], "type": e["type"], "a": [_r(c) for c in e["a"]], "b": [_r(c) for c in e["b"]],
               "lengthM": _r(e["lengthM"]), "lengthFt": _r(m_to_ft(e["lengthM"]), 2), "planes": e["planes"],
@@ -107,6 +107,7 @@ def build_roof_json(model, footprint=None, solid=None, solid_info=None, address=
         "summary": {
             "confidence": "verified" if roof_ok and all(p["provenance"]["confidence"] == "verified" for p in planes
                                                          if p["areaFt2"] >= 30) else "estimate",
+            "siteCheckRequired": blocked,   # true = do not use the numbers before someone has been on site
             "siteCheck": site_check,
             "planeCount": len(planes),
             "planAreaM2": _r(model.plan_area, 2), "planAreaFt2": _r(m2_to_ft2(model.plan_area), 1),
@@ -234,7 +235,8 @@ def takeoff_markdown(doc):
     title = doc.get("address") or "footprint %s" % doc.get("footprintId")
     L.append("# Roof takeoff: %s" % title)
     L.append("")
-    L.append("**Status: %s.** %s" % (s["confidence"].upper(), s.get("siteCheck") or ""))
+    status = "SITE CHECK REQUIRED" if s.get("siteCheckRequired") else s["confidence"].upper()
+    L.append("**Status: %s.** %s" % (status, s.get("siteCheck") or ""))
     L.append("")
     L.append("| Measure | Value |")
     L.append("|---|---|")
@@ -279,7 +281,7 @@ def takeoff_markdown(doc):
         L.append("")
         L.append("## Lidar cross-check (USGS 3DEP 2020)")
         L.append("")
-        L.append("%d of %d planes checked (%.0f%% of the area): %d agree, %d overridden by lidar, %d need a site check, %d too small."
+        L.append("%d of %d planes checked (%.0f%% of the area): %d agree, %d overridden by lidar, %d need a site check, %d not checked (too few points)."
                  % (sm["planesChecked"], sm["planes"], sm["areaCheckedPct"], sm["agree"], sm["override"], sm["siteCheck"], sm["notChecked"]))
         if sm.get("pitchFromLidar"):
             L.append("%d plane(s) show the lidar pitch, because the lidar fit was precise; the city pitch is kept in roof.json as `cityPitchDeg`."
@@ -292,7 +294,8 @@ def takeoff_markdown(doc):
     L.append("## How to read this")
     L.append("")
     L.append("- Every number is an **estimate** from public data until the accuracy study passes. Do not put it on a customer document.")
-    L.append("- Areas and eaves are measured at the roof edge (drip line), so overhangs are already included.")
+    L.append("- Areas and eaves are measured at the city's roof outline (the drip line), so overhangs are already included. "
+             "Lidar can only confirm that outline to about 4 in, which is 2 to 4% of the area, so tape one eave on site.")
     L.append("- The model does not show chimneys, pipe boots, skylights or small dormers.")
     L.append("")
     for a in doc["attribution"]:

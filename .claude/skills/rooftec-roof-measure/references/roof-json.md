@@ -13,15 +13,19 @@ All lengths are metres in a local frame: x is east, y is north, z is up, and z =
 | `format`, `version`, `generator`, `createdOn` | `"rooftec-roof"`, `1`, tool version, ISO date |
 | `address`, `footprintId`, `solidId` | The typed address if one was given, and the two city OBJECTIDs |
 | `origin`, `units`, `building` | Local origin, unit notes, and the footprint attributes (stories, ground and top elevation) |
-| `summary` | Plane count, plan and sloped area, squares, predominant pitch, `edgeTotals`, `confidence`, `siteCheck` |
+| `summary` | Plane count, plan and sloped area, squares, predominant pitch, `edgeTotals`, `confidence`, `siteCheckRequired`, `siteCheck` |
 | `planes[]`, `edges[]` | The measured roof (next two sections) |
 | `assumptions` | Typed defaults such as `overhangM`, each with confidence `assumed` |
 | `checks`, `flags` | Sanity checks, the lidar block, and the flag list with `code`, `severity`, `message` |
 | `attribution`, `license` | The credit lines that must be shown with the data |
 
+**Read `summary.siteCheckRequired` before any number.** It is `true` when a flag has severity `site-check`, and then the numbers must not be used. `summary.confidence` does not tell you this: it stays `estimate` for a clean roof and for a blocked one. `siteCheck` is the same message as a sentence. The GLB carries `siteCheckRequired` in its scene extras.
+
+`checks.permits` holds the permit lookup: `checked`, `roofShapePermits`, `sinceCapture` (the permits behind a `permit-since-capture` flag) and `lastReshingle`.
+
 ## A plane
 
-`id`, `polygon` (outer corner points, counter-clockwise seen from above), `holes`, `pitchDeg`, `pitchIn12`, `azimuthDeg` (the compass direction the plane faces, true north), `planAreaM2`, `areaM2`, `areaFt2`, `planarityM` (how far the delivered city face was from flat), `sourcePitchDeg` (pitch of the face exactly as delivered), `faceCount`, and `provenance`. When lidar was run, `lidar` holds `status` (agree, override, site_check or not_checked), `action` (use_lidar or keep_city), the point counts, the fit error, `pitchSeDeg` (standard error of the lidar pitch), `precise` and the lidar pitch. When lidar supplied the pitch, `pitchProvenance`, `cityPitchDeg` and `cityAreaM2` record what the city solid said, and `polygon`, `pitchDeg` and `areaM2` describe the re-tilted plane. `pitchDeg` can differ from `lidar.lidarPitchDeg` by up to about 0.2 degree where neighbouring planes had to meet.
+`id`, `polygon` (outer corner points, counter-clockwise seen from above), `holes`, `pitchDeg`, `pitchIn12`, `azimuthDeg` (the compass direction the plane faces, true north), `planAreaM2`, `areaM2`, `areaFt2`, `planarityM` (how far the delivered city face was from flat), `sourcePitchDeg` (pitch of the face exactly as delivered), `faceCount`, and `provenance`. When lidar was run, `lidar` holds `status` (agree, override, site_check or not_checked), `action` (use_lidar or keep_city), the point counts, the fit error, `pitchSeDeg` (standard error of the lidar pitch), `precise` and the lidar pitch. `lidar.surface` gives the share of lidar points above the roof surface, below it and at ground level (`aboveShare`, `belowShare`, `groundShare`), and `lidar.surfaceNote` is set when one of them is large enough for the `lidar-surface` flag. When lidar supplied the pitch, `pitchProvenance`, `cityPitchDeg` and `cityAreaM2` record what the city solid said, and `polygon`, `pitchDeg` and `areaM2` describe the re-tilted plane. `pitchDeg` can differ from `lidar.lidarPitchDeg` by up to about 0.2 degree where neighbouring planes had to meet.
 
 ## An edge
 

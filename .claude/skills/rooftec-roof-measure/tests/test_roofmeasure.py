@@ -402,6 +402,130 @@ class LidarMath(unittest.TestCase):
         self.assertAlmostEqual(m2_to_ft2(m.sloped_area), 3284, delta=8)
 
 
+class LidarSurface(unittest.TestCase):
+    """Review round 2: the plane fit ignores points off the roof surface, so a plane could "agree" while a tree
+    hung over it, a dormer was missing from the city model, or part of it was not built when lidar flew."""
+
+    def _check(self, edit):
+        faces, _ = synthetic.gable(L=12, W=10, pitch12=6)
+        m = model_of(faces)
+        m.origin_ft = (0.0, 0.0, 0.0)
+        rng = np.random.default_rng(11)
+        xy = rng.uniform((0, 0), (12, 10), (2400, 2))
+        z = 3 + 0.5 * np.minimum(xy[:, 1], 10 - xy[:, 1]) + rng.normal(0, 0.02, 2400)
+        south = xy[:, 1] < 5
+        z = edit(xy, z, south)
+        chk = lidar.cross_check(m, {"x_ft": xy[:, 0] / FT_US, "y_ft": xy[:, 1] / FT_US, "z_m": z, "cls": np.ones(2400, np.uint8)})
+        by_side = {("south" if m.planes[r["plane"]]["centroid"][1] < 5 else "north"): r for r in chk["planes"]}
+        return m, chk, by_side
+
+    def test_clean_roof_has_no_note(self):
+        _, chk, side = self._check(lambda xy, z, south: z)
+        self.assertEqual(chk["summary"]["surfaceNotes"], 0)
+        self.assertEqual(side["south"]["surface"], {"groundShare": 0.0, "aboveShare": 0.0, "belowShare": 0.0})
+
+    def test_dormer_or_tree_above_a_plane_is_reported(self):
+        def dormer(xy, z, south):   # a 4 m wide box 0.8 m proud of the south plane: a dormer the model lacks
+            box = south & (xy[:, 0] > 4) & (xy[:, 0] < 8) & (xy[:, 1] > 1) & (xy[:, 1] < 4)
+            return np.where(box, z + 0.8, z)
+        m, chk, side = self._check(dormer)
+        self.assertEqual(side["south"]["status"], "agree")            # the fit alone does not see it
+        self.assertGreater(side["south"]["surface"]["aboveShare"], 0.15)
+        self.assertIn("above the roof surface", side["south"]["surfaceNote"])
+        self.assertNotIn("surfaceNote", side["north"])
+        _, flags, _ = pipeline.assess(m, None, {}, {"by": "files"}, chk, permits=[])
+        msg = [f for f in flags if f["code"] == "lidar-surface"]
+        self.assertEqual(len(msg), 1)
+        self.assertEqual(msg[0]["severity"], "review")
+
+    def test_ground_under_a_plane_is_reported(self):
+        def not_built(xy, z, south):   # the east 40% of the south plane was open ground when lidar flew
+            return np.where(south & (xy[:, 0] > 7.2), 0.05, z)
+        _, chk, side = self._check(not_built)
+        self.assertEqual(side["south"]["status"], "agree")
+        self.assertAlmostEqual(side["south"]["surface"]["groundShare"], 0.4, delta=0.06)
+        self.assertIn("ground level", side["south"]["surfaceNote"])
+
+
+class Permits(unittest.TestCase):
+    """Review round 2: an addition built after the June 2023 capture gave a clean estimate of the old roof."""
+
+    def _assess(self, permits):
+        fp, solid = fixture_house()
+        m, _ = pipeline.model_from_features(fp, solid)
+        return pipeline.assess(m, fp, {}, {"by": "oid"}, None, permits=permits)
+
+    def test_addition_after_capture_needs_a_site_check(self):
+        checks, flags, site = self._assess([{"workClass": "Reshingle", "issuedMs": 1597795200000, "status": "Finaled"},
+                                            {"workClass": "Addition", "issuedMs": 1709856000000, "status": "Finaled"}])
+        f = [x for x in flags if x["code"] == "permit-since-capture"]
+        self.assertEqual(len(f), 1)
+        self.assertEqual(f[0]["severity"], "site-check")
+        self.assertIn("2024-03-08", f[0]["message"])
+        self.assertIn("Site check required", site)
+        self.assertEqual(checks["permits"]["lastReshingle"], "2020-08-19")
+
+    def test_old_permits_and_reshingles_do_not_block(self):
+        checks, flags, _ = self._assess([{"workClass": "Addition", "issuedMs": 1500000000000, "status": "Finaled"},
+                                         {"workClass": "Reshingle", "issuedMs": 1720000000000, "status": "Issued"}])
+        self.assertNotIn("permit-since-capture", {x["code"] for x in flags})
+        self.assertEqual(checks["permits"]["roofShapePermits"], 1)
+        self.assertEqual(checks["permits"]["sinceCapture"], [])
+
+    def test_no_lookup_is_said_out_loud(self):
+        checks, flags, _ = self._assess(None)
+        self.assertFalse(checks["permits"]["checked"])
+        self.assertIn("permits-not-checked", {x["code"] for x in flags})
+
+    def test_a_neighbours_permit_in_the_bounding_box_is_dropped(self):
+        fp, _ = fixture_house()
+        x0, y0, x1, y1 = cityapi.footprint_bbox(fp)
+        ring = np.asarray(fp["geometry"]["rings"][0], float)[:, :2]
+        on_house = ring.mean(axis=0)
+
+        class FakeHttp:
+            def get_json(self, url, params, cache_path=None):
+                self.params = params
+                return {"features": [
+                    {"attributes": {"WORKCLASS": "Addition", "ISSUEDATE": 1709856000000}, "geometry": {"x": on_house[0], "y": on_house[1]}},
+                    {"attributes": {"WORKCLASS": "Razing", "ISSUEDATE": 1719856000000}, "geometry": {"x": x0 - 40.0, "y": y0 - 40.0}}]}
+        h = FakeHttp()
+        got = cityapi.permits_for_footprint(h, fp, "unused")
+        self.assertEqual([p["workClass"] for p in got], ["Addition"])
+        self.assertLessEqual(h.params["resultRecordCount"], 25)
+
+
+class Download(unittest.TestCase):
+    def test_a_download_cut_off_half_way_is_retried(self):
+        # Review round 2, bug: http.client.IncompleteRead is not an OSError, so it skipped the retry loop and
+        # reached the user as a traceback (seen once in 32 live runs).
+        import http.client
+        import urllib.request
+        calls = []
+
+        class Resp:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def read(self):
+                calls.append(1)
+                if len(calls) == 1:
+                    raise http.client.IncompleteRead(b"half", 100)
+                return b"whole"
+        real, real_sleep = urllib.request.urlopen, cityapi.time.sleep
+        urllib.request.urlopen = lambda req, timeout=None: Resp()
+        cityapi.time.sleep = lambda s: None
+        try:
+            h = cityapi.Http(min_interval=0.0)
+            self.assertEqual(h.get_bytes("https://example.invalid/x"), b"whole")
+            self.assertEqual(len(calls), 2)
+        finally:
+            urllib.request.urlopen, cityapi.time.sleep = real, real_sleep
+
+
 class Outputs(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -490,6 +614,24 @@ class Outputs(unittest.TestCase):
             report = f.read()
         for needle in ("squares", "Ridge", "ESTIMATE", "Lidar cross-check"):
             self.assertIn(needle, report)
+
+    def test_site_check_is_not_reported_as_an_estimate(self):
+        # Review round 2: a house that must not be used carried the headline "Status: ESTIMATE" and the same
+        # summary.confidence as a clean one. The summary now has a yes/no field and the report says it.
+        self.assertIs(self.doc["summary"]["siteCheckRequired"], False)
+        fp, solid = fixture_house()
+        fp = dict(fp, attributes=dict(fp["attributes"], OCCUPIEDDATE=1700000000000))   # occupied after the capture
+        tmp = tempfile.mkdtemp(prefix="roofmeasure-test-")
+        try:
+            doc, paths = pipeline.run(cityapi.Http(offline=True), tmp, footprint=fp, solid=solid)
+            self.assertIs(doc["summary"]["siteCheckRequired"], True)
+            with open(paths["report"], encoding="utf-8") as f:
+                head = f.read().split("\n")[2]
+            self.assertIn("SITE CHECK REQUIRED", head)
+            self.assertNotIn("ESTIMATE", head)
+            self.assertIs(export.read_glb_json(paths["glb"])["scenes"][0]["extras"]["siteCheckRequired"], True)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
 
     def test_cli_runs_offline_from_cache(self):
         r = subprocess.run([sys.executable, os.path.join(SKILL, "scripts", "roof.py"), "measure", "--oid", "235245",

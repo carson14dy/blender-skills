@@ -2,7 +2,7 @@
 
 Read the verdict first: no roof has been compared with ground truth yet, so nothing is `verified`. What exists is three independent cross-checks that all pass: the decoder and projection against other software, the pitch against lidar, and the outline against lidar.
 
-Review round 1 (2026-11-16) re-derived the numbers below without this skill's code and re-ran everything on the 12 fixed buildings in `references/benchmark.md`. Its findings are in `references/review-log.md`.
+Review round 1 (2026-11-16) re-derived the numbers below without this skill's code and re-ran everything on the 12 fixed buildings in `references/benchmark.md`. Review round 2 (same day) challenged round 1: it checked the lidar pitch rule on 30 more houses, checked the weather on the flight days, and added one benchmark building. The findings of both are in `references/review-log.md`.
 
 To repeat any row, run `python3 scripts/roof.py measure --oid <footprint id> --out out/roofs --lidar`. Houses are listed by city footprint id only; addresses are kept out of this file on purpose.
 
@@ -49,13 +49,33 @@ Across 44 lidar-checked planes of 150 sq ft or more on eight houses, comparing l
 - This is why a precise lidar fit now supplies the pitch. It is indirect evidence until a roof is measured by hand.
 - The lidar roof sits 0.09 to 0.24 m from the city solid horizontally, inside the 0.5 m target, and 0.07 to 0.14 m above it.
 
+## The lidar pitch rule on 30 fresh houses (review round 2)
+
+Round 1 decided that lidar supplies the pitch from 8 benchmark houses. Round 2 measured 30 single-family houses picked at random from the city footprint layer (occupied before 2020, seed and ids in the round 2 scratch folder) and looked at the 94 main planes with a precise lidar fit.
+
+| Question | Lidar | City |
+|---|---|---|
+| Within 0.15 in 12 of a whole-number pitch (chance is 30%) | 85% | 50% |
+| Mean offset from the nearest whole-number pitch | 0.04 below | 0.14 below |
+| Spread between the large planes of one house (38 houses with the benchmark) | 0.09 in 12 | 0.15 in 12 |
+
+- The lidar pitches of one house are closer together than its city pitches on 29 of the 33 houses that have two or more large planes.
+- Lidar is steeper than the city on 90% of the planes, by 0.12 in 12 on average.
+- Two flight lines over house 218452, at scan angles of -13 and +9 degrees, give 4.09 and 4.06, 6.76 and 6.80, and 4.10 and 4.09 in 12 on its three planes.
+- Fitting each half of a plane on its own gives pitches that differ by about what the tool's standard error predicts (median 0.8 times, 18 planes). The standard error is honest on clean planes.
+- There was no snow. Station `USW00014944` (Sioux Falls airport) recorded no snowfall and zero snow depth from 15 November to 22 December 2020, and the last snow before that (14 cm on 10 November) was gone by 15 November.
+- Lidar roof planes sit about 0.1 m above the city roof planes while the ground heights agree. Snow would raise both, so this is not snow. It does not affect pitch.
+
+The same sample showed what the plane fit cannot see, which is now the `lidar-surface` flag: a tree 4 m above the north plane of 177261, something solid 0.7 to 1.5 m above two planes of 235247 (most likely dormers or an upper roof the city model lacks), and 29% of the largest plane of twin home 176864 lying 0.4 m lower than the model (the two units are stepped, and the city drew one plane).
+
 ## What the lidar says about the outline
 
-The roof-edge position was checked on six houses by counting lidar points that lie on the extension of a roof plane, by distance from the city outline.
+The roof-edge position was checked on eight houses by counting lidar points that lie on the extension of a roof plane, by distance from the city outline. Round 2 re-ran round 1's script on all eight clean benchmark houses.
 
-- Points whose laser pulse hit only the roof stop 0.19 to 0.31 m inside the outline. Points whose pulse hit the roof and then the ground reach 0.16 to 0.39 m outside it. The roof edge is midway between the two.
-- That midpoint is within 0.07 m of the city outline on all six houses, with no lean in or out (mean 0.00 m).
-- So the city outline is the roof edge and not the wall line, which would sit 0.3 to 0.6 m further in. For a typical house, 0.07 m around the perimeter is about 2% of plan area. That is the resolution of this check, not a measured error.
+- Points whose laser pulse hit only the roof stop 0.18 to 0.30 m inside the outline. Points whose pulse hit the roof and then the ground reach 0.00 to 0.38 m outside it. The roof edge is taken to be midway between the two, which assumes the laser spot is symmetric.
+- That midpoint is 0.02 m inside the city outline on average, with a scatter of 0.07 m; the worst house (235247) is 0.14 m inside. Round 1 reported "within 0.07 m on all six houses"; that holds for 7 of the 8.
+- So the city outline is the roof edge and not the wall line, which would sit 0.3 to 0.6 m further in.
+- This is the resolution of the check, not a measured error, and it is coarse: 0.1 m around the perimeter is 2 to 4% of plan area. Lidar cannot confirm the 2% area target. A taped eave can.
 - On City Hall, where a parapet stands on the outline, the same count stops 0.33 m inside. The method does not push edges outward by itself.
 
 ## Studio import check
@@ -70,7 +90,7 @@ The check was not run in a real browser. That takes about 5 minutes with `?glb=r
 
 ## Unit tests
 
-`python3 -m unittest discover -s tests` runs 51 tests in under 2 seconds with no network. They cover the decoder, synthetic gable, hip, lean-to and butterfly roofs with hand-computed answers, the 235245 acceptance numbers, both map conversions against PROJ reference values, the lidar plane fit, its standard error and the reconcile rule (on synthetic points and on 5,308 real lidar points), the re-tilt, the three output files, the offline cache and the command line. Eight of them are regression tests for the bugs found in review round 1.
+`python3 -m unittest discover -s tests` runs 60 tests in under 2 seconds with no network. They cover the decoder, synthetic gable, hip, lean-to and butterfly roofs with hand-computed answers, the 235245 acceptance numbers, both map conversions against PROJ reference values, the lidar plane fit, its standard error and the reconcile rule (on synthetic points and on 5,308 real lidar points), the re-tilt, the three output files, the offline cache and the command line. Eight of them are regression tests for the bugs found in review round 1, and nine cover the fixes and new checks of review round 2 (points off the roof surface, permits, the site-check status, and a download that is cut off).
 
 ## Timing and load
 
@@ -79,6 +99,7 @@ A first run with lidar took 8 seconds for house 235245 and made 21 requests: 2 t
 ## Not yet validated
 
 1. No comparison with ground truth. This is the accuracy study, step 1 in `references/implementation-plan.md`. The rule "lidar supplies the pitch" depends on it most.
-2. Only 12 buildings, and 4 of them are in one neighbourhood.
-3. No house with heavy tree cover, and no check of the lidar flight days (19 and 20 December 2020) for snow.
-4. The reconcile thresholds were set on this benchmark and are not tuned against truth.
+2. Only 13 benchmark buildings, and 4 of them are in one neighbourhood. The 30 extra houses of review round 2 were used for the pitch rule only; nobody looked at their line totals.
+3. The plan area. Lidar confirms the outline only to 2 to 4% of the area (see above).
+4. The `lidar-surface` thresholds (10% of points 0.3 m off the surface, 25% at ground level) were set on 43 houses and not checked against photos.
+5. The reconcile thresholds were set on this benchmark and are not tuned against truth.
