@@ -9,6 +9,7 @@ import {
 } from './roof-geometry.js';
 import * as TX from './textures.js';
 import { inToM, fmtFtIn, easeInOutCubic, hexToRgb, rgbToHex } from './util.js';
+import { toQuantities } from './quote.js';
 
 // Physical stack heights above the rafters (metres). Real thicknesses with a
 // little separation so nothing z-fights at house scale.
@@ -548,36 +549,36 @@ export class RoofLayers {
     return cut > 0.8 ? 0.20 : cut > 0.4 ? 0.17 : 0.15;
   }
 
+  /** Measured inputs for the materials list (quote.js). Feet and square feet. */
+  quantities() {
+    const ice = this.layers.get('iceWater');
+    return toQuantities({
+      measure: this.measure,
+      ridgeLengthsM: this.segs.ridge.map((l) => l.A.distanceTo(l.B)),
+      iceM2: ice ? geomArea(ice.obj.geometry) : 0,
+      iceRows: ice ? this.iceRows : 0,
+      ventOn: this.options.ridgeVent !== false,
+      nailCount: this.layers.get('nails')?.count || 0,
+      deckRepairSheets: Math.max(0, Math.round(this.options.deckRepairSheets || 0)),
+      category: this.product?.category || 'shingle',
+    });
+  }
+
+  /** Measurements only. Order quantities and prices are on the List tab (quote.js reads quantities()). */
   takeoff({ waste = this.suggestedWaste() } = {}) {
     const m = this.measure;
-    const sq = m.squares;
-    const lf = (x) => x / 0.3048;
-    const p = this.product || {};
-    const cat = p.category || 'shingle';
-    const isMetal = cat === 'metal', isShingle = cat === 'shingle';
-    const ice = this.layers.get('iceWater');
-    const iceArea = ice ? geomArea(ice.obj.geometry) : 0;
-    const nails = this.layers.get('nails')?.count || 0;
-    const vent = this.layers.get('ridgeVent');
-    const covering = isShingle ? ['Shingle bundles (3 per sq, incl. waste)', `${Math.ceil(sq * (1 + waste) * 3)}`]
-      : isMetal ? ['Metal panels (sq, incl. waste)', (sq * (1 + waste)).toFixed(1)]
-        : [`${cat === 'tile' ? 'Tile' : cat === 'slate' ? 'Slate' : 'Shakes'} (sq, incl. waste)`, (sq * (1 + waste)).toFixed(1)];
-    const rows = [
-      ['Roof area', `${m.areaM2.toFixed(1)} m² · ${(m.areaM2 * 10.7639).toFixed(0)} sq ft`],
-      ['Squares (before waste)', sq.toFixed(2)],
+    const q = this.quantities();
+    const valleys = this.options.valleys && this.segs.valley.length;
+    return [
+      ['Roof area', `${m.areaM2.toFixed(1)} m² · ${q.areaSqft.toFixed(0)} sq ft`],
+      ['Squares (before waste)', q.squares.toFixed(2)],
       [`Waste allowance`, `${Math.round(waste * 100)}%`],
-      covering,
       ['Eaves', fmtLen(m.eaveM)], ['Rakes', fmtLen(m.rakeM)], ['Ridges', fmtLen(m.ridgeM)], ['Hips', fmtLen(m.hipM)], ['Valleys', fmtLen(m.valleyM)],
-      ['Drip edge (10\' pieces)', `${Math.ceil(lf(m.eaveM + m.rakeM) * 1.05 / 10)}`],
-      ['Starter (LF)', isShingle ? `${Math.ceil(lf(m.eaveM + m.rakeM) * 1.05)}` : '—'],
-      ['Ice & water (2 sq rolls, approx.)', `${Math.max(1, Math.ceil(iceArea * 10.7639 * 1.1 / 200))}`],
-      ['Underlayment (10 sq rolls)', `${Math.max(1, Math.ceil(sq * 1.1 / 10))}`],
-      ['Ridge vent (LF)', vent ? `${Math.ceil(lf(m.ridgeM) - 2 * lf(0.3))}` : '—'],
-      ['Hip & ridge cap (LF)', `${Math.ceil(lf(m.ridgeM + m.hipM) * 1.05)}`],
-      ['Deck repair allowance (sheets)', `${this.layers.get('deckRepair')?.count ?? 0}`],
-      [isMetal ? 'Panel clips' : isShingle ? 'Field nails (shingles only)' : 'Fasteners', nails.toLocaleString()],
+      ['Ice & water area', q.iceSqft > 0 ? `${q.iceSqft.toFixed(0)} sq ft · ${q.iceRows} row${q.iceRows === 1 ? '' : 's'} at eaves${valleys ? ' + valleys' : ''}` : '—'],
+      ['Ridge vent', q.ventFt > 0 ? fmtLen(q.ventFt * 0.3048) : '—'],
+      [q.category === 'metal' ? 'Panel clips (count)' : q.category === 'shingle' ? 'Field nails (count)' : 'Fasteners (count)', q.nailCount.toLocaleString()],
+      ['Deck repair allowance (sheets)', `${q.deckRepairSheets}`],
     ];
-    return rows;
   }
 
   /** True while any visible layer is only partly built (the path tracer cannot show that). */
