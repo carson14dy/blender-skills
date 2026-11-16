@@ -82,3 +82,13 @@ def test_chained_ties_form_one_group():
     ps = fusion.ParamSpace([dict(id="A"), dict(id="B"), dict(id="C")], ["A.pitch", "B.pitch", "C.pitch"],
                            ties=[["A.pitch", "B.pitch"], ["B.pitch", "C.pitch"]])
     assert len(ps.groups) == 1 and sorted(ps.groups[0]) == ["A.pitch", "B.pitch", "C.pitch"]
+
+
+def test_outline_rms_reports_true_distance():
+    truth = Wing(**TRUE)
+    outline = list(truth.roof_outline().exterior.coords)[:-1]
+    shifted = [[x + 0.2, y] for x, y in outline]   # 0.2 m east: mean boundary distance ~0.1 m
+    spec = {"wings": [TRUE], "free": []}
+    res = fusion.fit(spec, [{"target": "outline", "polygon": shifted, "sigma": 0.25, "source": "trace"}])
+    row = res["residuals"][0]
+    assert 0.05 < row["rms_m"] < 0.2

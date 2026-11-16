@@ -108,6 +108,15 @@ without aligning and checking it against LiDAR or tape.
 | `out/model.blend`, `out/model.glb` | metric, georeferenced (ENU, 1 unit = 1 m) Blender scene / glTF |
 | `out/plan.png`, `out/hero.png`, `out/Photo *_overlay.png` | renders and photo overlays |
 
+## Web viewers / Roof Layer Studio
+
+`scripts/blender/export_studio_glb.py OUT/model.blend house.glb` writes a viewer-ready model:
+roof facets named `Roof F1…` (so plane finders pick them up), walls joined as siding, no labels,
+ground, trees or cameras. Where a host cannot serve `.glb` (e.g. Claude artifacts), convert it to
+embedded glTF JSON (base64 buffer, saved as `.gltf.json`) — three.js `GLTFLoader` reads both.
+Automatic edge classification in viewers can double-count where one roof runs under another's
+overhang; ship the report's verified edge lengths alongside the model for takeoffs.
+
 ## Rules
 
 * Never invent observations or σ to make a fit look good; a missing source is just missing.

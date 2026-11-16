@@ -503,6 +503,10 @@ def _fit_once(spec: dict, observations: List[dict], max_iter=40, robust=True, ve
                           "residual_sigma": float(rk[0])})
             entry["flag"] = "CONFLICT" if abs(rk[0]) > 3 else ("check" if abs(rk[0]) > 2 else "ok")
         else:
+            # outline rows are divided by sigma * infl (correlated-sample deflation); undo it here so
+            # the table reports true distances and per-sample sigma units
+            infl = pred._cache[id(o)][1] if o.target == "outline" else 1.0
+            rk = rk * infl
             rms = float(np.sqrt(np.mean(rk ** 2))) if len(rk) else 0.0
             entry.update({"rms_sigma": rms, "frac_gt3": float(np.mean(np.abs(rk) > 3)) if len(rk) else 0.0,
                           "rms_m": rms * o.sigma})
