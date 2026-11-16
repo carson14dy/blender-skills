@@ -12,11 +12,14 @@ PERMIT_WATCH_MS = 1672531200000     # 2023-01-01: work permitted from here on wa
 LIDAR_FLOWN_MS = 1608336000000   # 2020-12-19 UTC: the GPS times of the lidar points over the benchmark houses are 19 and 20 Dec 2020
 SKEW_MAX_DEG = 45.0     # an open edge called rake that runs closer than this to its plane's level line sheds water like an eave
 SKEW_FLAG_M = 3.0       # mention such edges from 10 ft ...
-SKEW_REVIEW_M = 9.0     # ... and ask for a look from 30 ft: less than that does not change an order of starter or ice barrier
+SKEW_REVIEW_M = 9.0     # ... and ask for a look from 30 ft: if it is an eave, that is about one roll of ice barrier at two courses
 ROOF_STEP_REVIEW_M = 3.0    # plane tops shorter than 10 ft in total are mentioned, not put up for review
 REGULARIZE_REVIEW_SHIFT_M = 0.6   # a corner moved 2 ft: one or two lines are off by more than the 1 ft the report promises
+REGULARIZE_REVIEW_PLAN_PCT = 0.5   # ... or the cleaning changed the plan area by more than this: half the plan-area limit
 SMALL_PLANE_M2 = 20.0   # 215 sq ft, the size from which the 1 degree pitch target applies (a "main plane")
 SMALL_PLANES_SHARE = 0.10   # small planes with an unsettled pitch may cover this share of the roof before it is a site check
+SMALL_PLANES_AREA_EFFECT = 0.005   # ... and the choice between their two pitches may move the roof area by this share
+LOW_SLOPE_DEG = math.degrees(math.atan(2.0 / 12.0))   # 2 in 12: below this a shingle is the wrong material
 
 
 def skewed_edges_m(model):
@@ -43,20 +46,29 @@ def unsettled_small_planes_only(model, rows):
 
     Review round 4: 9 of 51 random houses were a site check because of lidar, 3 of them for one plane under
     215 sq ft where lidar sees one clean surface 1.5 to 4 degrees off the city pitch but its fit is not sharp
-    enough to supply the pitch. At 4 degrees such a plane moves the roof area by 0.3% at most, a tenth of the
-    printed range. That is a pitch to check on site, not a reason to withhold every number of the house.
-    Anything else stays a site check: a main plane, more than 4 degrees, or no single surface in lidar.
+    enough to supply the pitch. That is a pitch to check on site, not a reason to withhold every number of the
+    house. Anything else stays a site check: a main plane, more than 4 degrees, or no single surface in lidar.
+
+    Review round 5 made the two promises in the flag hold for every roof, not only for the three houses seen:
+    the two pitches together may move the roof area by SMALL_PLANES_AREA_EFFECT at most (several steep small
+    planes could reach 1.2% under the round 4 rule), and they must lie on the same side of 2 in 12, because
+    below that a shingle is the wrong material and the tool cannot say which pitch is right.
     """
     from .lidar import MIN_INLIER_FRACTION, OVERRIDE_DEG
-    area = 0.0
+    area = effect = 0.0
     for r in rows:
         P = model.planes[r["plane"]]
         clean = r.get("points") and r.get("inliers", 0) >= MIN_INLIER_FRACTION * r["points"]
         if (not clean or abs(r.get("pitchDiffDeg", 99.0)) > OVERRIDE_DEG or P["areaM2"] >= SMALL_PLANE_M2
                 or r.get("surfaceKind") == "ground"):
             return False
+        city, other = P["pitchDeg"], P["pitchDeg"] + r["pitchDiffDeg"]
+        if (city < LOW_SLOPE_DEG) != (other < LOW_SLOPE_DEG) or not 0.0 <= other < 85.0:
+            return False
         area += P["areaM2"]
-    return area <= SMALL_PLANES_SHARE * (model.sloped_area or 1.0)
+        effect += P["areaM2"] * abs(math.cos(math.radians(city)) / math.cos(math.radians(other)) - 1.0)
+    total = model.sloped_area or 1.0
+    return area <= SMALL_PLANES_SHARE * total and effect <= SMALL_PLANES_AREA_EFFECT * total
 
 
 def find_house(http, out_root, oid=None, latlon=None, address=None):
@@ -120,11 +132,17 @@ def assess(model, footprint, solid_info=None, lookup=None, lidar=None, permits=N
     if shift > planes.REGULARIZE_WARN_SHIFT_M or gap > planes.REGULARIZE_WARN_GAP_M:
         # Review round 4: 25 of 64 houses moved a corner more than 1 ft, most of them only because the lidar pitch
         # moved the point where three planes meet. Under 2 ft that is inside the 1 ft per line end the report states.
-        bad = shift >= REGULARIZE_REVIEW_SHIFT_M or gap > planes.REGULARIZE_WARN_GAP_M
+        # Review round 5: one house in 64 lost 0.8% of its plan area to a corner that moved 1.4 ft, as an info flag.
+        src = model.stats.get("sourcePlanAreaM2") or 0.0
+        plan_pct = 100.0 * (model.plan_area / src - 1.0) if src > 0 else 0.0
+        bad = (shift >= REGULARIZE_REVIEW_SHIFT_M or gap > planes.REGULARIZE_WARN_GAP_M
+               or abs(plan_pct) > REGULARIZE_REVIEW_PLAN_PCT)
         flag("regularize", "review" if bad else "info",
              "making the planes flat%s moved a corner %.1f ft (gap left %.2f ft); the ridge, hip and valley lines that meet "
-             "there can be off by about that much" % (" and giving them the lidar pitch" if model.stats.get("retiltedPlanes") else "",
-                                                      m_to_ft(shift), m_to_ft(gap)))
+             "there can be off by about that much%s" % (" and giving them the lidar pitch" if model.stats.get("retiltedPlanes") else "",
+                                                        m_to_ft(shift), m_to_ft(gap),
+                                                        ", and the plan area changed by %+.1f%%" % plan_pct
+                                                        if abs(plan_pct) > REGULARIZE_REVIEW_PLAN_PCT else ""))
     if solid_info and solid_info.get("exceededTransferLimit"):
         flag("solid-match", "review", "more solids touch this footprint than one request returns; the right one may be missing")
     elif solid_info and (solid_info.get("candidates", 1) > 1 or solid_info.get("bboxIoU", 1) < 0.8):
@@ -208,8 +226,12 @@ def assess(model, footprint, solid_info=None, lookup=None, lidar=None, permits=N
         bad = [r for r in lidar["planes"] if r["status"] == "site_check"]
         if bad:
             if unsettled_small_planes_only(model, bad):
-                flag("lidar-disagrees", "review", "%s: lidar and the city differ by 1.5 to 4 deg and lidar cannot settle it. "
-                     "Each is under 215 sq ft, so the total area moves by under 0.5%%; check that pitch on site" % named(bad))
+                both = ", ".join("plane %d (city %.1f in 12, lidar %.1f in 12)" % (
+                    r["plane"], model.planes[r["plane"]]["pitchIn12"],
+                    12 * math.tan(math.radians(model.planes[r["plane"]]["pitchDeg"] + r["pitchDiffDeg"]))) for r in bad[:4])
+                flag("lidar-disagrees", "review", "%s%s: lidar and the city differ by 1.5 to 4 deg and lidar cannot settle it. "
+                     "Each is under 215 sq ft, so the total area moves by under 0.5%%; check that pitch on site"
+                     % (both, " and %d more" % (len(bad) - 4) if len(bad) > 4 else ""))
             else:
                 flag("lidar-disagrees", "site-check", "%d plane(s) disagree with lidar by more than the limit (%s)" % (len(bad), named(bad)))
         over = [r for r in lidar["planes"] if r["status"] == "override"]

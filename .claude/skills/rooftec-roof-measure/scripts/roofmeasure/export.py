@@ -278,7 +278,9 @@ def write_glb(path, model, attribution, floor_z=0.0, extras=None):
         f.write(struct.pack("<4sII", b"glTF", 2, 12 + 8 + len(js) + 8 + len(blob)))
         f.write(struct.pack("<I4s", len(js), b"JSON") + js)
         f.write(struct.pack("<I4s", len(blob), b"BIN\0") + blob)
-    return {"roofTriangles": len(roof) // 3, "wallTriangles": len(walls) // 3}
+    t = roof.reshape(-1, 3, 3).astype(np.float64)
+    area = float(0.5 * np.linalg.norm(np.cross(t[:, 1] - t[:, 0], t[:, 2] - t[:, 0]), axis=1).sum())
+    return {"roofTriangles": len(roof) // 3, "wallTriangles": len(walls) // 3, "roofAreaM2": _r(area, 2)}
 
 
 def read_glb_json(path):

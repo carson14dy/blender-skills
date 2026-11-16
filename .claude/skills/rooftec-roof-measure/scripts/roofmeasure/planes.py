@@ -100,6 +100,65 @@ def triangulate(poly2):
     return tris
 
 
+def simple_loops(p):
+    """Split a ring (Nx3) that crosses or touches itself, seen from above, into simple loops. Returns Nx3 arrays.
+
+    About one city roof face in 25 is drawn with a twisted corner: two of its edges cross (review round 5:
+    17 of 444 faces, on 12 of 64 houses). Ear clipping cannot triangulate such a ring and covered up to 10 m2 that is
+    not roof. The ring is cut at each crossing; the small loop a twist encloses runs the other way round and
+    is left out. A ring that does not cross itself comes back unchanged.
+    """
+    p = np.asarray(p, dtype=np.float64)
+    n = len(p)
+    if n < 4:
+        return [p]
+    total = _signed_plan_area(p)
+    out = []
+    todo = [p]
+    while todo:
+        q = todo.pop()
+        cut = _first_crossing(q)
+        if cut is None:
+            a = _signed_plan_area(q)
+            if len(q) >= 3 and abs(a) > 1e-6 and (a > 0) == (total > 0):
+                out.append(q)
+            continue
+        i, j, x = cut
+        todo.append(np.vstack([x[None, :], q[i + 1:j + 1]]))
+        todo.append(np.vstack([q[:i + 1], x[None, :], q[j + 1:]]))
+    return out if out else [p]
+
+
+def _signed_plan_area(q):
+    return 0.5 * float(np.sum(q[:, 0] * np.roll(q[:, 1], -1) - np.roll(q[:, 0], -1) * q[:, 1]))
+
+
+def _first_crossing(q, tol=1e-9, end=1e-6):
+    """(i, j, point) for the first pair of edges i < j of the ring that cross seen from above, else None.
+
+    An edge that only touches another with one of its ends counts too (`end`): that is a spike or a pinch.
+    """
+    n = len(q)
+    for i in range(n):
+        a, b = q[i], q[(i + 1) % n]
+        r = b[:2] - a[:2]
+        for j in range(i + 2, n):
+            if (j + 1) % n == i:
+                continue
+            c, d = q[j], q[(j + 1) % n]
+            s = d[:2] - c[:2]
+            den = r[0] * s[1] - r[1] * s[0]
+            if abs(den) < 1e-12:
+                continue
+            w = c[:2] - a[:2]
+            t = (w[0] * s[1] - w[1] * s[0]) / den
+            u = (w[0] * r[1] - w[1] * r[0]) / den
+            if (tol < t < 1 - tol and -end <= u <= 1 + end) or (tol < u < 1 - tol and -end <= t <= 1 + end):
+                t = min(max(t, 0.0), 1.0)
+                return i, j, a + t * (b - a)
+    return None
+
+
 class RoofModel:
     """Result of `build_model`. All coordinates are local metres."""
 
@@ -134,12 +193,12 @@ class RoofModel:
         for f in self.faces:
             if f["kind"] != "roof":
                 continue
-            p = self.verts[f["ring"]]
-            for t in triangulate(p[:, :2]):
-                tri = p[list(t)]
-                if newell(tri)[2] < 0:
-                    tri = tri[::-1]
-                out.append((f["plane"], tri))
+            for p in simple_loops(self.verts[f["ring"]]):
+                for t in triangulate(p[:, :2]):
+                    tri = p[list(t)]
+                    if newell(tri)[2] < 0:
+                        tri = tri[::-1]
+                    out.append((f["plane"], tri))
         return out
 
     def wall_triangles(self, floor_z=None):
@@ -432,6 +491,7 @@ def _solve_and_measure(m):
         })
 
     # 6. classify atomic roof edges
+    raw = m.verts_raw
     walls = []
     for f in faces:
         if f["kind"] != "wall":
@@ -439,13 +499,15 @@ def _solve_and_measure(m):
         n = f["n"]
         t = np.array([-n[1], n[0], 0.0])
         t /= np.linalg.norm(t)
-        p = verts[f["ring"]]
+        p = raw[f["ring"]]
         walls.append({"n": n, "d": float(n @ p.mean(0)), "t": t, "poly2": np.column_stack([p @ t, p[:, 2]])})
 
     def wall_above(mid):
-        # Is there a wall rising from this roof edge? Probe at two heights so the answer does not flip
-        # when cleaning or a re-tilt moves a corner by a few centimetres. A wall shorter than the lower
-        # probe is a sliver in the source model, not a wall that needs flashing.
+        # Is there a wall rising from this roof edge? A wall shorter than the lower probe is a sliver in the
+        # source model, not a wall that needs flashing. The question is asked of the faces as delivered, not
+        # of the cleaned or re-tilted corners: lidar supplies a pitch and says nothing about walls. Review
+        # round 5: on one house a wall 11 cm tall at the probe became 9.5 cm after the re-tilt, and 22 ft of
+        # step flashing turned into rake.
         for w in walls:
             if abs(w["n"] @ mid - w["d"]) >= WALL_NEAR_M:
                 continue
@@ -506,7 +568,7 @@ def _solve_and_measure(m):
         fi, a1, b1 = rf[0]
         P = m.planes[pl[0]]
         low_side = False
-        if wall_above((a + b) / 2):
+        if wall_above((raw[va] + raw[vb]) / 2):
             etype = "headwall" if horizontal else "step_flashing"
             # a level roof-to-wall joint at the bottom of its plane cannot drain: the source model
             # most likely simplified a gable tie-in there (pipeline.assess flags it)

@@ -970,6 +970,16 @@ class Round4(unittest.TestCase):
         self.assertEqual(flags["solid-match"]["severity"], "review")   # no footprint area to confirm the choice
         m.stats["regularizeMaxShiftM"] = 0.70
         self.assertEqual(self._assess(m)[0]["regularize"]["severity"], "review")
+        # Round 5, sample house 220518: a corner moved 1.4 ft and took 0.8% of the plan area with it, as an info flag
+        m.stats["regularizeMaxShiftM"] = 0.43
+        m.stats["sourcePlanAreaM2"] = m.plan_area / (1 - 0.0079)
+        f = self._assess(m)[0]["regularize"]
+        self.assertEqual(f["severity"], "review")
+        self.assertIn("the plan area changed by -0.8%", f["message"])
+        m.stats["sourcePlanAreaM2"] = m.plan_area / (1 - 0.0040)
+        f = self._assess(m)[0]["regularize"]
+        self.assertEqual(f["severity"], "info")
+        self.assertNotIn("plan area", f["message"])
         fp, solid = fixture_house()
         hm, _ = pipeline.model_from_features(fp, solid)
         _, fl, _ = pipeline.assess(hm, fp, {"candidates": 2, "bboxIoU": 0.97}, {"by": "oid"}, None, permits=[])
@@ -1019,6 +1029,107 @@ class Round4(unittest.TestCase):
         finally:
             pipeline.model_from_features = real
             shutil.rmtree(tmp, ignore_errors=True)
+
+
+class Round5(unittest.TestCase):
+    """Review round 5: the wall test reads the faces as delivered, and the small-plane rule keeps its two promises."""
+
+    def test_a_low_wall_stays_a_wall_when_lidar_tilts_the_plane_above_it(self):
+        # Sample house 239951: a wall between two planes, 0 to 22 cm tall, was 11 cm tall where the probe looks.
+        # The lidar pitch lowered the upper plane by 1.5 cm there and 22 ft of step flashing became rake.
+        low = [(0, -4, 3.0), (8, -4, 6.2), (8, 0, 6.2), (0, 0, 3.0)]            # rises along x at 0.4
+        high = [(0, 0, 3.22), (8, 0, 6.2), (8, 4, 6.2), (0, 4, 3.22)]           # the same line, 22 cm higher at x = 0
+        wall = [(0, 0, 3.0), (8, 0, 6.2), (0, 0, 3.22)]
+        m = model_of([low, high, wall])
+        hi = max(m.planes, key=lambda p: p["centroid"][1])["id"]
+        lo = 1 - hi
+
+        def on_joint(pid):                                  # the model's origin is the low corner, so the joint is at y = 4
+            return [e for e in m.edges if e["planes"] == [pid] and abs(e["a"][1] - 4) < 0.01 and abs(e["b"][1] - 4) < 0.01]
+
+        def joint():
+            return [(e["type"], round(e["lengthM"], 1)) for e in on_joint(lo)]
+        self.assertEqual(joint(), [("step_flashing", 8.6)])
+        self.assertEqual(planes.retilt(m, {hi: 21.0}), [hi])                    # the city face is at 20.4 degrees
+        upper, lower = on_joint(hi)[0], on_joint(lo)[0]
+        gap_mid = (upper["a"][2] + upper["b"][2] - lower["a"][2] - lower["b"][2]) / 2
+        self.assertLess(gap_mid, planes.WALL_PROBE_UP_M[0])                     # the re-tilted wall is under the probe ...
+        self.assertGreater(gap_mid, 0.02)
+        self.assertEqual(joint(), [("step_flashing", 8.6)])                     # ... and the joint keeps its class
+
+    def test_a_face_drawn_with_a_twisted_corner_is_not_bigger_in_the_glb(self):
+        # Held-out house 190679: a city face whose last two corners are swapped, so two of its edges cross. Ear
+        # clipping covered 4.4 m2 that is not roof, and the GLB held 2.3% more area than roof.json (up to 2.9%
+        # on 12 of 64 houses; City Hall's 0.6% since round 1 was the same thing, with a spike instead of a twist).
+        def tri_area(loops):
+            return sum(float(np.linalg.norm(planes.newell(q[list(t)]))) for q in loops for t in planes.triangulate(q[:, :2]))
+        square = np.array([(0, 0, 0), (10, 0, 0), (10, 10, 0), (0, 10, 0)], float)
+        loops = planes.simple_loops(square)
+        self.assertEqual(len(loops), 1)
+        self.assertTrue(np.array_equal(loops[0], square))                       # a clean ring is not touched
+        # down the left side to (0, 1), a step out, back up, and then the closing edge cuts across the left side
+        twisted = np.array([(3, -2, 0), (10, 0, 0), (10, 10, 0), (0, 10, 0), (0, 1, 0), (-0.5, 1, 0), (-0.5, 2, 0)], float)
+        self.assertAlmostEqual(tri_area([twisted]), 112.5, delta=0.01)          # what the GLB used to hold: 4.6 m2 too much
+        loops = planes.simple_loops(twisted)
+        self.assertEqual(len(loops), 1)                                         # the small loop of the twist is left out
+        main = tri_area(loops)
+        net = float(np.linalg.norm(planes.newell(twisted)))                     # what roof.json holds: main loop minus twist
+        self.assertAlmostEqual(main, 107.857, delta=0.01)
+        self.assertAlmostEqual(main - net, 0.357, delta=0.01)
+        spike = np.array([(9, 10, 0), (11, 10, 0), (0, 10, 0), (0, 0, 0), (10, 0, 0)], float)   # an edge runs past
+        self.assertAlmostEqual(float(np.linalg.norm(planes.newell(spike))), 95.0, delta=1e-9)   # its corner and back
+        self.assertAlmostEqual(tri_area(planes.simple_loops(spike)), 95.0, delta=1e-6)
+        # the same through a model: one plane at 6 in 12 with a twisted corner, and the GLB writer's own count
+        k = math.sqrt(1.25)
+        m = model_of([[(x, y, 3 + 0.5 * y) for x, y, _ in twisted]])
+        glb = sum(float(np.linalg.norm(planes.newell(t))) for _, t in m.roof_triangles())
+        self.assertAlmostEqual(glb, 107.857 * k, delta=0.05)
+        self.assertLess(abs(glb / m.sloped_area - 1), 0.004)
+        tmp = tempfile.mkdtemp(prefix="roofmeasure-test-")
+        try:
+            info = export.write_glb(os.path.join(tmp, "r.glb"), m, "test")
+            self.assertAlmostEqual(info["roofAreaM2"], glb, delta=0.01)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+        gable, _ = synthetic.gable()
+        gm = model_of(gable)
+        self.assertAlmostEqual(sum(float(np.linalg.norm(planes.newell(t))) for _, t in gm.roof_triangles()), gm.sloped_area, delta=1e-6)
+
+    def _porch_house(self, rise, depth=4.0, L=12.0):
+        faces, _ = synthetic.gable(L=L, W=10, pitch12=6)
+        porch = [[(L, 2, 2.5), (L + 3, 2, 2.5), (L + 3, 2 + depth, 2.5 + rise), (L, 2 + depth, 2.5 + rise)]]
+        m = model_of(faces + porch)
+        return m, min(m.planes, key=lambda p: p["areaM2"])
+
+    def _severity(self, m, P, diff):
+        row = {"plane": P["id"], "status": "site_check", "action": "keep_city", "points": 55, "inliers": 55,
+               "pitchDiffDeg": diff, "pitchSeDeg": 0.3}
+        lid = {"planes": [row], "registration": None,
+               "summary": {"planesChecked": 1, "siteCheck": 1, "override": 0, "pitchFromLidar": 0}}
+        _, flags, _ = pipeline.assess(m, None, {}, {"by": "files"}, lid, permits=[])
+        return [(f["severity"], f["message"]) for f in flags if f["code"] == "lidar-disagrees"][0]
+
+    def test_small_plane_rule_keeps_its_area_promise(self):
+        # Round 4 said "the total area moves by under 0.5%" for any small planes up to 10% of the roof. A steep
+        # plane breaks that: at 60 degrees, 4 degrees are 14% of its own area.
+        m, P = self._porch_house(rise=3.0 * math.tan(math.radians(60)), depth=3.0, L=20.0)
+        self.assertLess(P["areaM2"], pipeline.SMALL_PLANE_M2)
+        self.assertLess(P["areaM2"], pipeline.SMALL_PLANES_SHARE * m.sloped_area)
+        self.assertEqual(self._severity(m, P, 4.0)[0], "site-check")            # 1.0% of the roof
+        self.assertEqual(self._severity(m, P, 1.6)[0], "review")                # 0.4% of the roof
+        m, P = self._porch_house(rise=1.5)                                       # the round 4 case: 20.6 degrees
+        sev, msg = self._severity(m, P, 2.3)
+        self.assertEqual(sev, "review")
+        self.assertIn("plane %d (city 4.5 in 12, lidar 5.1 in 12)" % P["id"], msg)   # both pitches are named
+
+    def test_small_plane_rule_does_not_decide_between_shingle_and_low_slope(self):
+        # City 2.5 in 12, lidar 1.9 in 12: under 2 in 12 a shingle is the wrong material, so someone must look.
+        m, P = self._porch_house(rise=4.0 * 2.5 / 12)
+        self.assertAlmostEqual(P["pitchIn12"], 2.5, delta=0.01)
+        self.assertEqual(self._severity(m, P, -2.8)[0], "site-check")
+        self.assertEqual(self._severity(m, P, +2.8)[0], "review")               # 2.5 against 3.1 in 12: both shingle slopes
+        m, P = self._porch_house(rise=4.0 * 1.6 / 12)                            # city 1.6 in 12, lidar 2.2 in 12
+        self.assertEqual(self._severity(m, P, +2.8)[0], "site-check")
 
 
 class Lookup2(unittest.TestCase):

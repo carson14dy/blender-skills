@@ -23,7 +23,7 @@ All lengths are metres in a local frame: x is east, y is north, z is up, and z =
 
 **Quote `summary.areaRange` with the area.** It holds `lowFt2`, `highFt2`, `plusMinusFt2` and `plusMinusPct` for the sloped area, the two parts it is made of (`outlinePct`, `pitchPct`), the outline tolerance in metres and the length of open edge it was applied to. It is a likely range from the outline and the pitch, not a guarantee; `references/accuracy.md` explains it. `areaRange.underOverhang` is separate and is not inside the range: `jointFt` (length of the roof-to-wall joints), `assumedOverhangIn`, and the `areaFt2` and `pct` of lower roof that would lie hidden under the upper roof's overhang. Its confidence is `assumed`.
 
-`checks.permits` holds the permit lookup: `checked`, `roofShapePermits`, `sinceCapture` (the permits behind a `permit-since-capture` flag), `otherSinceCapture` (repair and remodel permits, information only) and `lastReshingle`. `checks.lidar.returnCounts` says whether the lidar points carried return counts, which the tree-or-dormer test needs.
+`checks.permits` holds the permit lookup: `checked`, `roofShapePermits`, `sinceCapture` (the permits behind a `permit-since-capture` flag), `otherSinceCapture` (repair and remodel permits, information only) and `lastReshingle`. `checks.lidar.returnCounts` says whether the lidar points carried return counts, which the tree-or-dormer test needs. `checks.glb` holds the triangle counts of `roof.glb` and `roofAreaM2`, the area of its roof mesh. That area equals `summary.slopedAreaM2`, except on a roof where a city face crosses itself (about 1 house in 5): there the mesh holds the face without the twisted corner and is up to 0.4% larger.
 
 ## A plane
 
@@ -36,7 +36,7 @@ All lengths are metres in a local frame: x is east, y is north, z is up, and z =
 - `ridge`, `hip`, `valley`: two planes meet. Convex and level is a ridge, convex and sloped is a hip, concave is a valley. A ridge with `splitRidge: true` was drawn in the city model as two plane tops with a sliver wall between them.
 - Level means the edge rises less than 3 degrees, or runs within 10 degrees of its plane's contour line seen from above. An open edge that runs more than 45 degrees off the contour line is never level; this matters only on planes flatter than about 0.9 in 12, where every edge rises less than 3 degrees.
 - `eave`, `rake`: the outer roof edge. Level at the low side is an eave; sloped is a rake. A rake that runs less than 45 degrees off the level line of its plane is doubtful, and 10 ft or more of such edges raise the `skewed-edge` flag (review from 30 ft).
-- `step_flashing`, `headwall`: the roof meets a wall that rises above it, sloped or level. A `headwall` with `lowSide: true` sits at the bottom of its plane, which usually means the city model simplified a gable tie-in.
+- `step_flashing`, `headwall`: the roof meets a wall that rises above it, sloped or level. The wall must be at least 10 cm tall above the middle of the edge in the city solid as delivered; the lidar pitch does not change this answer. A `headwall` with `lowSide: true` sits at the bottom of its plane, which usually means the city model simplified a gable tie-in.
 - `top`: the level high edge of a single-slope plane that ends at a wall drop.
 
 ## A provenance block

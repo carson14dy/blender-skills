@@ -1,6 +1,6 @@
 # Review benchmark
 
-Use these 13 buildings and 1 missing-data point for every review round, and do not change the list. Review round 2 added building 14, because no building covered a roof changed under a permit after the capture. Review rounds 3 and 4 added none. A round reports its change level from the difference between two runs of this benchmark.
+Use these 13 buildings and 1 missing-data point for every review round, and do not change the list. Review round 2 added building 14, because no building covered a roof changed under a permit after the capture. Review rounds 3, 4 and 5 added none. A round reports its change level from the difference between two runs of this benchmark.
 
 Buildings are listed by city footprint id only. Addresses are kept out of this file on purpose.
 
@@ -127,6 +127,31 @@ No area and no pitch changed on any building: sloped area 0.00%, every main-plan
 - The studio check passes on 12 of 13 buildings against `rooftec-lab` at commit `39fe9e1` (same plane count, area within 0.14%, City Hall 0.58%). It fails on 204065 as in round 1.
 - Both runs read the same cached city answers and lidar points, offline. The baseline was tag `roof-measure-v4`.
 
+### Round 5 (2026-11-16)
+
+Nothing changed in `roof.json` on any of the 13 buildings: sloped area 0.00%, every main-plane pitch 0.00 in 12, every line total 0.0 ft, the same flags with the same severity, and the same result. The one benchmark file that changed is City Hall's `roof.glb`, which now holds the same area as its `roof.json`.
+
+| Footprint | Area | Pitch | Line totals | Flags | Result | GLB area against `roof.json` (round 4, round 5) |
+|---|---|---|---|---|---|---|
+| 177261 | 1,220.3 | 3.95 | same | same | Estimate | 0.00%, 0.00% |
+| 218452 | 1,540.3 | 4.10 | same | same | Estimate | 0.00%, 0.00% |
+| 175156 | 1,101.9 | 5.29 | same | same | Estimate | 0.00%, 0.00% |
+| 235245 | 3,284.1 | 6.03 | same | same | Estimate | 0.00%, 0.00% |
+| 235246 | 4,796.9 | 3.46 | same | same | Estimate | 0.00%, 0.00% |
+| 235247 | 3,190.1 | 7.99 | same | same | Estimate | 0.00%, 0.00% |
+| 235248 | 3,595.9 | 5.92 | same | same | Estimate | 0.00%, 0.00% |
+| 176864 | 3,713.4 | 4.85 | same | same | Estimate | 0.00%, 0.00% |
+| 204065 | 1,767.4 | 10.24 | same | same | Site check | 0.00%, 0.00% |
+| 250390 | 14,985.8 | 0.02 | same | same | Site check | +0.58%, 0.00% |
+| 363469 | 4,586.8 | 5.94 | same | same | Site check | 0.00%, 0.00% |
+| 363456 | 3,685.6 | 6.01 | same | same | Site check | 0.00%, 0.00% |
+| 199138 | 2,308.3 | 5.25 | same | same | Site check | 0.00%, 0.00% |
+
+- **The benchmark did not catch this round's main bug.** No clean benchmark house has a city face that crosses itself. 11 of the 51 random houses have one, and their GLB held 0.1 to 2.9% more area than `roof.json`. The next round should check rule 5 below on the random houses too; `checks.glb.roofAreaM2` now makes that a one-line comparison.
+- The GLB files of the other 12 benchmark buildings are identical to round 4, byte for byte.
+- The studio check passes on 12 of 13 buildings against `rooftec-lab` at commit `39fe9e1`; 204065 fails on the plane count as before.
+- Both runs read the same cached city answers and lidar points, offline. The baseline was tag `roof-measure-v5`.
+
 ### Line totals in feet, round 1 (v1 in brackets where it changed by more than 1 ft)
 
 | Footprint | Ridge | Hip | Valley | Eave | Rake | Step flashing | Headwall | High edge |
@@ -154,5 +179,5 @@ No area and no pitch changed on any building: sloped area 0.00%, every main-plan
 2. Buildings 1 to 8 keep a plan area within 0.5% of the city footprint area.
 3. On buildings 1 to 8, every main plane with a precise lidar fit shows a pitch within 0.25 degree of that lidar pitch.
 4. All unit tests pass with no network.
-5. Every roof has `summary.areaRange`, and the GLB holds the same sloped area as `roof.json` within 0.01% on buildings 1 to 8.
+5. Every roof has `summary.areaRange`, and the GLB holds the same sloped area as `roof.json` within 0.01% on buildings 1 to 8 (`checks.glb.roofAreaM2` against `summary.slopedAreaM2`). On any other house the two may differ by 0.5% at most; more means a face was triangulated wrongly.
 6. On buildings 1 to 8 the studio check passes (same plane count, area within 1%).
