@@ -239,10 +239,60 @@ export function toStudioProduct(sp, colorName = defaultColor(sp), catalog = null
   return product;
 }
 
+// ---------------------------------------------------------------------------
+// Drip edge profile (020): style and inch sizes from the product name.
+
+/** Kick and hem always come from the style; flange and face when the name gives none. Inches. */
+export const EDGE_STYLES = deepFreeze({
+  A: { flangeIn: 1.375, faceIn: 1.375, kickOutIn: 0, kickDownIn: 0, hemIn: 0 },
+  C: { flangeIn: 2.0, faceIn: 1.5, kickOutIn: 0.375, kickDownIn: 0.375, hemIn: 0 },
+  D: { flangeIn: 2.375, faceIn: 1.6875, kickOutIn: 0.5, kickDownIn: 0.25, hemIn: 0 },
+  apron: { flangeIn: 2.5, faceIn: 2.0, kickOutIn: 0, kickDownIn: 0, hemIn: 0.375 },
+  rake: { flangeIn: 1.5, faceIn: 3.5, kickOutIn: 0, kickDownIn: 0, hemIn: 0.5 },
+});
+
+// an inch size: 2-3/8", 1-11/16", 2.43 in., 3/4", 1 in (not a number that is part of a code such as F4 or C3)
+const INCH = /(?<![\w.\/-])(?:(\d+)-(\d+)\/(\d+)|(\d+)\/(\d+)|(\d+(?:\.\d+)?))\s*(?:"|”|″|in\b\.?|inch(?:es)?\b)/gi;
+// a length in feet: 12', 10 ft, 10.5 ft. (the first one ends the cross-section sizes)
+const FEET = /(?<![\d.\/-])\d+(?:\.\d+)?\s*(?:'|’|′|ft\b|feet\b)/i;
+
+/**
+ * Cross-section of a drip edge, gutter apron or rake trim from its name:
+ * { style: 'A' | 'C' | 'D' | 'apron' | 'rake', flangeIn, faceIn, kickOutIn, kickDownIn, hemIn, approx: [notes] }.
+ * The first two inch sizes before the length are the flange (deck leg) and the face; a single one is the face.
+ * Menards `size.widthIn` is not used: its spec table is unreliable for edging.
+ */
+export function edgeProfileFor(sp) {
+  const name = String(sp?.name || '').replace(/""/g, '"');
+  const style = /style[- ]?a\b/i.test(name) ? 'A'
+    : /style[- ]?c\b|\bC3\b/i.test(name) ? 'C'
+      : /style[- ]?d\b|\bD[- ]style\b|\bF\s?\d/i.test(name) ? 'D'
+        : sp?.kind === 'gutterApron' || /apron/i.test(name) ? 'apron'
+          : sp?.kind === 'rakeTrim' ? 'rake' : 'D';
+  const def = EDGE_STYLES[style];
+  const approx = [];
+  const feet = name.search(FEET);
+  const head = feet >= 0 ? name.slice(0, feet) : name;
+  const sizes = [...head.matchAll(INCH)].slice(0, 2).map((m) => (m[1] ? +m[1] + m[2] / m[3] : m[4] ? m[4] / m[5] : +m[6]));
+  let flangeIn = def.flangeIn, faceIn = def.faceIn;
+  if (sizes.length >= 2) [flangeIn, faceIn] = sizes;
+  else if (sizes.length === 1) { faceIn = sizes[0]; approx.push('flange assumed'); }
+  else approx.push('size assumed from the profile style');
+  const clamp = (what, v, lo, hi) => {
+    const c = Math.min(hi, Math.max(lo, v));
+    if (c !== v) approx.push(`${what} ${+v.toFixed(3)} in. read from the name, drawn at ${c} in.`);
+    return c;
+  };
+  flangeIn = clamp('flange', flangeIn, 0.75, 6);
+  faceIn = clamp('face', faceIn, 0.5, 4);
+  return { style, flangeIn, faceIn, kickOutIn: def.kickOutIn, kickDownIn: def.kickDownIn, hemIn: def.hemIn, approx };
+}
+
 /**
  * What a store product changes on the other layers, as layer option key -> value
  * (pass each to `layers.setOption(key, value)`). Empty when the 3D view does not change.
- *   ridgeCap: { capPalette, capColor } (the other one null); dripEdge: { dripEdge: { id, label, color, metal } };
+ *   ridgeCap: { capPalette, capColor, capWidthIn } (capPalette or capColor null; capWidthIn = a metal cap's widthIn, else null);
+ *   dripEdge: { dripEdge: { id, label, color, metal, profile } } (profile from edgeProfileFor);
  *   underlayment: { underlayment: 'felt30' | 'syn-gray' | 'syn-blue' | 'syn-black' }; iceWater: { iceWater: 'granular' | 'smooth' }.
  */
 export function layerOptionFor(sp, colorName = defaultColor(sp)) {
@@ -251,9 +301,9 @@ export function layerOptionFor(sp, colorName = defaultColor(sp)) {
   const words = `${sp.name || ''} ${colorName || ''}`;
   switch (sp.layer) {
     case 'ridgeCap':
-      return sp.kind === 'metalCap' ? { capColor: hex || NEUTRAL, capPalette: null } : { capPalette: paletteFor(entry, { asphalt: true }), capColor: null };
+      return sp.kind === 'metalCap' ? { capColor: hex || NEUTRAL, capPalette: null, capWidthIn: sp.size?.widthIn > 0 ? sp.size.widthIn : null } : { capPalette: paletteFor(entry, { asphalt: true }), capColor: null, capWidthIn: null };
     case 'dripEdge':
-      return { dripEdge: { id: sp.id, label: colorName ? `${shortName(sp)}, ${colorName}` : shortName(sp), color: hex || NEUTRAL, metal: entry.pbr?.metallic ?? 0.3 } };
+      return { dripEdge: { id: sp.id, label: colorName ? `${shortName(sp)}, ${colorName}` : shortName(sp), color: hex || NEUTRAL, metal: entry.pbr?.metallic ?? 0.3, profile: edgeProfileFor(sp) } };
     case 'underlayment':
       if (sp.kind === 'felt') return { underlayment: 'felt30' };
       return { underlayment: /\bblue\b/i.test(words) ? 'syn-blue' : /\bblack\b/i.test(words) ? 'syn-black' : 'syn-gray' };

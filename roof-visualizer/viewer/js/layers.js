@@ -7,6 +7,7 @@ import {
   buildSurface, fullParts, stripParts, eaveParts, dripEdgeGeometry, capGeometry,
   ridgeVentGeometry, nailLayout, nailGeometry, deckPatches, measureRoof,
 } from './roof-geometry.js';
+import { profileFor, ribbedSurface, rakeTrimGeometry, metalCapProfile, onRibs } from './profiles.js';
 import * as TX from './textures.js';
 import { inToM, fmtFtIn, easeInOutCubic, hexToRgb, rgbToHex } from './util.js';
 import { toQuantities } from './quote.js';
@@ -183,9 +184,9 @@ export class RoofLayers {
   }
 
   _buildDrip() {
-    const v = this.options.dripEdge; // an option id, or a store product's option object { id, label, color, metal }
+    const v = this.options.dripEdge; // an option id, or a store product's option object { id, label, color, metal, profile }
     const opt = v && typeof v === 'object' ? v : LAYER_OPTIONS.dripEdge.find((o) => o.id === v) || LAYER_OPTIONS.dripEdge[0];
-    const g = dripEdgeGeometry(this.segs, { offEave: H.dripEave, offRake: H.dripRake });
+    const g = dripEdgeGeometry(this.segs, { offEave: H.dripEave, offRake: H.dripRake, profile: opt.profile || null });
     const m = this._material(null, { color: opt.color, metal: opt.metal, rough: 0.35 });
     // eave pieces have aUp = 0, rake pieces aUp = 1 -> keys 0..1 then 1..2
     this._rec('dripEdge', new THREE.Mesh(g, m), { rowH: 1, keyMax: 2, info: { spec: `${opt.label}, eaves under / rakes over` } });
@@ -250,7 +251,9 @@ export class RoofLayers {
     const p = this.product || {};
     const cat = p.category || 'shingle';
     const isMetal = cat === 'metal';
-    const set = p._texSet || TX.architecturalShingle();
+    const prof = profileFor(p); // metal panel profile drawn as geometry (019), null: flat
+    // with rib geometry, the texture keeps color, roughness, screws and noise but not the rib relief
+    const set = prof && p.procedural ? TX.proceduralFor({ ...p.procedural, ribs: false }) : p._texSet || TX.architecturalShingle();
     const exposure = inToM(p.exposureIn || (cat === 'tile' ? 13 : cat === 'slate' ? 10 : cat === 'shake' ? 7.5 : 5.625));
     const stepH = cat === 'tile' ? 0.02 : cat === 'slate' || cat === 'shake' ? 0.009 : 0.005;
     const palette = p._palette || p.procedural?.palette || [p.procedural?.color || '#3a3d42'];
@@ -275,11 +278,18 @@ export class RoofLayers {
     // the covering itself
     const parts = fullParts(this.planes);
     const flat = isMetal || p.flat;
-    const g = flat ? buildSurface(parts, { offset: H.covering }) : buildSurface(parts, { offset: H.covering, courseH: exposure, stepH });
+    const g = prof ? ribbedSurface(parts, { offset: H.covering, profile: prof }) : flat ? buildSurface(parts, { offset: H.covering }) : buildSurface(parts, { offset: H.covering, courseH: exposure, stepH });
     const mat = this._material(set, { side: THREE.FrontSide, metal: isMetal ? (p.pbr?.metallic ?? 0.55) : 0, rough: isMetal && p.pbr?.roughness != null ? p.pbr.roughness / TX.roughMean(set) : 1, physical: isMetal });
     if (p.tint) mat.color.set(p.tint);
     this._applyTransform(mat, p);
-    this._rec('covering', new THREE.Mesh(g, mat), {
+    const cov = new THREE.Mesh(g, mat);
+    // rake trim (part of the covering): over the panel edge at every rake, in the panel's color and metal values
+    const top = onRibs(H.covering, prof);
+    if (prof && this.segs.rake.length) {
+      const tm = this._material(null, { color: p.procedural?.color || palette[0], metal: p.pbr?.metallic ?? 0.55, rough: p.pbr?.roughness ?? 0.4 });
+      cov.add(Object.assign(new THREE.Mesh(rakeTrimGeometry(this.segs.rake, { top }), tm), { name: 'rakeTrim' }));
+    }
+    this._rec('covering', cov, {
       rowH: isMetal ? 1e3 : exposure, keyMax: isMetal ? 1 : this._rowsMax(exposure),
       info: { label: isMetal ? 'Metal panels' : cat === 'tile' ? 'Roof tile' : cat === 'slate' ? 'Slate' : cat === 'shake' ? 'Cedar shakes' : 'Shingles', spec: p.name ? `${p.name}${p.supplier ? ' · ' + p.supplier : ''}` : 'Architectural laminate' },
     });
@@ -287,7 +297,7 @@ export class RoofLayers {
     // ridge vent (ridges only) and hip & ridge caps
     const hasVent = this.options.ridgeVent !== false && this.segs.ridge.length;
     if (hasVent) {
-      const rv = ridgeVentGeometry(this.segs.ridge, { off: H.covering, height: VENT_H }); // sides stand on the shingles: no gap under the vent
+      const rv = ridgeVentGeometry(this.segs.ridge, { off: H.covering + (prof?.maxH || 0), height: VENT_H }); // sides stand on the shingles (or the rib tops): no gap under the vent
       const grp = new THREE.Group();
       const vm = this._material(null, { color: '#1d1f22', rough: 0.7 });
       grp.add(new THREE.Mesh(rv.top, vm), new THREE.Mesh(rv.skirt, this._material(null, { color: '#2a2c2f', rough: 0.9 })));
@@ -298,9 +308,12 @@ export class RoofLayers {
     // hips are capped first (bottom up), then the ridge: ridge pieces get key row 1 when hips exist
     const grp = new THREE.Group();
     const hips = this.segs.hip.length > 0, ridges = this.segs.ridge.length > 0;
-    if (hips) grp.add(new THREE.Mesh(capGeometry(this.segs.hip, { off: H.cap }), capMat));
+    // on ribs: the metal cap profile at the rib tops; over a vent, the vent cap lifted with the vent
+    const capOn = prof ? { profile: metalCapProfile(top, this.options.capWidthIn > 0 ? this.options.capWidthIn / 2 : 6) } : { off: H.cap };
+    const overVent = prof ? CAP_OVER_VENT.map(([w, h]) => [w, h + prof.maxH]) : CAP_OVER_VENT;
+    if (hips) grp.add(new THREE.Mesh(capGeometry(this.segs.hip, capOn), capMat));
     if (ridges) {
-      const rg = capGeometry(this.segs.ridge, hasVent ? { profile: CAP_OVER_VENT } : { off: H.cap });
+      const rg = capGeometry(this.segs.ridge, hasVent ? { profile: overVent } : capOn);
       if (hips) rg.attributes.aUp.array.fill(1);
       grp.add(new THREE.Mesh(rg, capMat));
     }
@@ -371,7 +384,7 @@ export class RoofLayers {
       nailsPerShingle: () => this._buildCovering(),
       deckRepairSheets: () => { this._remove('deck'); this._remove('deckRepair'); this._buildDeck(); },
       ridgeVent: () => this._buildCovering(),
-      capPalette: () => this._buildCovering(), capColor: () => this._buildCovering(),
+      capPalette: () => this._buildCovering(), capColor: () => this._buildCovering(), capWidthIn: () => this._buildCovering(),
     }[key];
     rebuild?.();
     this._applyState();

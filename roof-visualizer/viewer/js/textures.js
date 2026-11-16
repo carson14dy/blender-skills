@@ -208,8 +208,8 @@ export function threeTabShingle({ palette = ['#4b4b48', '#3f3f3c', '#5a5955'], s
 }
 
 /** Standing seam metal: 16" panels, 1" seams. */
-export function standingSeam({ color = '#40464d', seed = 9, panelIn = 16, res = 1024 } = {}) {
-  const key = 'seam:' + color + seed + panelIn + res;
+export function standingSeam({ color = '#40464d', seed = 9, panelIn = 16, res = 1024, ribs = true } = {}) {
+  const key = 'seam:' + color + seed + panelIn + res + (ribs ? '' : ':noribs');
   if (cache.has(key)) return cache.get(key);
   const sizeM = [inToM(panelIn) * 2, 1.0];
   const w = res, h = Math.round(res * sizeM[1] / sizeM[0]);
@@ -223,7 +223,7 @@ export function standingSeam({ color = '#40464d', seed = 9, panelIn = 16, res = 
     const stiff = Math.exp(-Math.pow((d - 0.18) * 80, 2)) + Math.exp(-Math.pow((d - 0.32) * 80, 2));
     const oil = noise.fbm(x / w * 16, y / h * 16, 2);
     const shade = 0.96 + oil * 0.08 + seam * 0.05;
-    return [base[0] * shade, base[1] * shade, base[2] * shade, seam * 1.0 + stiff * 0.08 + oil * 0.02, 0.38 + oil * 0.08];
+    return [base[0] * shade, base[1] * shade, base[2] * shade, (ribs ? seam : 0) + stiff * 0.08 + oil * 0.02, 0.38 + oil * 0.08]; // ribs: false = the seam is geometry
   }, { normalStrength: 6 });
   set.metal = true;
   cache.set(key, set);
@@ -674,7 +674,7 @@ export function proceduralFor(recipe = {}) {
 
 // ---------------------------------------------------------------------------
 // Store metal panels (Sioux Falls studio). Measured profiles drawn as normal-mapped
-// textures; real rib geometry is later. Heights are in inches and the normal
+// textures (ribs: false flattens them where profiles.js draws the ribs). Heights are in inches and the normal
 // strength is pxPerIn / 8 (Sobel), so rib sides tilt the light by their true slope.
 
 /**
@@ -683,8 +683,8 @@ export function proceduralFor(recipe = {}) {
  * 0.6" wide) evenly between, painted screw heads beside each major rib at 24" o.c.
  * Tile width = coverIn, so on the roof the ribs repeat exactly every ribSpacingIn.
  */
-export function ribbedPanel({ color = '#6f7378', coverIn = 36, ribSpacingIn = 9, ribHeightIn = 0.75, ribTopIn = 0.75, ribBaseIn = 1.75, minorRibs = 2, seed = 9, res = 1024 } = {}) {
-  const key = 'rib:' + [color, coverIn, ribSpacingIn, ribHeightIn, ribTopIn, ribBaseIn, minorRibs, seed, res].join();
+export function ribbedPanel({ color = '#6f7378', coverIn = 36, ribSpacingIn = 9, ribHeightIn = 0.75, ribTopIn = 0.75, ribBaseIn = 1.75, minorRibs = 2, seed = 9, res = 1024, ribs: relief = true } = {}) {
+  const key = 'rib:' + [color, coverIn, ribSpacingIn, ribHeightIn, ribTopIn, ribBaseIn, minorRibs, seed, res, relief].join();
   if (cache.has(key)) return cache.get(key);
   const lengthIn = 48; // two purlin rows of screws
   const sizeM = [inToM(coverIn), inToM(lengthIn)];
@@ -713,7 +713,7 @@ export function ribbedPanel({ color = '#6f7378', coverIn = 36, ribSpacingIn = 9,
     const oil = noise.fbm(x / w * 4, y / h * 4, 3); // soft oil-canning in the flats
     let shade = 0.95 + oil * 0.08;
     if (d > foot) shade *= 1 - 0.1 * Math.exp(-(((d - foot) / 0.35) ** 2)); // contact shade at the foot of a rib
-    let hh = v * ribHeightIn + (1 - v) * (oil - 0.5) * 0.012;
+    let hh = (relief ? v * ribHeightIn : 0) + (1 - v) * (oil - 0.5) * 0.012; // ribs: false = the ribs are geometry
     let ro = 0.4 + (oil - 0.5) * 0.06 - v * 0.03;
     for (const sx of screwX) {
       let dx = Math.abs(x - sx); dx = Math.min(dx, w - dx);
@@ -733,8 +733,8 @@ export function ribbedPanel({ color = '#6f7378', coverIn = 36, ribSpacingIn = 9,
 }
 
 /** Corrugated steel panel: sine profile, `pitchIn` crest to crest, `depthIn` deep. Tile = 8 pitches square. */
-export function corrugatedPanel({ color = '#b5b9bd', pitchIn = 2.67, depthIn = 0.5, seed = 9, res = 1024 } = {}) {
-  const key = 'corr:' + [color, pitchIn, depthIn, seed, res].join();
+export function corrugatedPanel({ color = '#b5b9bd', pitchIn = 2.67, depthIn = 0.5, seed = 9, res = 1024, ribs = true } = {}) {
+  const key = 'corr:' + [color, pitchIn, depthIn, seed, res, ribs].join();
   if (cache.has(key)) return cache.get(key);
   const waves = 8;
   const sizeM = [inToM(pitchIn * waves), inToM(pitchIn * waves)];
@@ -744,12 +744,12 @@ export function corrugatedPanel({ color = '#b5b9bd', pitchIn = 2.67, depthIn = 0
   const noise = makeNoise(seed, 4);
   let roughSum = 0;
   const set = paint(w, h, sizeM, (x, y) => {
-    const c = Math.cos(((x + 0.5) / w) * waves * Math.PI * 2); // 1 on a crest, -1 in a valley
+    const c = (ribs ? 1 : -1) * Math.cos(((x + 0.5) / w) * waves * Math.PI * 2); // 1 on a crest, -1 in a valley (ribs: false: valley at u = 0, as the geometry)
     const oil = noise.fbm(x / w * 4, y / h * 4, 3);
     const shade = (0.93 + 0.07 * (c * 0.5 + 0.5)) * (0.96 + oil * 0.08); // valleys a little darker
     const ro = 0.38 + (oil - 0.5) * 0.08;
     roughSum += ro;
-    return [base[0] * shade, base[1] * shade, base[2] * shade, depthIn * 0.5 * (1 + c), ro];
+    return [base[0] * shade, base[1] * shade, base[2] * shade, ribs ? depthIn * 0.5 * (1 + c) : 0, ro];
   }, { normalStrength: pxPerIn / 8 });
   Object.assign(set, { metal: true, pitchM: inToM(pitchIn), roughMean: roughSum / (w * h) });
   cache.set(key, set);

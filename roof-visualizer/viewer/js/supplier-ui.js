@@ -7,7 +7,8 @@
 
 import { buildQuote, quoteCSV, crewView, csvFileName, fmtMoney, fmtDate, LINE_LABELS, SLOTS, STORE_IDS, NOT_INCLUDED } from './quote.js';
 import { buildProject, parseProject, jobFromProject, compareSnapshot, snapshotNotice, projectFileName, sameProject } from './project-file.js';
-import { findProduct, suggestedSelections, storeName, defaultColor, colorEntry, shortName, specFor, toStudioProduct, layerOptionFor, SUGGESTED } from './supplier-products.js';
+import { findProduct, suggestedSelections, storeName, defaultColor, colorEntry, shortName, specFor, toStudioProduct, layerOptionFor, edgeProfileFor, SUGGESTED } from './supplier-products.js';
+import { panelName } from './profiles.js';
 
 /** Slots drawn as their own layer, for the exploded-view label (the covering's label is its product name). */
 const SLOT_LAYER = { ridgeCap: 'ridgeCap', starter: 'starter', underlayment: 'underlayment', iceWater: 'iceWater', dripEdge: 'dripEdge', ridgeVent: 'ridgeVent' };
@@ -136,7 +137,7 @@ export function createStoreUI(ctx) {
     }
     const draw = product && product !== S.product;
     // the covering rebuild draws the caps too: set their colors without a rebuild of their own
-    if (draw) for (const k of ['capPalette', 'capColor']) if (k in opts) { L.options[k] = opts[k]; delete opts[k]; }
+    if (draw) for (const k of ['capPalette', 'capColor', 'capWidthIn']) if (k in opts) { L.options[k] = opts[k]; delete opts[k]; }
     setLabels();
     if (Object.keys(opts).length) ctx.setLayerOptions(opts);
     if (draw) await ctx.applyProduct(product);
@@ -893,7 +894,16 @@ export function createStoreUI(ctx) {
     const pal = (p.procedural?.palette || (p.procedural?.color ? [p.procedural.color] : null) || p._palette || []).slice(0, metal ? 1 : 4);
     const exp = p.exposureIn || p.procedural?.exposureIn || 5.625;
     const base = 'node roof-blender/scripts/roof-blender.mjs';
-    return [`${base} layers --category ${metal ? 'metal' : 'shingle'}${metal ? '' : ` --exposure-in ${exp}`}`,
+    // panel profile, the chosen drip edge's cross-section (inches) and a metal cap's width, as the roof shows them
+    const chosen = (slot) => { const c = job()?.selections?.[slot]?.[job().shownStore]; return c && catalog ? findProduct(catalog, c.productId) : null; };
+    const panel = metal ? panelName(p) : 'flat';
+    const drip = chosen('dripEdge'), cap = chosen('ridgeCap');
+    const edge = drip ? edgeProfileFor(drip) : null;
+    const n = (v) => +Number(v).toFixed(4);
+    const extra = (panel !== 'flat' ? ` --panel ${panel}` : '')
+      + (metal && cap?.kind === 'metalCap' && cap.size?.widthIn > 0 ? ` --cap-width-in ${n(cap.size.widthIn)}` : '')
+      + (edge ? ` --edge "${[edge.flangeIn, edge.faceIn, edge.kickOutIn, edge.kickDownIn, edge.hemIn].map(n).join(',')}"` : '');
+    return [`${base} layers --category ${metal ? 'metal' : 'shingle'}${metal ? '' : ` --exposure-in ${exp}`}${extra}`,
       pal.length ? `${base} material --palette "${pal.join(',')}"${metal ? ' --category metal' : ''}` : null].filter(Boolean).join('\n');
   }
 
@@ -906,7 +916,7 @@ export function createStoreUI(ctx) {
       pre.textContent = text; pre.hidden = false;
       try { await navigator.clipboard.writeText(text); ctx.toast('Copied the Blender commands for the product on the roof.'); } catch (_) { ctx.toast('Copy is not available here: select the commands below the button.'); }
     } }, 'Blender command'));
-    const hint = el('p', { class: 'hint' }, 'Blender command: copies the roof-blender lines that draw the product on the roof. Not matched in Blender yet: ribbed and corrugated profiles (Blender draws flat panels), drip edge color, cap color separate from the field, matte paint values.');
+    const hint = el('p', { class: 'hint' }, 'Blender command: copies the roof-blender lines that draw the product on the roof. Not matched in Blender yet: drip edge color, cap color separate from the field, matte paint values.');
     ($('glbHint') || glb.parentElement).after(hint, pre);
     pre.classList.add('sf');
   }

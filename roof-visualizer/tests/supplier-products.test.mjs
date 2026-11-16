@@ -218,11 +218,13 @@ test('color entry: listed color, null-named entry, product-level fallback', () =
 
 test('layer options: cap palette or color, drip edge object, underlayment and ice & water ids', () => {
   const cap = { id: 'mn-cap', store: MN, layer: 'ridgeCap', kind: 'shingleCap', name: 'ProEdge Hip and Ridge', color: 'Williamsburg Gray', colors: [{ name: 'Williamsburg Gray', hex: '#6e6c69' }] };
-  assert.deepEqual(layerOptionFor(cap), { capPalette: shadesOf('#6e6c69'), capColor: null });
+  assert.deepEqual(layerOptionFor(cap), { capPalette: shadesOf('#6e6c69'), capColor: null, capWidthIn: null });
   const metalCap = { id: 'mn-mcap', store: MN, layer: 'ridgeCap', kind: 'metalCap', name: '10\' Charcoal Gray Residential Ridge Cap', color: 'Charcoal Gray', colors: [{ name: 'Charcoal Gray', hex: '#3d4043' }] };
-  assert.deepEqual(layerOptionFor(metalCap), { capColor: '#3d4043', capPalette: null });
+  assert.deepEqual(layerOptionFor(metalCap), { capColor: '#3d4043', capPalette: null, capWidthIn: null });
+  assert.equal(layerOptionFor({ ...metalCap, size: { lengthIn: 120, widthIn: 11.5 } }).capWidthIn, 11.5); // half of it each side (019)
   const drip = { id: 'mn-1444424196953', store: MN, layer: 'dripEdge', kind: 'dripEdge', name: '2-3/8" x 1-11/16" x 12\' Style-D White Aluminum Drip Edge', color: 'White', colors: [{ name: 'White', hex: '#efefec', pbr: { metallic: 0, roughness: 0.4 } }] };
-  assert.deepEqual(layerOptionFor(drip), { dripEdge: { id: drip.id, label: 'Style-D Aluminum, White', color: '#efefec', metal: 0 } });
+  assert.deepEqual(layerOptionFor(drip), { dripEdge: { id: drip.id, label: 'Style-D Aluminum, White', color: '#efefec', metal: 0,
+    profile: { style: 'D', flangeIn: 2.375, faceIn: 1.6875, kickOutIn: 0.5, kickDownIn: 0.25, hemIn: 0, approx: [] } } });
   assert.equal(layerOptionFor({ ...drip, colors: [] , color: null }).dripEdge.color, NEUTRAL);
   assert.equal(layerOptionFor({ ...drip, colors: [{ name: 'White', hex: '#efefec' }] }).dripEdge.metal, 0.3);
   const und = (kind, name) => layerOptionFor({ id: 'u', store: HD, layer: 'underlayment', kind, name }).underlayment;
