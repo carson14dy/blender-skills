@@ -21,6 +21,7 @@ The current to-do list for both sessions. Do the first open item for your kind o
 
 ## Cloud session
 
+- [ ] **Sioux Falls studio, step 016 (product picker, about 3 hours):** first get the user's answer on swatch downloads (plan, open question 1). Then follow `lab/projects/sioux-falls-studio/PLAN.md` step 016, then 017 and 018.
 - [ ] After any change to `roof_core.py`, `roof-geometry.js` or the layer heights: run `$LAB_BPY_PYTHON lab/tools/roof_qa.py` and `npm test`.
 - [ ] After 001 is pushed: read the results, then pick the next experiment from `lab/GOALS.md` (likely 006, lighter GLB files for phones, or 012, sturdier roof detection for scans).
 

@@ -144,6 +144,7 @@ roof-visualizer/
   scripts/fetch-swatch.mjs     CLI importer
   scripts/lib/supplier.mjs     scan, safe fetch, save to catalog
   scripts/lib/plan-ai.mjs      Claude plan generation
+  scripts/build-supplier-catalog.mjs + lib/supplier-catalog.mjs   store captures -> catalog/suppliers/*.json
   viewer/index.html            app shell (import map pins three@0.186.1, three-gpu-pathtracer@0.0.27)
   viewer/js/roof-geometry.js   planes, edge classification, layer meshes, nails, caps
   viewer/js/layers.js          layer stack, reveal shader, explode, cutaway, takeoff
@@ -152,6 +153,6 @@ roof-visualizer/
   viewer/js/house.js           demo houses
   viewer/js/render.js          sun, sky, tiled snapshots, path tracing
   viewer/js/labels.js          exploded-view callouts
-  viewer/catalog/              catalog.json + swatches/
+  viewer/catalog/              catalog.json + swatches/; suppliers/sioux-falls.json (Menards #3064, Home Depot #4301: products, units, coverage, prices; images stay links)
   viewer/plans/                build plans
 ```

@@ -350,6 +350,11 @@ dialog::backdrop { background: rgba(8, 12, 18, 0.55); }
       <!-- PROJECT -->
       <div class="pane" data-pane="project" hidden>
         <div class="sec">
+          <h3>Job</h3>
+          <div class="row"><label for="pLoc">Location</label><select id="pLoc" class="grow"><option value="43.54">Sioux Falls, SD</option><option value="custom">Somewhere else (set the latitude under Sun)</option></select></div>
+          <p class="hint" id="pPrices">Store prices: not loaded yet.</p>
+        </div>
+        <div class="sec">
           <h3>House</h3>
           <div class="row"><label for="pHouse">Model</label><select id="pHouse" class="grow"></select></div>
           <div class="row"><label for="pPitch">Pitch</label><input class="grow" id="pPitch" type="range" min="3" max="14" step="0.5" value="6"><span class="mono" id="pPitchV">6/12</span></div>
@@ -360,7 +365,7 @@ dialog::backdrop { background: rgba(8, 12, 18, 0.55); }
         </div>
         <div class="sec">
           <h3>Sun</h3>
-          <div class="row"><label for="pLat">Latitude</label><input id="pLat" type="number" min="-66" max="66" step="0.1" value="39.7" style="width:90px"><label for="pDate" style="min-width:0">Date</label><input id="pDate" type="date"></div>
+          <div class="row"><label for="pLat">Latitude</label><input id="pLat" type="number" min="-66" max="66" step="0.01" value="43.54" style="width:90px"><label for="pDate" style="min-width:0">Date</label><input id="pDate" type="date"></div>
           <div class="row"><label for="pHour">Solar time</label><input class="grow" id="pHour" type="range" min="6" max="19" step="0.05" value="15"><span class="mono" id="pHourV">15:00</span></div>
           <div class="row"><label for="pFacing">Front faces</label><select id="pFacing" class="grow"><option value="0">North</option><option value="45">North-east</option><option value="90">East</option><option value="135">South-east</option><option value="180" selected>South</option><option value="225">South-west</option><option value="270">West</option><option value="315">North-west</option></select></div>
         </div>

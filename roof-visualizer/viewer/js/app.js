@@ -29,7 +29,7 @@ const S = {
   product: null,
   catalog: [],
   server: null,
-  sun: { lat: 39.7, date: new Date(), hour: 15, facing: 180 },
+  sun: { lat: 43.54, date: new Date(), hour: 15, facing: 180 }, // Sioux Falls, SD: where the jobs are
   quality: ['standard', 'high', 'ultra'].includes(params.get('quality')) ? params.get('quality')
     : (window.matchMedia?.('(pointer: coarse)').matches ? 'standard' : 'high'),
   cine: true,
@@ -38,6 +38,13 @@ const S = {
   planMode: 'auto',
   customPlan: null,
 };
+
+let supplierPromise = null;
+/** The Sioux Falls store catalog (lab project sioux-falls-studio), loaded once on first use. Null when missing. */
+function supplierCatalog() {
+  supplierPromise ??= fetch('catalog/suppliers/sioux-falls.json').then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  return supplierPromise;
+}
 
 // ---------------------------------------------------------------------------
 // renderer, scene, camera
@@ -942,7 +949,18 @@ function bindUI() {
     ptDirty = true;
   };
   $('pDate').valueAsDate = S.sun.date;
-  $('pLat').onchange = (e) => { S.sun.lat = Number(e.target.value); updateSun(); };
+  $('pLat').onchange = (e) => {
+    S.sun.lat = Number(e.target.value);
+    $('pLoc').value = [...$('pLoc').options].some((o) => Number(o.value) === S.sun.lat) ? String(S.sun.lat) : 'custom';
+    updateSun();
+  };
+  $('pLoc').onchange = (e) => { if (e.target.value !== 'custom') { $('pLat').value = e.target.value; S.sun.lat = Number(e.target.value); updateSun(); } };
+  supplierCatalog().then((c) => {
+    if (!c) { $('pPrices').textContent = 'Store prices: the supplier catalog did not load.'; return; }
+    const priced = c.products.filter((p) => p.price?.shelf).length;
+    const stores = Object.values(c.stores).map((s) => `${s.name} (${s.captured})`).join(' and ');
+    $('pPrices').textContent = `Store prices: ${c.products.length} roof products, ${priced} with a price, from ${stores}. These are snapshots: check them before quoting.`;
+  });
   $('pDate').onchange = (e) => { if (e.target.valueAsDate) { S.sun.date = e.target.valueAsDate; updateSun(); } };
   $('pHour').oninput = (e) => { S.sun.hour = Number(e.target.value); const h = Math.floor(S.sun.hour), m = Math.round((S.sun.hour - h) * 60); $('pHourV').textContent = `${h}:${String(m).padStart(2, '0')}`; updateSun(); };
   $('pFacing').onchange = (e) => { S.sun.facing = Number(e.target.value); updateSun(); };
@@ -1112,6 +1130,7 @@ window.roofStudio = {
     if (layers) { layers.explode = layers.explodeTarget; layers.cut = layers.cutTarget; for (let i = 0; i < 60; i++) layers.update(0.2); }
     if (camTween) { controls.target.copy(camTween.t1); camera.position.copy(camTween.p1); camTween = null; }
   },
+  suppliers: () => supplierCatalog(),
   three: { THREE, scene, camera, renderer, controls },
 };
 

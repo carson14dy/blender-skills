@@ -4,6 +4,31 @@ Newest first. One entry per session: date, cloud or local, what changed, results
 
 ---
 
+## 2026-11-16 · cloud (6)
+
+**Changed**
+- New project **Sioux Falls supplier studio**: plan in `lab/projects/sioux-falls-studio/PLAN.md`, with steps 015–023 in `lab/GOALS.md`. It draws on four handoffs:
+  - Menards' 3D-studio package for Sioux Falls West #3064;
+  - Home Depot #4301 prices (PR #3);
+  - the Menards workbook;
+  - the Rooftec design session's product rules: unknown is never zero, only measured values reach the customer, the crew never sees prices.
+- Step 015 done:
+  - Menards CSVs (no images) are in `lab/data/suppliers/menards-3064-2026-11-15/`;
+  - `roof-visualizer/scripts/build-supplier-catalog.mjs` writes `roof-visualizer/viewer/catalog/suppliers/sioux-falls.json`. Details: `lab/experiments/015-supplier-intake/`.
+- Studio: the Project tab has a Job section. Sioux Falls (43.54 N) is the default sun location, and a line shows the store prices loaded. `roofStudio.suppliers()` returns the catalog.
+
+**Results:**
+- 453 roof products (Menards 89, Home Depot 364), 338 priced, every roof layer covered at both stores.
+- Web tests 18/18 (5 new). The studio loads with no console errors.
+
+**Next:** the user's answer on swatch downloads, then step 016 (product picker), 017 (priced list), 018 (project files).
+
+**Needs local:** none new.
+
+**Needs the user:** two open questions in the plan, section 5: swatch downloads, and which store first.
+
+---
+
 ## 2026-11-16 · cloud (5)
 
 **Changed**
