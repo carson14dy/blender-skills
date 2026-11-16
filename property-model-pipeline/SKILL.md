@@ -142,6 +142,10 @@ embedded glTF JSON (base64 buffer, saved as `.gltf.json`). Do NOT let the page `
 `data:` buffer — sandboxed hosts' Content-Security-Policy blocks it and the load silently fails.
 Decode the base64 in the page, repack a GLB `ArrayBuffer` and call `GLTFLoader.parseAsync`. Test
 web deliveries under a restrictive CSP, not on a bare local server.
+Project-card thumbnails: `scripts/blender/render_thumbnail.py SITE.blend thumb.jpg --front-az <bearing the
+front faces>` renders the house alone (yard surfaces hidden, details kept) on a light backdrop with a soft
+contact shadow from a front-corner 3/4 view, auto-cropped to 4:3 — the look of contractor design tools. List
+it as `thumb` in the viewer's project index.
 Automatic edge classification in viewers can double-count where one roof runs under another's
 overhang; ship the report's verified edge lengths alongside the model for takeoffs.
 
