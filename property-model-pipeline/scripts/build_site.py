@@ -52,7 +52,13 @@ def main():
     ap.add_argument("--half", type=float, default=34.0); ap.add_argument("--cell", type=float, default=0.5)
     ap.add_argument("--bed-width", type=float, default=0.9, help="rock bed band around the walls (m)")
     ap.add_argument("--beds", help="json list of extra bed polygons [[x,y],...] (e.g. under decks)")
+    ap.add_argument("--paving", help="json list of extra concrete polygons [[x,y],...] (aprons, stoops the GIS misses)")
     ap.add_argument("--address", help="parcel ADDRESS to outline as the subject lot")
+    ap.add_argument("--subject-only", action="store_true",
+                    help="drop private paving (driveways, patios, walks) that does not touch the subject parcel "
+                         "(needs --address); streets and public sidewalk centre-lines are kept")
+    ap.add_argument("--edging", type=float, default=0.0,
+                    help="emit landscape edging lines along rock-bed/lawn boundaries longer than this many metres (0 = off)")
     a = ap.parse_args()
 
     site = json.load(open(os.path.join(a.project, "site.json")))
@@ -90,6 +96,14 @@ def main():
     imp = F.get("impervious", [])
     street = polys_of(imp, lambda p: p.get("SurfaceUse") == "Street" or p.get("SurfaceType") == "Paved Street")
     concrete = polys_of(imp, lambda p: not (p.get("SurfaceUse") == "Street" or p.get("SurfaceType") == "Paved Street"))
+    if a.subject_only and a.address:
+        subj = polys_of([fe for fe in F.get("parcels", []) if (fe.get("props") or {}).get("ADDRESS") == a.address])
+        if not subj.is_empty:
+            keep = subj.buffer(0.5)
+            private = [fe for fe in imp if not (fe.get("props", {}).get("SurfaceUse") == "Street"
+                                               or fe.get("props", {}).get("SurfaceType") == "Paved Street")]
+            concrete = unary_union([g_ for g_ in (polys_of([fe]) for fe in private) if not g_.is_empty and g_.intersects(keep)]
+                                   or [Polygon()])
     sw_lines = []
     for fe in F.get("sidewalk", []):
         wid = float((fe.get("props") or {}).get("WIDTH") or 4) * 0.3048
@@ -98,11 +112,13 @@ def main():
                 sw_lines.append(LineString(gl).buffer(wid / 2, cap_style="flat"))
     if sw_lines:
         concrete = unary_union([concrete, unary_union(sw_lines).difference(street)])
+    if a.paving:
+        concrete = unary_union([concrete] + [Polygon(p).buffer(0) for p in json.load(open(a.paving))])
     window = Polygon([(-h, -h), (h, -h), (h, h), (-h, h)])
     street, concrete = street.intersection(window), concrete.intersection(window)
-    beds = house.buffer(a.bed_width, join_style="mitre").difference(house)
+    beds = house.buffer(a.bed_width, join_style="mitre").difference(house) if a.bed_width > 0 else Polygon()
     if a.beds:
-        beds = unary_union([beds] + [Polygon(p) for p in json.load(open(a.beds))])
+        beds = unary_union([beds] + [Polygon(p).buffer(0) for p in json.load(open(a.beds))])
     beds = beds.difference(concrete).difference(street)
 
     # face centres
@@ -137,7 +153,8 @@ def main():
         return (Z[j, i] * (1 - tx) * (1 - ty) + Z[j, i + 1] * tx * (1 - ty)
                 + Z[j + 1, i] * (1 - tx) * ty + Z[j + 1, i + 1] * tx * ty)
 
-    def drape(geom, lift, step=1.0):
+    def drape(geom, lift, step=None):
+        step = step or max(c, 0.25)     # same cells as the terrain grid, so the lawn never pokes through
         """Triangulate geom cell by cell (so it follows the terrain) -> verts, tris."""
         verts, tris = [], []
         if geom.is_empty:
@@ -181,6 +198,17 @@ def main():
                 p = ln.interpolate(s / n, normalized=True)
                 poly.append([p.x, p.y])
             curbs.append(poly)
+    # landscape edging: bed boundary that faces lawn (not the house, paving or the street)
+    edging = []
+    if a.edging > 0 and not beds.is_empty:
+        hard = unary_union([house.buffer(0.05), concrete.buffer(0.05), street.buffer(0.05)])
+        edge = beds.difference(house).boundary.difference(hard.buffer(0.1)).intersection(window.buffer(-0.5))
+        for ln in (list(edge.geoms) if hasattr(edge, "geoms") else [edge]):
+            if ln.is_empty or ln.length < a.edging:
+                continue
+            n = max(int(ln.length / 0.4), 1)
+            edging.append([[round(ln.interpolate(s / n, normalized=True).x, 3), round(ln.interpolate(s / n, normalized=True).y, 3)]
+                           for s in range(n + 1)])
     parcel = None
     for fe in F.get("parcels", []):
         if a.address and (fe.get("props") or {}).get("ADDRESS") == a.address:
@@ -191,7 +219,7 @@ def main():
     out = {"cell": c, "classes": CLASSES, "verts": np.round(verts, 4).tolist(), "faces": faces, "face_class": fcls,
            "grid": {"x0": float(xs[0]), "y0": float(ys[0]), "nx": int(nx), "ny": int(ny), "cell": c,
                     "z": np.round(Z, 4).ravel().tolist()},
-           "overlays": overlays, "curbs": curbs, "parcel": parcel, "points": points,
+           "overlays": overlays, "curbs": curbs, "edging": edging, "parcel": parcel, "points": points,
            "stats": {"ground_points": int(len(g)), "z_min": float(np.nanmin(Z)), "z_max": float(np.nanmax(Z)),
                      "street_m2": street.area, "concrete_m2": concrete.area, "bed_m2": beds.area}}
     json.dump(out, open(a.out, "w"))

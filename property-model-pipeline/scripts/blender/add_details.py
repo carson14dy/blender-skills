@@ -13,19 +13,26 @@ geometry, placed from photo measurements. details.json (metres, model frame):
   "roof": {"exposure": 0.1429, "color": [0.17, 0.17, 0.18]},          # shingle course lines
   "trim_color": [0.85, 0.85, 0.82], "deck_color": [0.07, 0.12, 0.09],
   "fascia_height": 0.2, "gutters": true, "soffits": true,
-  "foundation": {"default_reveal": 0.25, "walls": {"M:-u": 0.54, "M:+v": 0.62}},   # siding-bottom z per wall
+  "foundation": {"default_reveal": 0.25, "walls": {"M:-u": 0.54, "M:+v": 0.62}, "color": [r,g,b]},   # siding-bottom z per wall
   "openings": [ {"wall": "M:-u", "u": 9.98, "sill_z": 1.55, "width": 1.56, "height": 1.52,
-                 "kind": "window|slider|door|garage|egress", "label": "..."} ],      # u = distance from wall start
+                 "kind": "window|slider|door|garage|egress", "label": "...",
+                 "leaf_color": [r,g,b], "mullions": [0.25, 0.75], "panels": [rows, cols]} ],   # u = distance from wall start
+                 # leaf_color: door colour; mullions: vertical bars at these width fractions (default: one at 0.5
+                 # for a 2-lite slider); panels: raised panels on a door / garage door (default 4x8 garage, 3x2 door)
   "decks": [ {"polygon": [[x,y],...], "top_z": 0.95, "rail_edges": [[i,j],...], "rail_gaps": [[x0,y0,x1,y1]],
               "rail_height": 0.9, "post_spacing": 2.0} ],
-  "stairs": [ {"top": [x,y], "dir": [dx,dy], "width": 1.0, "top_z": 0.95, "bottom_z": 0.2, "risers": 4} ],
+  "stairs": [ {"top": [x,y], "dir": [dx,dy], "width": 1.0, "top_z": 0.95, "bottom_z": 0.2, "risers": 4,
+               "rails": ["left", "right"]} ],                       # sloped handrails (left/right looking down the stairs)
   "ceilings": [ {"polygon": [[x,y],...], "z": 3.19} ],
-  "boxes": [ {"name": "...", "min": [x,y,z], "max": [x,y,z], "material": "brick|concrete|trim|deck"} ],
-  "downspouts": [ {"xy": [x,y], "top_z": 3.5, "bottom_z": 0.2} ],
+  "boxes": [ {"name": "...", "min": [x,y,z], "max": [x,y,z], "material": "brick|concrete|trim|deck|wood|stone|siding|vinyl"} ],
+  "panels": [ {"name": "...", "polygon": [[x,y,z],...], "material": "siding"} ],    # flat infill (e.g. gable end over a porch)
+  "downspouts": [ {"xy": [x,y], "top_z": 3.5, "bottom_z": 0.2,
+                   "path": [[x,y,z],...]} ],     # optional leader from the gutter outlet to the top of the drop
+  "corner_board_color": [r,g,b], "fascia_color": [r,g,b], "soffit_color": [r,g,b],   # default: trim / soffit white
   "roof_vents": [ {"xy": [x,y], "size": 0.32} ],        # placed on the roof surface; ridge caps are automatic
   "corner_boards": true,
   "lights": [ {"wall": "M:-v", "u": 5.4, "z": 2.9} ],
-  "text": [ {"wall": "G:+u", "u": 0.5, "z": 0.9, "text": "1601", "size": 0.16} ]
+  "text": [ {"wall": "G:+u", "u": 0.5, "z": 0.9, "text": "1601", "size": 0.16, "material": "fixture"} ]   # "\n" stacks lines
 }
 Walls are named "<wing>:<side>" as in model.json (e.g. "M:-u"); u runs from bottom[0] to bottom[1].
 """
@@ -83,6 +90,14 @@ def siding_material(rgb, exposure):
     nt.links.new(div.outputs[0], fr.inputs[0])
     nt.links.new(fr.outputs[0], bump.inputs["Height"])
     nt.links.new(bump.outputs["Normal"], b.inputs["Normal"])
+    # shadow line under each lap (the top ~8% of a course sits under the butt of the board above)
+    gt = nt.nodes.new("ShaderNodeMath"); gt.operation = "GREATER_THAN"; gt.inputs[1].default_value = 0.92
+    mx = nt.nodes.new("ShaderNodeMixRGB")
+    mx.inputs["Color1"].default_value = (*rgb, 1)
+    mx.inputs["Color2"].default_value = (rgb[0] * 0.45, rgb[1] * 0.45, rgb[2] * 0.45, 1)
+    nt.links.new(fr.outputs[0], gt.inputs[0])
+    nt.links.new(gt.outputs[0], mx.inputs["Fac"])
+    nt.links.new(mx.outputs["Color"], b.inputs["Base Color"])
     return m
 
 
@@ -103,6 +118,43 @@ def shingle_material(rgb, exposure, slope):
     nt.links.new(fr.outputs[0], bump.inputs["Height"])
     nt.links.new(bump.outputs["Normal"], b.inputs["Normal"])
     return m
+
+
+def brick_material(rgb=(0.20, 0.055, 0.04), mortar=(0.55, 0.52, 0.47)):
+    """Running-bond brick, mapped on world position (u = x + y, v = z) so axis-aligned faces need no UVs."""
+    m = mat("Brick", rgb, rough=0.9)
+    nt = m.node_tree
+    b = nt.nodes.get("Principled BSDF")
+    geo = nt.nodes.new("ShaderNodeNewGeometry")
+    sep = nt.nodes.new("ShaderNodeSeparateXYZ")
+    add = nt.nodes.new("ShaderNodeMath"); add.operation = "ADD"
+    comb = nt.nodes.new("ShaderNodeCombineXYZ")
+    br = nt.nodes.new("ShaderNodeTexBrick")
+    br.inputs["Color1"].default_value = (*rgb, 1)
+    br.inputs["Color2"].default_value = (rgb[0] * 0.55, rgb[1] * 0.6, rgb[2] * 0.7, 1)
+    br.inputs["Mortar"].default_value = (*mortar, 1)
+    br.inputs["Scale"].default_value = 1.0
+    br.inputs["Mortar Size"].default_value = 0.006
+    br.inputs["Brick Width"].default_value = 0.203
+    br.inputs["Row Height"].default_value = 0.068
+    nt.links.new(geo.outputs["Position"], sep.inputs[0])
+    nt.links.new(sep.outputs["X"], add.inputs[0]); nt.links.new(sep.outputs["Y"], add.inputs[1])
+    nt.links.new(add.outputs[0], comb.inputs["X"]); nt.links.new(sep.outputs["Z"], comb.inputs["Y"])
+    nt.links.new(comb.outputs[0], br.inputs["Vector"])
+    nt.links.new(br.outputs["Color"], b.inputs["Base Color"])
+    return m
+
+
+def raised_panels(name, base, d, n, w, h, rows, cols, c, m, margin=0.06, gap=0.05, proud=0.012):
+    """rows x cols raised rectangles on a door leaf (base = lower-left corner on the wall, d along, n outward)."""
+    pw = (w - 2 * margin - (cols - 1) * gap) / cols
+    ph = (h - 2 * margin - (rows - 1) * gap) / rows
+    if pw <= 0.02 or ph <= 0.02:
+        return
+    for r in range(rows):
+        for k in range(cols):
+            p = base + d * (margin + k * (pw + gap)) + Vector((0, 0, margin + r * (ph + gap))) + n * 0.015
+            oriented_box(f"{name} panel", p, d * pw, n * proud, Vector((0, 0, ph)), c, m)
 
 
 def mesh(name, verts, faces, c, m):
@@ -153,12 +205,14 @@ def add_opening(o, frames, c, mats):
     u0 = o["u"] - w / 2
     base = a + d * u0 + Vector((0, 0, o["sill_z"]))
     kind = o.get("kind", "window")
-    T, D = 0.07, 0.04          # frame width, frame projection
+    T, D = o.get("frame", 0.07), 0.04          # frame width, frame projection
     name = o.get("label", kind)[:40]
     # recessed glass / door leaf, slightly proud of the wall so it never z-fights
     leaf = mats["glass"] if kind in ("window", "slider", "egress") else (mats["garage"] if kind == "garage" else mats["door"])
     if kind == "slider" and h > 1.6:   # patio door: glass leaf
         leaf = mats["glass"]
+    if o.get("leaf_color"):
+        leaf = mat(f"Door ({name})", tuple(o["leaf_color"]), 0.45)
     oriented_box(f"{name} leaf", base + n * 0.005, d * w, n * 0.01, Vector((0, 0, h)), c, leaf)
     # frame (4 bars)
     fm = mats["trim"]
@@ -167,11 +221,23 @@ def add_opening(o, frames, c, mats):
         oriented_box(f"{name} sill", base + d * (-T) + Vector((0, 0, -T)), d * (w + 2 * T), n * (D + 0.02), Vector((0, 0, T)), c, fm)
     oriented_box(f"{name} jamb L", base + d * (-T), d * T, n * D, Vector((0, 0, h)), c, fm)
     oriented_box(f"{name} jamb R", base + d * w, d * T, n * D, Vector((0, 0, h)), c, fm)
-    if kind in ("window", "slider") and h <= 1.6:   # meeting rail of a 2-lite slider
-        oriented_box(f"{name} mullion", base + d * (w / 2 - 0.02), d * 0.04, n * 0.02, Vector((0, 0, h)), c, fm)
-    if kind == "garage":   # 4 horizontal section joints
-        for k in range(1, 4):
-            oriented_box(f"{name} joint {k}", base + n * 0.016 + Vector((0, 0, h * k / 4 - 0.006)), d * w, n * 0.004, Vector((0, 0, 0.012)), c, mats["shadow"])
+    mull = o.get("mullions")
+    if mull is None:
+        mull = [0.5] if (kind in ("window", "slider") and (h <= 1.6 or kind == "slider") and w > 0.6) else []
+    for fr in mull:   # meeting rails / mullions
+        oriented_box(f"{name} mullion", base + d * (w * fr - 0.02), d * 0.04, n * 0.02, Vector((0, 0, h)), c, fm)
+    if kind == "garage":   # horizontal section joints + raised panels
+        rows, cols = o.get("panels", [4, 8])
+        for k in range(1, rows):
+            oriented_box(f"{name} joint {k}", base + n * 0.016 + Vector((0, 0, h * k / rows - 0.006)), d * w, n * 0.004, Vector((0, 0, 0.012)), c, mats["shadow"])
+        for r in range(rows):
+            raised_panels(name, base + Vector((0, 0, h * r / rows)), d, n, w, h / rows, 1, cols, c, leaf, margin=0.07, gap=0.09)
+    elif kind == "door":
+        rows, cols = o.get("panels", [3, 2])
+        raised_panels(name, base, d, n, w, h, rows, cols, c, leaf, margin=0.12, gap=0.1)
+        # lever handle on the side given by "handle" (0 = start side, 1 = end side of the wall direction)
+        hs = o.get("handle", 1)
+        oriented_box(f"{name} handle", base + d * (w * (0.92 if hs else 0.08) - 0.03) + n * 0.015 + Vector((0, 0, 0.95)), d * 0.06, n * 0.05, Vector((0, 0, 0.06)), c, mats["metal"])
 
 
 def add_trim(model, frames, c, mats, fascia_h, gutters, soffits):
@@ -194,7 +260,7 @@ def add_trim(model, frames, c, mats, fascia_h, gutters, soffits):
             nrm = -nrm
         down = Vector((0, 0, -fascia_h))
         # fascia: a thin board just inside the roof edge
-        oriented_box(f"fascia {i}", p0 - nrm * 0.03, d, nrm * 0.03, down, c, mats["trim"])
+        oriented_box(f"fascia {i}", p0 - nrm * 0.03, d, nrm * 0.03, down, c, mats["fascia"])
         if e["kind"] == "eave":
             if gutters:
                 g0 = p0 + nrm * 0.005 + Vector((0, 0, -0.03))
@@ -215,21 +281,45 @@ def add_trim(model, frames, c, mats, fascia_h, gutters, soffits):
                     oriented_box(f"soffit {i}", s0, Vector((d.x, d.y, 0)), -nrm * (best - 0.03), Vector((0, 0, -0.012)), c, mats["soffit"])
 
 
-def add_foundation(frames, fnd, c, mats):
+def add_foundation(frames, fnd, c, mats, openings=()):
+    """Foundation reveal strips per wall. Doors cut the strip down to their sill and windows set in the
+    foundation (egress) leave a hole, so nothing is coplanar with a door leaf or glass."""
     for k, (a, d, n, L, zb) in frames.items():
         top = fnd.get("walls", {}).get(k)
-        steps = 12
+
+        def ztop(u):
+            return max(top if top is not None else zb(u) + fnd.get("default_reveal", 0.25), zb(u))
+        cuts = []   # (u0, u1, sill, head)
+        for o in openings:
+            if o.get("wall") != k:
+                continue
+            T = o.get("frame", 0.07)
+            cuts.append((o["u"] - o["width"] / 2 - T, o["u"] + o["width"] / 2 + T, o["sill_z"] - (0 if o.get("kind") in ("door", "garage") else T),
+                         o["sill_z"] + o["height"] + T))
+        us = sorted({0.0, L, *[L * s_ / 12 for s_ in range(13)], *[min(max(u, 0.0), L) for cu in cuts for u in cu[:2]]})
         verts, faces = [], []
-        for s in range(steps + 1):
-            u = L * s / steps
-            p = a + d * u + n * 0.015
-            z0 = zb(u)
-            z1 = top if top is not None else z0 + fnd.get("default_reveal", 0.25)
-            verts += [(p.x, p.y, z0 - 0.15), (p.x, p.y, max(z1, z0))]
-        for s in range(steps):
-            i = 2 * s
-            faces.append([i, i + 2, i + 3, i + 1])
-        mesh(f"foundation {k}", verts, faces, c, mats["concrete"])
+
+        def quad(u0, u1, zl0, zl1, zh0, zh1):
+            if zh0 - zl0 < 1e-3 and zh1 - zl1 < 1e-3:
+                return
+            p0, p1 = a + d * u0 + n * 0.015, a + d * u1 + n * 0.015
+            i = len(verts)
+            verts.extend([(p0.x, p0.y, zl0), (p1.x, p1.y, zl1), (p1.x, p1.y, zh1), (p0.x, p0.y, zh0)])
+            faces.append([i, i + 1, i + 2, i + 3])
+        for u0, u1 in zip(us[:-1], us[1:]):
+            if u1 - u0 < 1e-4:
+                continue
+            um = (u0 + u1) / 2
+            lo0, lo1, hi0, hi1 = zb(u0) - 0.15, zb(u1) - 0.15, ztop(u0), ztop(u1)
+            cut = next((cu for cu in cuts if cu[0] - 1e-6 <= um <= cu[1] + 1e-6 and cu[2] < ztop(um)), None)
+            if cut is None:
+                quad(u0, u1, lo0, lo1, hi0, hi1)
+            else:
+                quad(u0, u1, lo0, lo1, min(hi0, cut[2]), min(hi1, cut[2]))       # below the sill
+                if cut[3] < min(hi0, hi1):                                           # above the head
+                    quad(u0, u1, cut[3], cut[3], hi0, hi1)
+        if faces:
+            mesh(f"foundation {k}", verts, faces, c, mats["foundation"])
 
 
 def add_deck(dk, c, mats, idx):
@@ -258,6 +348,7 @@ def add_deck(dk, c, mats, idx):
     # railings
     H = dk.get("rail_height", 0.9)
     gaps = dk.get("rail_gaps", [])
+    seen_posts = set()
     for (i, j) in dk.get("rail_edges", []):
         a, b = poly[i], poly[j]
         L = (b - a).length
@@ -274,7 +365,16 @@ def add_deck(dk, c, mats, idx):
             side = u.cross(Vector((0, 0, 1))).normalized() * 0.07
             oriented_box(f"deck {idx} rail top", pa + Vector((0, 0, H - 0.07)) - side / 2, pb - pa, side, Vector((0, 0, 0.07)), c, mats["deck"])
             oriented_box(f"deck {idx} rail bottom", pa + Vector((0, 0, 0.08)) - side / 2, pb - pa, side * 0.6, Vector((0, 0, 0.05)), c, mats["deck"])
-            for pend in (pa, pb):
+            rs = dk.get("rail_post_spacing", 0)
+            ends = [pa, pb]
+            if rs and (s1 - s0) > rs * 1.3:
+                k_n = int(round((s1 - s0) / rs))
+                ends += [pa + (pb - pa) * (k / k_n) for k in range(1, k_n)]
+            for pend in ends:
+                key = (round(pend.x, 2), round(pend.y, 2))
+                if key in seen_posts:      # corner shared by two rail runs: one post, no coincident faces
+                    continue
+                seen_posts.add(key)
                 box(f"deck {idx} rail post", (pend.x - 0.045, pend.y - 0.045, z), (pend.x + 0.045, pend.y + 0.045, z + H + 0.05), c, mats["deck"])
             nb = int((s1 - s0) / 0.13)
             for k in range(1, nb):
@@ -296,6 +396,25 @@ def add_stairs(st, c, mats, idx):
     for sgn in (-1, 1):   # stringers
         p0 = top - side * (sgn * W / 2) + Vector((0, 0, st["bottom_z"]))
         oriented_box(f"stair {idx} stringer", p0, dvec * run * (r - 1), side * 0.05 * sgn, Vector((0, 0, st["top_z"] - st["bottom_z"])), c, mats["deck"])
+    # sloped handrails: "left"/"right" looking down the stairs
+    H = st.get("rail_height", 0.9)
+    length = run * (r - 1)
+    drop = rise * (r - 1)
+    for which in st.get("rails", []):
+        sgn = 1 if which == "left" else -1          # side = dvec x up points to the right-hand side looking down
+        off = -side * (sgn * (W / 2 - 0.045))
+        t0 = top + off + Vector((0, 0, st["top_z"]))
+        t1 = top + off + dvec * length + Vector((0, 0, st["top_z"] - drop))
+        for q, zb, hw in ((t0, st["top_z"], 0.04), (t1, st["bottom_z"], 0.045)):   # top post slimmer: it meets the deck rail post
+            box(f"stair {idx} rail post", (q.x - hw, q.y - hw, zb), (q.x + hw, q.y + hw, q.z + H + 0.05), c, mats["deck"])
+        sl = t1 - t0
+        w2 = side * 0.07
+        oriented_box(f"stair {idx} rail top", t0 + Vector((0, 0, H - 0.07)) - w2 / 2, sl, w2, Vector((0, 0, 0.07)), c, mats["deck"])
+        oriented_box(f"stair {idx} rail bottom", t0 + Vector((0, 0, 0.12)) - w2 * 0.3, sl, w2 * 0.6, Vector((0, 0, 0.05)), c, mats["deck"])
+        nb = max(int(length / 0.13), 1)
+        for k in range(1, nb):
+            q = t0 + sl * (k / nb)
+            box(f"stair {idx} rail baluster", (q.x - 0.02, q.y - 0.02, q.z + 0.12), (q.x + 0.02, q.y + 0.02, q.z + H - 0.07), c, mats["deck"])
 
 
 def facet_z(model, x, y):
@@ -342,7 +461,7 @@ def add_corner_boards(model, frames, fnd, c, mats, width=0.1):
         for u, zt, sgn in ((0.0, top0, 1), (L, top1, -1)):
             z0 = sb if sb is not None else zb(u) + fnd.get("default_reveal", 0.25)
             p = a + d * u + n * 0.012 + Vector((0, 0, z0))
-            oriented_box(f"corner board {key}", p, d * (width * sgn), n * 0.02, Vector((0, 0, zt - z0 - 0.05)), c, mats["trim"])
+            oriented_box(f"corner board {key}", p, d * (width * sgn), n * 0.02, Vector((0, 0, zt - z0 - 0.05)), c, mats["corner"])
 
 
 def add_lights_and_text(D, frames, c, mats):
@@ -376,7 +495,9 @@ def main():
     sid = D.get("siding", {})
     mats = {
         "trim": mat("Trim (white)", tuple(D.get("trim_color", (0.85, 0.85, 0.82))), 0.5),
-        "soffit": mat("Soffit", (0.8, 0.8, 0.77), 0.6),
+        "soffit": mat("Soffit", tuple(D.get("soffit_color", (0.8, 0.8, 0.77))), 0.6),
+        "fascia": mat("Fascia", tuple(D.get("fascia_color", D.get("trim_color", (0.85, 0.85, 0.82)))), 0.5),
+        "corner": mat("Corner boards", tuple(D.get("corner_board_color", D.get("trim_color", (0.85, 0.85, 0.82)))), 0.6),
         "gutter": mat("Gutter", (0.88, 0.88, 0.86), 0.35, 0.2),
         "glass": mat("Glass", (0.03, 0.05, 0.07), 0.05, 0.0),
         "door": mat("Door", tuple(D.get("door_color", (0.82, 0.82, 0.8))), 0.45),
@@ -384,7 +505,12 @@ def main():
         "shadow": mat("Joint shadow", (0.25, 0.25, 0.25), 0.8),
         "deck": mat("Deck (painted)", tuple(D.get("deck_color", (0.07, 0.12, 0.09))), 0.75),
         "concrete": mat("Concrete", (0.55, 0.55, 0.53), 0.95),
-        "brick": mat("Brick", (0.35, 0.12, 0.08), 0.9),
+        "foundation": mat("Foundation", tuple(D.get("foundation", {}).get("color", (0.55, 0.55, 0.53))), 0.95),
+        "brick": brick_material(tuple(D.get("brick_color", (0.20, 0.055, 0.04)))),
+        "wood": mat("Weathered wood", (0.28, 0.21, 0.15), 0.9),
+        "stone": mat("Cast stone", (0.62, 0.60, 0.55), 0.8),
+        "vinyl": mat("Vinyl (white)", (0.80, 0.80, 0.78), 0.5),
+        "metal": mat("Hardware (nickel)", (0.55, 0.55, 0.55), 0.35, 0.8),
         "cap": mat("Ridge cap", (0.12, 0.12, 0.13), 0.9),
         "vent": mat("Roof vent", (0.1, 0.1, 0.11), 0.6, 0.3),
         "fixture": mat("Light fixture (black)", (0.02, 0.02, 0.02), 0.4, 0.5),
@@ -394,6 +520,7 @@ def main():
     for ob in bpy.data.collections["Walls"].objects:
         ob.data.materials.clear()
         ob.data.materials.append(sm)
+    mats["siding"] = sm
     rf = D.get("roof", {})
     if rf.get("courses", True):
         slope = rf.get("slope") or max(f["pitch_rise_per_12"] for f in model["facets"]) / 12.0
@@ -401,7 +528,7 @@ def main():
         for ob in bpy.data.collections["Roof facets"].objects:
             ob.data.materials.clear()
             ob.data.materials.append(rm)
-    add_foundation(frames, D.get("foundation", {}), c, mats)
+    add_foundation(frames, D.get("foundation", {}), c, mats, D.get("openings", []))
     add_trim(model, frames, c, mats, D.get("fascia_height", 0.2), D.get("gutters", True), D.get("soffits", True))
     for o in D.get("openings", []):
         add_opening(o, frames, c, mats)
@@ -418,9 +545,24 @@ def main():
         mesh(f"porch ceiling {i}", pts, [list(range(len(pts)))], c, mats["soffit"])
     for b in D.get("boxes", []):
         box(b["name"], b["min"], b["max"], c, mats.get(b.get("material", "trim"), mats["trim"]))
+    for pn in D.get("panels", []):
+        pts = [tuple(p) for p in pn["polygon"]]
+        mesh(pn.get("name", "panel"), pts, [list(range(len(pts)))], c, mats.get(pn.get("material", "siding"), mats["trim"]))
     for i, ds in enumerate(D.get("downspouts", [])):
         x, y = ds["xy"]
         box(f"downspout {i}", (x - 0.04, y - 0.04, ds.get("bottom_z", 0.2)), (x + 0.04, y + 0.04, ds["top_z"]), c, mats["gutter"])
+        path = [Vector(p) for p in ds.get("path", [])]
+        if path:
+            path.append(Vector((x, y, ds["top_z"] - 0.04)))
+        for k in range(len(path) - 1):      # leader pipes (named so the grounding step leaves them alone)
+            p0, p1 = path[k], path[k + 1]
+            dv = p1 - p0
+            if dv.length < 1e-3:
+                continue
+            sx = dv.cross(Vector((0, 0, 1)))
+            sx = (sx.normalized() if sx.length > 1e-6 else Vector((1, 0, 0))) * 0.08
+            sz = sx.cross(dv).normalized() * 0.08
+            oriented_box(f"gutter leader {i}.{k}", p0 - sx / 2 - sz / 2, dv, sx, sz, c, mats["gutter"])
     bpy.ops.wm.save_as_mainfile(filepath=out)
     print("details added:", len(c.objects), "objects ->", out)
 

@@ -11,7 +11,8 @@ rock-bed overlays, curb lines, subject parcel, point features). yard.json (model
              {"kind": "fire_pit", "xy": [x,y], "radius": 0.55},
              {"kind": "egress_well", "xy": [x,y], "width": 1.6, "depth": 0.9, "facing": [0,-1]},
              {"kind": "meter", "xy": [x,y], "z": 1.0},
-             {"kind": "box", "name": "...", "xy": [x,y], "size": [w,d,h], "material": "concrete"} ],
+             {"kind": "box", "name": "...", "xy": [x,y], "size": [w,d,h], "z": 0.0, "material": "concrete", "color": [r,g,b]} ],
+  "materials": {"rock_bed": [[r,g,b],[r,g,b]], "lawn": [...], "street": [...], "concrete": [...]},   # two-tone overrides
   "show_parcel": true
 }
 
@@ -64,6 +65,9 @@ def textured(name, rgb_a, rgb_b, scale, bump=0.2, rough=0.9):
     ramp = nt.nodes.new("ShaderNodeValToRGB")
     ramp.color_ramp.elements[0].color = (*rgb_a, 1); ramp.color_ramp.elements[1].color = (*rgb_b, 1)
     bp = nt.nodes.new("ShaderNodeBump"); bp.inputs["Strength"].default_value = bump
+    geo = nt.nodes.new("ShaderNodeNewGeometry")          # world position: `scale` is features per metre
+    nt.links.new(geo.outputs["Position"], noise.inputs["Vector"])
+    noise.inputs["Detail"].default_value = 4.0
     nt.links.new(noise.outputs["Fac"], ramp.inputs["Fac"])
     nt.links.new(ramp.outputs["Color"], b.inputs["Base Color"])
     nt.links.new(noise.outputs["Fac"], bp.inputs["Height"])
@@ -151,24 +155,42 @@ def main():
     S = json.load(open(scene_path))
     Y = json.load(open(yard_path)) if yard_path and yard_path != "-" else {}
     c = coll("Site")
+    ov = Y.get("materials", {})
+
+    def two(key, a_, b_):
+        v = ov.get(key)
+        return (tuple(v[0]), tuple(v[1])) if v else (a_, b_)
     M = {
-        "lawn": textured("Lawn", (0.10, 0.22, 0.05), (0.18, 0.30, 0.08), 18.0, 0.15),
-        "street": textured("Street (red concrete)", (0.33, 0.20, 0.17), (0.40, 0.26, 0.22), 6.0, 0.05),
-        "concrete": textured("Concrete", (0.55, 0.55, 0.52), (0.62, 0.62, 0.59), 9.0, 0.05),
-        "rock_bed": textured("Rock mulch", (0.30, 0.27, 0.23), (0.48, 0.44, 0.38), 60.0, 0.6),
+        "lawn": textured("Lawn", *two("lawn", (0.10, 0.22, 0.05), (0.18, 0.30, 0.08)), 6.0, 0.15),
+        "street": textured("Street (red concrete)", *two("street", (0.33, 0.20, 0.17), (0.40, 0.26, 0.22)), 3.0, 0.05),
+        "concrete": textured("Concrete", *two("concrete", (0.55, 0.55, 0.52), (0.62, 0.62, 0.59)), 2.0, 0.05),
+        "rock_bed": textured("Rock mulch", *two("rock_bed", (0.30, 0.27, 0.23), (0.48, 0.44, 0.38)), 14.0, 0.8),
         "curb": mat("Curb", (0.5, 0.48, 0.45), 0.9),
         "hydrant": mat("Hydrant (yellow)", (0.85, 0.65, 0.05), 0.5),
         "metal": mat("Metal (grey)", (0.45, 0.46, 0.47), 0.5, 0.6),
-        "stone": textured("Fire-pit stone", (0.38, 0.36, 0.33), (0.55, 0.52, 0.48), 25.0, 0.4),
+        "stone": textured("Fire-pit stone", (0.38, 0.36, 0.33), (0.55, 0.52, 0.48), 8.0, 0.4),
         "ac": mat("AC unit", (0.75, 0.75, 0.73), 0.5, 0.3),
         "parcel": mat("Lot line", (0.95, 0.2, 0.2), 0.5),
     }
     # terrain (lawn) + draped overlays
     terrain = mesh("Terrain (LiDAR ground, lawn)", S["verts"], S["faces"], c, M["lawn"])
-    for k, ov in S.get("overlays", {}).items():
-        if ov["tris"]:
-            mesh(f"{k.replace('_', ' ')} (draped)", ov["verts"], ov["tris"], c, M.get(k, M["concrete"]))
+    for k, ovl in S.get("overlays", {}).items():
+        if ovl["tris"]:
+            mesh(f"{k.replace('_', ' ')} (draped)", ovl["verts"], ovl["tris"], c, M.get(k, M["concrete"]))
     G = Ground(terrain)
+    # landscape edging: 0.1 m wide, 0.07 m tall strip along rock-bed / lawn boundaries
+    for i, line in enumerate(S.get("edging", [])):
+        verts, faces = [], []
+        for k, (x, y) in enumerate(line):
+            nx_, ny_ = line[min(k + 1, len(line) - 1)][0] - line[max(k - 1, 0)][0], line[min(k + 1, len(line) - 1)][1] - line[max(k - 1, 0)][1]
+            ln = math.hypot(nx_, ny_) or 1
+            px, py = -ny_ / ln * 0.05, nx_ / ln * 0.05
+            z = G.z(x, y, 0)
+            verts += [(x + px, y + py, z - 0.05), (x + px, y + py, z + 0.07), (x - px, y - py, z + 0.07), (x - px, y - py, z - 0.05)]
+            if k:
+                b0, b1 = 4 * (k - 1), 4 * k
+                faces += [[b0, b1, b1 + 1, b0 + 1], [b0 + 1, b1 + 1, b1 + 2, b0 + 2], [b0 + 2, b1 + 2, b1 + 3, b0 + 3]]
+        mesh(f"bed edging {i}", verts, faces, c, M["curb"])
     # curbs: 0.15 m wide, 0.15 m tall strip centred on the street edge
     for i, line in enumerate(S.get("curbs", [])):
         verts, faces = [], []
@@ -209,7 +231,8 @@ def main():
         if k == "ac_unit":
             w, d, h = it.get("size", [0.75, 0.75, 0.8])
             box("pad (AC)", (x - w / 2 - 0.08, y - d / 2 - 0.08, z - 0.05), (x + w / 2 + 0.08, y + d / 2 + 0.08, z + 0.06), c, M["concrete"])
-            box("AC condenser", (x - w / 2, y - d / 2, z + 0.06), (x + w / 2, y + d / 2, z + 0.06 + h), c, M["ac"])
+            acm = mat("AC unit (custom)", tuple(it["color"]), 0.5, 0.3) if it.get("color") else M["ac"]
+            box("AC condenser", (x - w / 2, y - d / 2, z + 0.06), (x + w / 2, y + d / 2, z + 0.06 + h), c, acm)
             cylinder("AC fan grille", (x, y), min(w, d) * 0.38, z + 0.06 + h, z + 0.08 + h, c, M["metal"])
         elif k == "fire_pit":
             r = it.get("radius", 0.55)
@@ -234,7 +257,9 @@ def main():
             box("utility meter", (x - 0.15, y - 0.08, z + zz), (x + 0.15, y + 0.08, z + zz + 0.35), c, M["metal"])
         else:
             w, d, h = it.get("size", [0.5, 0.5, 0.5])
-            box(it.get("name", f"item {i}"), (x - w / 2, y - d / 2, z), (x + w / 2, y + d / 2, z + h), c, M.get(it.get("material", "concrete"), M["concrete"]))
+            z += it.get("z", 0.0)
+            m_ = mat(f"{it.get('name', 'item')} colour", tuple(it["color"]), 0.6) if it.get("color") else M.get(it.get("material", "concrete"), M["concrete"])
+            box(it.get("name", f"item {i}"), (x - w / 2, y - d / 2, z), (x + w / 2, y + d / 2, z + h), c, m_)
     # ---- ground the house -----------------------------------------------------
     walls = list(bpy.data.collections["Walls"].objects)
     n = snap_bottoms(walls, G, below=0.3, tol=0.6)
