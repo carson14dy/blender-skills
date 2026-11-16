@@ -2387,6 +2387,7 @@
   ],
   "hex": "#7e3427",
   "kept": 1,
+  "mean": "#7e392d",
   "method": "full",
   "palette": [
    "#7e3427",
@@ -2437,6 +2438,7 @@
   ],
   "hex": "#414141",
   "kept": 0.333,
+  "mean": "#6f6f6f",
   "method": "cutout",
   "palette": [
    "#404040",
@@ -2698,6 +2700,7 @@
   ],
   "hex": "#7e3427",
   "kept": 1,
+  "mean": "#7e392d",
   "method": "full",
   "palette": [
    "#7e3427",
@@ -2761,6 +2764,7 @@
   ],
   "hex": "#505050",
   "kept": 0.47,
+  "mean": "#6c6c6c",
   "method": "cutout",
   "palette": [
    "#505050",
@@ -2860,6 +2864,7 @@
   ],
   "hex": "#767776",
   "kept": 0.437,
+  "mean": "#848685",
   "method": "cutout",
   "palette": [
    "#757776",
@@ -3071,6 +3076,7 @@
   ],
   "hex": "#757677",
   "kept": 0.447,
+  "mean": "#838384",
   "method": "cutout",
   "palette": [
    "#757676",
@@ -3086,6 +3092,7 @@
   ],
   "hex": "#575757",
   "kept": 0.469,
+  "mean": "#575857",
   "method": "cutout",
   "palette": [
    "#575757",
@@ -3101,6 +3108,7 @@
   ],
   "hex": "#7e7e7e",
   "kept": 0.355,
+  "mean": "#606060",
   "method": "cutout",
   "palette": [
    "#7d7d7d",
@@ -3116,6 +3124,7 @@
   ],
   "hex": "#7e7e7e",
   "kept": 0.355,
+  "mean": "#606060",
   "method": "cutout",
   "palette": [
    "#7d7d7d",
@@ -3131,6 +3140,7 @@
   ],
   "hex": "#7e7e7e",
   "kept": 0.355,
+  "mean": "#606060",
   "method": "cutout",
   "palette": [
    "#7d7d7d",
@@ -3146,6 +3156,7 @@
   ],
   "hex": "#7e7e7e",
   "kept": 0.355,
+  "mean": "#606060",
   "method": "cutout",
   "palette": [
    "#7d7d7d",
@@ -3275,6 +3286,7 @@
   ],
   "hex": "#4d4544",
   "kept": 0.152,
+  "mean": "#847b78",
   "method": "cutout",
   "palette": [
    "#4d4543",
@@ -3332,6 +3344,7 @@
   ],
   "hex": "#272625",
   "kept": 0.509,
+  "mean": "#867358",
   "method": "cutout",
   "palette": [
    "#252524",
@@ -3347,6 +3360,7 @@
   ],
   "hex": "#282727",
   "kept": 0.502,
+  "mean": "#867258",
   "method": "cutout",
   "palette": [
    "#262525",
@@ -3392,6 +3406,7 @@
   ],
   "hex": "#4b4b4d",
   "kept": 0.267,
+  "mean": "#545457",
   "method": "cutout",
   "palette": [
    "#4a494c",
@@ -3433,6 +3448,7 @@
   ],
   "hex": "#61656d",
   "kept": 0.218,
+  "mean": "#5b5f67",
   "method": "cutout",
   "palette": [
    "#60656d",
@@ -3474,6 +3490,7 @@
   ],
   "hex": "#595149",
   "kept": 0.131,
+  "mean": "#695f56",
   "method": "cutout",
   "palette": [
    "#585049",
@@ -3543,6 +3560,7 @@
   ],
   "hex": "#404141",
   "kept": 0.434,
+  "mean": "#515151",
   "method": "cutout",
   "palette": [
    "#404040",
@@ -3558,6 +3576,7 @@
   ],
   "hex": "#404141",
   "kept": 0.434,
+  "mean": "#515151",
   "method": "cutout",
   "palette": [
    "#404040",
@@ -3573,6 +3592,7 @@
   ],
   "hex": "#4c4c4c",
   "kept": 0.414,
+  "mean": "#626262",
   "method": "cutout",
   "palette": [
    "#4b4b4c",
@@ -3588,6 +3608,7 @@
   ],
   "hex": "#4c4c4c",
   "kept": 0.414,
+  "mean": "#626262",
   "method": "cutout",
   "palette": [
    "#4b4b4c",
@@ -3765,6 +3786,7 @@
   ],
   "hex": "#838282",
   "kept": 0.524,
+  "mean": "#8a8989",
   "method": "cutout",
   "palette": [
    "#828282",
@@ -3806,6 +3828,7 @@
   ],
   "hex": "#2b2b2b",
   "kept": 0.393,
+  "mean": "#535454",
   "method": "cutout",
   "palette": [
    "#2a2b2b",
@@ -3821,6 +3844,7 @@
   ],
   "hex": "#2b2b2b",
   "kept": 0.393,
+  "mean": "#535454",
   "method": "cutout",
   "palette": [
    "#2a2b2b",
@@ -3874,13 +3898,14 @@
    "mixed"
   ],
   "hex": "#5e5f5e",
-  "kept": 0.566,
+  "kept": 0.564,
+  "mean": "#5e615c",
   "method": "cutout",
   "palette": [
    "#5e5f5e",
-   "#545454",
+   "#555554",
    "#6e6f6e",
-   "#559023"
+   "#559022"
   ],
   "sampled": "2026-11-16"
  },
@@ -3920,6 +3945,7 @@
   ],
   "hex": "#2c2d2f",
   "kept": 0.229,
+  "mean": "#525253",
   "method": "cutout",
   "palette": [
    "#2b2d2f",
@@ -3948,6 +3974,7 @@
   ],
   "hex": "#3c3c3c",
   "kept": 0.512,
+  "mean": "#4a4a4b",
   "method": "cutout",
   "palette": [
    "#3b3b3b",
@@ -3979,6 +4006,7 @@
   ],
   "hex": "#363539",
   "kept": 0.411,
+  "mean": "#49484c",
   "method": "cutout",
   "palette": [
    "#353438",
@@ -3995,6 +4023,7 @@
   ],
   "hex": "#9c9e9f",
   "kept": 0.33,
+  "mean": "#969899",
   "method": "cutout",
   "palette": [
    "#9c9f9f",
@@ -4040,13 +4069,14 @@
    "mixed"
   ],
   "hex": "#333333",
-  "kept": 0.421,
+  "kept": 0.42,
+  "mean": "#515151",
   "method": "cutout",
   "palette": [
    "#333333",
-   "#5d5d5d",
-   "#464646",
-   "#878787"
+   "#5c5d5d",
+   "#454545",
+   "#818282"
   ],
   "sampled": "2026-11-16"
  },
@@ -4055,13 +4085,14 @@
    "mixed"
   ],
   "hex": "#333333",
-  "kept": 0.421,
+  "kept": 0.42,
+  "mean": "#515151",
   "method": "cutout",
   "palette": [
    "#333333",
-   "#5d5d5d",
-   "#464646",
-   "#878787"
+   "#5c5d5d",
+   "#454545",
+   "#818282"
   ],
   "sampled": "2026-11-16"
  },
@@ -4260,17 +4291,15 @@
   "sampled": "2026-11-16"
  },
  "https://images.thdstatic.com/productImages/44baa632-9ed0-4064-81c7-602288074fb0/svn/brown-clihome-metal-roofing-cl-fopc386933-64_1000.jpg": {
-  "check": [
-   "mixed"
-  ],
-  "hex": "#67584a",
-  "kept": 0.57,
+  "check": [],
+  "hex": "#615543",
+  "kept": 0.568,
   "method": "cutout",
   "palette": [
-   "#67584a",
-   "#524234",
-   "#5c4d3d",
-   "#568c21"
+   "#655945",
+   "#534334",
+   "#5b4c3d",
+   "#6d6358"
   ],
   "sampled": "2026-11-16"
  },
@@ -4309,6 +4338,7 @@
   ],
   "hex": "#4b4846",
   "kept": 0.265,
+  "mean": "#53504f",
   "method": "cutout",
   "palette": [
    "#4b4846",
@@ -4340,6 +4370,7 @@
   ],
   "hex": "#444545",
   "kept": 0.282,
+  "mean": "#535353",
   "method": "cutout",
   "palette": [
    "#434444",
@@ -4355,6 +4386,7 @@
   ],
   "hex": "#444545",
   "kept": 0.282,
+  "mean": "#535353",
   "method": "cutout",
   "palette": [
    "#434444",
@@ -4407,6 +4439,7 @@
   ],
   "hex": "#292828",
   "kept": 0.619,
+  "mean": "#867258",
   "method": "cutout",
   "palette": [
    "#272726",
@@ -4453,6 +4486,7 @@
   ],
   "hex": "#252529",
   "kept": 0.629,
+  "mean": "#676261",
   "method": "cutout",
   "palette": [
    "#242428",
@@ -4689,6 +4723,7 @@
   ],
   "hex": "#565859",
   "kept": 0.43,
+  "mean": "#535557",
   "method": "cutout",
   "palette": [
    "#565859",
@@ -4802,6 +4837,7 @@
   ],
   "hex": "#444444",
   "kept": 0.492,
+  "mean": "#4b4b4a",
   "method": "cutout",
   "palette": [
    "#444444",
@@ -4833,6 +4869,7 @@
   ],
   "hex": "#858b91",
   "kept": 0.121,
+  "mean": "#7e8389",
   "method": "cutout",
   "palette": [
    "#858b91",
@@ -4862,6 +4899,7 @@
   ],
   "hex": "#5a1810",
   "kept": 0.241,
+  "mean": "#5f1d16",
   "method": "cutout",
   "palette": [
    "#5a1810",
@@ -4951,6 +4989,7 @@
   ],
   "hex": "#a0a09f",
   "kept": 0.464,
+  "mean": "#9d9e9d",
   "method": "cutout",
   "palette": [
    "#a0a19f",
@@ -4995,6 +5034,7 @@
   ],
   "hex": "#737375",
   "kept": 0.075,
+  "mean": "#79797b",
   "method": "cutout",
   "palette": [
    "#737275",
@@ -5164,6 +5204,7 @@
   ],
   "hex": "#746a67",
   "kept": 0.127,
+  "mean": "#997c79",
   "method": "cutout",
   "palette": [
    "#716866",
@@ -5289,6 +5330,7 @@
   ],
   "hex": "#61656d",
   "kept": 0.218,
+  "mean": "#5b5f67",
   "method": "cutout",
   "palette": [
    "#60656d",
@@ -5304,6 +5346,7 @@
   ],
   "hex": "#343434",
   "kept": 0.653,
+  "mean": "#534f4b",
   "method": "cutout",
   "palette": [
    "#333333",
@@ -5494,6 +5537,7 @@
   ],
   "hex": "#37373d",
   "kept": 0.385,
+  "mean": "#605f62",
   "method": "cutout",
   "palette": [
    "#36373c",
@@ -5618,6 +5662,7 @@
   ],
   "hex": "#4d4842",
   "kept": 0.127,
+  "mean": "#706c66",
   "method": "cutout",
   "palette": [
    "#4c4842",
@@ -5731,6 +5776,7 @@
   ],
   "hex": "#454545",
   "kept": 0.267,
+  "mean": "#545455",
   "method": "cutout",
   "palette": [
    "#444444",
@@ -5801,6 +5847,7 @@
   ],
   "hex": "#313234",
   "kept": 0.338,
+  "mean": "#6a6e60",
   "method": "cutout",
   "palette": [
    "#303133",
@@ -5816,6 +5863,7 @@
   ],
   "hex": "#313234",
   "kept": 0.338,
+  "mean": "#6a6e60",
   "method": "cutout",
   "palette": [
    "#303133",
@@ -5950,6 +5998,7 @@
   ],
   "hex": "#80807f",
   "kept": 0.502,
+  "mean": "#8b8c8c",
   "method": "cutout",
   "palette": [
    "#808180",
@@ -6092,6 +6141,7 @@
   ],
   "hex": "#434549",
   "kept": 0.24,
+  "mean": "#50545a",
   "method": "cutout",
   "palette": [
    "#434548",
@@ -6213,6 +6263,7 @@
   ],
   "hex": "#4d4842",
   "kept": 0.127,
+  "mean": "#706c66",
   "method": "cutout",
   "palette": [
    "#4c4842",
@@ -6254,6 +6305,7 @@
   ],
   "hex": "#4b4b4b",
   "kept": 0.406,
+  "mean": "#606161",
   "method": "cutout",
   "palette": [
    "#4a4b4b",
@@ -6269,6 +6321,7 @@
   ],
   "hex": "#4b4b4b",
   "kept": 0.406,
+  "mean": "#606161",
   "method": "cutout",
   "palette": [
    "#4a4b4b",
@@ -6302,6 +6355,7 @@
   ],
   "hex": "#c8c9dc",
   "kept": 0.456,
+  "mean": "#c2c3d6",
   "method": "cutout",
   "palette": [
    "#c8c9dc",
@@ -6688,6 +6742,7 @@
   ],
   "hex": "#404141",
   "kept": 0.434,
+  "mean": "#515151",
   "method": "cutout",
   "palette": [
    "#404040",
@@ -6701,14 +6756,15 @@
   "check": [
    "mixed"
   ],
-  "hex": "#494a4a",
-  "kept": 0.357,
+  "hex": "#7d7d7d",
+  "kept": 0.358,
+  "mean": "#5d5e5e",
   "method": "cutout",
   "palette": [
-   "#48494a",
-   "#7e7e7e",
-   "#656565",
-   "#2b2c2c"
+   "#7c7c7c",
+   "#474848",
+   "#626363",
+   "#2b2b2b"
   ],
   "sampled": "2026-11-16"
  },
@@ -6718,6 +6774,7 @@
   ],
   "hex": "#7d7d7d",
   "kept": 0.358,
+  "mean": "#5d5e5e",
   "method": "cutout",
   "palette": [
    "#7c7c7c",
@@ -6749,6 +6806,7 @@
   ],
   "hex": "#20201e",
   "kept": 0.583,
+  "mean": "#454643",
   "method": "cutout",
   "palette": [
    "#1f201e",
@@ -6764,6 +6822,7 @@
   ],
   "hex": "#20201e",
   "kept": 0.583,
+  "mean": "#454643",
   "method": "cutout",
   "palette": [
    "#1f201e",
@@ -6826,6 +6885,7 @@
   ],
   "hex": "#93979f",
   "kept": 0.472,
+  "mean": "#8a8e96",
   "method": "cutout",
   "palette": [
    "#92979e",
@@ -6842,6 +6902,7 @@
   ],
   "hex": "#93979f",
   "kept": 0.472,
+  "mean": "#8a8e96",
   "method": "cutout",
   "palette": [
    "#92979e",
@@ -6871,14 +6932,15 @@
   "check": [
    "mixed"
   ],
-  "hex": "#333333",
-  "kept": 0.421,
+  "hex": "#333433",
+  "kept": 0.42,
+  "mean": "#515151",
   "method": "cutout",
   "palette": [
    "#333333",
    "#5d5d5d",
-   "#454546",
-   "#868687"
+   "#464646",
+   "#828283"
   ],
   "sampled": "2026-11-16"
  },
@@ -6888,6 +6950,7 @@
   ],
   "hex": "#333433",
   "kept": 0.42,
+  "mean": "#515151",
   "method": "cutout",
   "palette": [
    "#333333",
@@ -7000,6 +7063,7 @@
   ],
   "hex": "#252529",
   "kept": 0.627,
+  "mean": "#666160",
   "method": "cutout",
   "palette": [
    "#242428",
@@ -7170,6 +7234,7 @@
   ],
   "hex": "#858987",
   "kept": 0.39,
+  "mean": "#7e8180",
   "method": "cutout",
   "palette": [
    "#858987",

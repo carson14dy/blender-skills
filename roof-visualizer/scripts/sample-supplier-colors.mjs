@@ -16,7 +16,7 @@ import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { colorJobs, listedColor, COLOR_LAYERS } from './lib/supplier-catalog.mjs';
-import { sampleColor, nameCheck, WHITE_NAME, LIGHT_NEUTRAL_LUMA, MIXED_SPREAD } from './lib/swatch-color.mjs';
+import { sampleColor, nameCheck, luma, rgbOf, WHITE_NAME, LIGHT_NEUTRAL_LUMA, MIXED_SPREAD } from './lib/swatch-color.mjs';
 
 // Behind an HTTPS proxy (cloud sessions) Node's fetch needs --use-env-proxy; restart with it once.
 if ((process.env.HTTPS_PROXY || process.env.https_proxy) && !process.execArgv.includes('--use-env-proxy') && !process.env.NODE_USE_ENV_PROXY) {
@@ -99,7 +99,7 @@ async function get(url) {
 async function sample() {
   if (spawnSync('ffmpeg', ['-version']).status !== 0) { console.error('ffmpeg not found: install it (node lab/tools/doctor.mjs lists it).'); process.exit(1); }
   const cache = fs.existsSync(CACHE) ? JSON.parse(fs.readFileSync(CACHE, 'utf8')) : {};
-  const only = arg('only'), match = arg('match') ? new RegExp(arg('match'), 'i') : null, limit = Number(arg('limit')) || Infinity;
+  const only = arg('only'), match = arg('match') ? new RegExp(arg('match'), 'i') : null, limit = arg('limit') !== null && Number.isFinite(Number(arg('limit'))) ? Number(arg('limit')) : Infinity;
   const scratch = arg('scratch');
   if (scratch) fs.mkdirSync(scratch, { recursive: true });
   const cleanup = () => { if (scratch && fs.existsSync(scratch)) fs.rmSync(scratch, { recursive: true, force: true }); };
@@ -118,7 +118,7 @@ async function sample() {
   const queues = new Map(); // host -> jobs, taken in turn so one host's gap is another's request
   for (const j of todo.slice(0, limit)) { const h = new URL(fetchUrl(j.url)).host; if (!queues.has(h)) queues.set(h, []); queues.get(h).push(j); }
   const total = [...queues.values()].reduce((s, q) => s + q.length, 0);
-  console.log(`${jobs.size} images linked; ${cached} already in the cache; ${total} to fetch from ${[...queues.keys()].join(', ') || 'no host'}`);
+  console.log(`${jobs.size} images linked; ${cached} skipped (in the cache${recheck ? `, without ${recheck}` : ''}); ${total} to fetch from ${[...queues.keys()].join(', ') || 'no host'}`);
   console.log(`statistic: light-neutral luma ${LIGHT_NEUTRAL_LUMA.asphalt} (asphalt) / ${LIGHT_NEUTRAL_LUMA.other}, mixed spread ${MIXED_SPREAD}`);
 
   const ready = new Map([...queues.keys()].map((h) => [h, 0]));
@@ -167,65 +167,70 @@ async function sample() {
   writeCache(cache);
   cleanup();
   const all = Object.values(cache);
-  console.log(`\nthis run: sampled ${sampledN}, cached ${cached} (skipped), failed ${failed}, flagged ${flagged}`);
+  console.log(`\nthis run: sampled ${sampledN}, cached ${cached} (skipped), failed ${failed}, flagged ${flagged}${stopped.size ? `, refused by ${stopped.size} host(s)` : ''}`);
   for (const [h, s] of stopped) console.log(`stopped ${h}: ${s.why}; ${s.left} left unfetched (they keep a name color until a later run)`);
   console.log(`cache: ${all.length} images, ${all.filter((e) => e.hex).length} with a color, ${all.filter((e) => e.error).length} errors -> ${path.relative(process.cwd(), CACHE)}`);
   console.log('next: rebuild the catalog (build-supplier-catalog.mjs) to merge the colors, then draw the sheet with --sheet <file.jpg>');
 }
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const shortName = (p) => p.name.replace(/[®™]/g, '').replace(/\s*\([^)]*\)/g, '').replace(/\s+/g, ' ').trim();
+/** For a product with no color name: the color its name gives ("... Shingles - Dual Black", "... Panel in Gray", "Black Finish"). */
+const colorPhrase = (name) => {
+  const t = name.replace(/[®™"]/g, '').replace(/\s*\([^)]*\)/g, '').replace(/\s+\d{3}[A-Z]\d{3}\b|\s+[A-Z]*\d{5,}\b/g, '').trim();
+  const m = t.match(/\bin ([A-Z][\w/]*(?: [A-Z][\w/]*)?)(?:\s+(?:Finish|with|for)\b|[,(]|$)/)
+    || t.match(/(?:Shingles?|Warranty|Shingle-)\s*[-–]?\s*([A-Z][A-Za-z]+(?: [A-Z][A-Za-z]+){0,2})$/)
+    || t.match(/\b((?:Dual |Light |Dark |Royal |Terra |True )?(?:Black|Gr[ae]y|White|Silver|Brown|Bronze|Tan|Beige|Red|Green|Blue|Copper|Charcoal))\b/i)
+    || t.match(/\b(Galvanized|Galvalume|Aluminum|Mill(?= Finish))\b/i);
+  return m ? m[1] : null;
+};
+const family = (name) => name.replace(/[®™"]/g, '').replace(/^[\d\s./x-]*(?:in\.|ft\.*)?\s*(?:x\s*[\d.]+\s*(?:in\.|ft\.*)\s*)*/i, '').split(/\s+/).slice(0, 3).join(' ');
 
 /** Contact sheet of our own flat chips (no store image is drawn), rendered with Playwright. */
 async function sheet(file) {
   const STORE = { 'menards-3064': 'Menards', 'homedepot-4301': 'Home Depot' };
+  const FLAG = { scene: 'S', mixed: 'M', 'name-mismatch': 'N' };
   const rows = [];
   for (const store of Object.keys(STORE)) {
     for (const layer of COLOR_LAYERS) {
       const ps = catalog.products.filter((p) => p.store === store && p.layer === layer);
-      if (!ps.length) continue;
-      const chips = [];
-      for (const p of ps) {
-        const listed = listedColor(p);
-        chips.push({ p, c: listed || { name: null }, variant: false });
-        for (const c of p.colors || []) if (c !== listed && c.colorCheck?.length) chips.push({ p, c, variant: true }); // flagged variants too
-      }
-      rows.push({ title: `${STORE[store]} · ${layer} · ${ps.length} products`, chips });
+      if (ps.length) rows.push({ title: `${STORE[store]} · ${layer} · ${ps.length}`, chips: ps.map((p) => ({ p, c: listedColor(p) || { name: null } })) });
     }
   }
-  const W = 1600, COLS = 10;
-  const chip = ({ p, c, variant }) => {
-    const hex = c.hex;
-    const flags = c.colorCheck || [];
+  const W = 1600, COLS = 13;
+  const chip = ({ p, c }) => {
+    const hex = c.hex, flags = c.colorCheck || [];
+    const ink = hex && luma(...rgbOf(hex)) > 140 ? '#111' : '#fff';
     const pal = (c.palette || []).map((h) => `<i style="background:${h}"></i>`).join('');
-    const src = { swatch: 'S', photo: 'P', name: 'N', override: 'O' }[c.colorSource] || '–';
-    return `<div class="chip${flags.length ? ' flag' : ''}"><div class="sw" style="${hex ? `background:${hex}` : ''}">${hex ? '' : '<span>color not sampled</span>'}${flags.length ? `<b>${esc(flags.map((f) => ({ scene: 'scene', mixed: 'mixed', 'name-mismatch': 'name?' }[f] || f)).join(' '))}</b>` : ''}</div>`
-      + `<div class="pal">${pal}</div><div class="t">${esc((variant ? '↳ ' : '') + (c.name ?? '(no color name)'))}</div><div class="n">${esc(shortName(p))}</div><div class="h">${hex || ''} · ${src}</div></div>`;
+    const src = { swatch: 'swatch', photo: 'photo', name: 'name rule', override: 'override' }[c.colorSource] || 'not sampled';
+    const label = c.name ?? `${colorPhrase(p.name) || '(no color name)'} · ${family(p.name)}`; // no color name: what the product name says
+    return `<div class="chip" style="${hex ? `background:${hex};color:${ink}` : ''}">`
+      + `${flags.length ? `<b>${flags.map((f) => FLAG[f] || f).join('')}</b>` : ''}<div class="t">${esc(label)}</div><div class="h">${hex || 'color not sampled'} · ${src}</div><div class="pal">${pal}</div></div>`;
   };
   const html = `<!doctype html><meta charset="utf-8"><style>
-    body{margin:0;background:#fff;font:11px/1.25 "DejaVu Sans",Arial,sans-serif;color:#222;width:${W}px}
-    header{padding:12px 16px 4px;font-size:15px} header small{display:block;font-size:11px;color:#555;margin-top:3px}
-    h2{font-size:12px;margin:10px 16px 4px;color:#333}
-    .grid{display:grid;grid-template-columns:repeat(${COLS},1fr);gap:6px;padding:0 16px}
-    .chip{min-width:0} .sw{height:34px;border:1px solid #0002;position:relative;display:flex;align-items:center;justify-content:center}
-    .sw span{font-size:9px;color:#555} .sw:not([style*=background]){background:repeating-linear-gradient(45deg,#eee 0 5px,#ccc 5px 10px)}
-    .flag .sw{outline:3px solid #e8590c;outline-offset:-1px} .sw b{position:absolute;right:0;top:0;background:#e8590c;color:#fff;font-size:9px;padding:1px 3px}
-    .pal{display:flex;height:6px} .pal i{flex:1}
-    .t,.n,.h{white-space:nowrap;overflow:hidden;text-overflow:ellipsis} .t{font-weight:bold} .n{color:#555;font-size:9.5px} .h{color:#777;font-size:9px}
-  </style><header>Store colors, sampled ${esc(today)}: listed color of each product, plus flagged variants (↳)
-    <small>Flat chips drawn from the sampled hex; no store image. Strip under a chip: palette, largest cluster first. S swatch · P product photo · N name rule · O override · hatched: color not sampled. Orange: flagged (scene, mixed, name? = name mismatch).</small></header>
-    ${rows.map((r) => `<h2>${esc(r.title)}</h2><div class="grid">${r.chips.map(chip).join('')}</div>`).join('')}<div style="height:12px"></div>`;
+    body{margin:0;background:#fff;font:10px/1.2 "DejaVu Sans",Arial,sans-serif;color:#222;width:${W}px}
+    header{padding:10px 12px 2px;font-size:14px} header small{display:block;font-size:10.5px;color:#555;margin-top:2px}
+    h2{font-size:11px;margin:8px 12px 3px;color:#333}
+    .grid{display:grid;grid-template-columns:repeat(${COLS},1fr);gap:4px;padding:0 12px}
+    .chip{position:relative;height:40px;padding:3px 4px 0;box-sizing:border-box;border:1px solid #0002;overflow:hidden;min-width:0;
+      background:repeating-linear-gradient(45deg,#eee 0 5px,#ccc 5px 10px)}
+    .t,.h{white-space:nowrap;overflow:hidden;text-overflow:ellipsis} .t{font-weight:bold;padding-right:14px} .h{font-size:9px;opacity:.8}
+    .pal{position:absolute;left:0;right:0;bottom:0;height:6px;display:flex} .pal i{flex:1}
+    .chip b{position:absolute;right:0;top:0;background:#e8590c;color:#fff;font-size:9px;padding:0 3px;line-height:13px}
+  </style><header>Store colors sampled ${esc(today)}: the listed color of each product (${rows.reduce((s, r) => s + r.chips.length, 0)})
+    <small>Flat chips drawn from the sampled hex; no store image is shown. Strip at the bottom: palette, largest cluster first.
+    Orange tag: S scene (light background removed), M mixed (largest cluster used), N name mismatch. Hatched: color not sampled.</small></header>
+    ${rows.map((r) => `<h2>${esc(r.title)}</h2><div class="grid">${r.chips.map(chip).join('')}</div>`).join('')}<div style="height:10px"></div>`;
   const { launch } = await import('../../lab/tools/_playwright.mjs');
   const { browser } = await launch({ software: true });
   try {
     const page = await browser.newPage({ viewport: { width: W, height: 800 } });
     await page.setContent(html);
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    await page.screenshot({ path: file, type: 'jpeg', quality: 80, fullPage: true });
+    await page.screenshot({ path: file, type: 'jpeg', quality: 66, fullPage: true });
   } finally { await browser.close(); }
-  const listed = rows.flatMap((r) => r.chips.filter((x) => !x.variant));
+  const listed = rows.flatMap((r) => r.chips);
   const count = (f) => listed.filter((x) => (x.c.colorCheck || []).includes(f)).length;
-  console.log(`${file}: ${listed.length} listed colors, ${listed.filter((x) => x.c.hex).length} with a hex; flagged scene ${count('scene')}, mixed ${count('mixed')}, name-mismatch ${count('name-mismatch')}; ${rows.reduce((s, r) => s + r.chips.length, 0) - listed.length} flagged variants`);
+  console.log(`${file}: ${listed.length} listed colors, ${listed.filter((x) => x.c.hex).length} with a hex; flagged scene ${count('scene')}, mixed ${count('mixed')}, name-mismatch ${count('name-mismatch')}`);
 }
 
 if (arg('sheet')) await sheet(arg('sheet'));
