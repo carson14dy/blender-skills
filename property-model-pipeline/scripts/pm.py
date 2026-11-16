@@ -513,7 +513,9 @@ def cmd_align(a):
 def cmd_blender(a):
     script = os.path.join(HERE, "blender", "build_model.py")
     args = ["--model", P(a.project, "model.json"), "--out", P(a.project, "out")]
-    if os.path.exists(P(a.project, "data/ortho.png")):
+    if a.plain_ground:
+        args.append("--plain-ground")
+    elif os.path.exists(P(a.project, "data/ortho.png")):
         args += ["--ortho", P(a.project, "data/ortho.png")]
     if not a.no_points:
         if a.all_points and os.path.exists(P(a.project, "data/lidar_points.npy")):
@@ -584,6 +586,7 @@ def main():
     s = sp.add_parser("blender"); s.add_argument("project"); s.add_argument("--blender"); s.add_argument("--glb", action="store_true")
     s.add_argument("--render", action="store_true"); s.add_argument("--no-points", action="store_true")
     s.add_argument("--all-points", action="store_true", help="whole LiDAR tile (trees, ground) instead of building points")
+    s.add_argument("--plain-ground", action="store_true", help="neutral grade plane instead of the orthophoto (keeps trees out)")
     s.set_defaults(fn=cmd_blender)
     a = ap.parse_args()
     a.fn(a)

@@ -22,8 +22,10 @@ from mathutils.geometry import tessellate_polygon
 
 EDGE_COLORS = {"ridge": (1, 0.1, 0.1), "hip": (1, 0.5, 0), "valley": (0.1, 0.4, 1), "eave": (0, 0.85, 0),
                "rake": (0, 0.8, 0.8), "transition": (0.8, 0, 0.8), "headwall": (1, 1, 0), "sidewall": (1, 0.85, 0.4)}
-FACET_COLORS = [(0.62, 0.32, 0.25), (0.45, 0.42, 0.40), (0.55, 0.38, 0.30), (0.40, 0.36, 0.34),
-                (0.58, 0.45, 0.36), (0.50, 0.30, 0.28)]
+# asphalt-shingle greys with a slight per-facet variation so planes read apart
+FACET_COLORS = [(0.16, 0.16, 0.17), (0.20, 0.20, 0.21), (0.13, 0.13, 0.14), (0.18, 0.17, 0.17),
+                (0.22, 0.22, 0.23), (0.15, 0.15, 0.16)]
+WALL_COLOR = (0.48, 0.47, 0.36)   # lap siding (override per project in a later pass if needed)
 
 
 def parse_args():
@@ -41,6 +43,7 @@ def parse_args():
     ap.add_argument("--render", action="store_true")
     ap.add_argument("--imperial", action="store_true")
     ap.add_argument("--keep-scene", action="store_true")
+    ap.add_argument("--plain-ground", action="store_true", help="neutral ground plane at grade instead of an orthophoto (no trees)")
     ap.add_argument("--labels", action="store_true", default=True)
     return ap.parse_args(argv)
 
@@ -131,7 +134,7 @@ def build_roof(model, coll, labels, label_coll):
 
 
 def build_walls(model, coll):
-    mat = material("Wall", (0.85, 0.83, 0.78))
+    mat = material("Wall", WALL_COLOR)
     for w in model["walls"]:
         prof = w["profile"]
         if len(prof) < 2:
@@ -182,6 +185,16 @@ def build_ground(ortho, coll):
     me.materials.append(m)
     ob["attribution"] = meta.get("attribution", "")
     return ob
+
+
+def build_plain_ground(model, coll, half=30.0):
+    """Neutral matte ground following the planar grade (no imagery, so no trees/cars/neighbours)."""
+    a, b, c = (model.get("ground") or [0.0, 0.0, 0.0])
+    x0, y0, x1, y1, _ = bounds_of(model)
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+    pts = [(cx - half, cy - half), (cx + half, cy - half), (cx + half, cy + half), (cx - half, cy + half)]
+    verts = [(x, y, a * x + b * y + c - 0.01) for x, y in pts]
+    return mesh_object("Ground (grade)", verts, [[0, 1, 2, 3]], coll, material("Grade", (0.42, 0.45, 0.40)))
 
 
 def build_points(path, coll):
@@ -250,10 +263,10 @@ def setup_scene(imperial):
     world.use_nodes = True
     bg = world.node_tree.nodes.get("Background")
     if bg:
-        bg.inputs["Color"].default_value = (0.7, 0.78, 0.9, 1)
-        bg.inputs["Strength"].default_value = 0.8
+        bg.inputs["Color"].default_value = (0.55, 0.65, 0.85, 1)
+        bg.inputs["Strength"].default_value = 0.45
     sun_d = bpy.data.lights.new("Sun", "SUN")
-    sun_d.energy = 3.5
+    sun_d.energy = 4.5
     sun = bpy.data.objects.new("Sun", sun_d)
     sun.rotation_euler = (math.radians(40), math.radians(10), math.radians(35))
     sc.collection.objects.link(sun)
@@ -342,7 +355,9 @@ def main():
     build_roof(model, roof_c, a.labels, lab_c)
     build_walls(model, wall_c)
     build_edges(model, edge_c)
-    if a.ortho and os.path.exists(a.ortho):
+    if a.plain_ground or not (a.ortho and os.path.exists(a.ortho)):
+        build_plain_ground(model, ref_c)
+    else:
         build_ground(a.ortho, ref_c)
     if a.points and os.path.exists(a.points):
         pts_c = collection("LiDAR points")
