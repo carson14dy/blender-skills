@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import * as THREE from 'three';
 import { buildRoofPlanes, HOUSE_PRESETS } from '../viewer/js/house.js';
 import { RoofPlane, analyzeRoof, fullParts, dripEdgeGeometry, capGeometry } from '../viewer/js/roof-geometry.js';
-import { PROFILES, panelName, panelProfile, profileFor, ribbedSurface, rakeTrimGeometry, metalCapProfile, onRibs } from '../viewer/js/profiles.js';
+import { PROFILES, panelName, panelProfile, profileFor, ribbedSurface, rakeTrimGeometry, metalCapProfile, onRibs, dripReach } from '../viewer/js/profiles.js';
 import { edgeProfileFor, toStudioProduct } from '../viewer/js/supplier-products.js';
 
 const IN = 0.0254;
@@ -142,19 +142,23 @@ test('rake trim: top leg at the top height, face 3.5 in. down, bend clear of the
     const p = g.attributes.position, n = g.attributes.normal, uv = g.attributes.uv;
     const v = new THREE.Vector3();
     let onTop = 0, zMax = -Infinity;
-    const faceTop = new Map(), faceFoot = [];
+    const face = new Map(); // rake : u along it -> distinct heights of the face corners there
     for (let i = 0; i < p.count; i++) {
       v.fromBufferAttribute(p, i);
       const P = segs.rake[Math.floor(i / 18)].planes[0];
       if (n.getY(i) > 0.5 && Math.abs(P.distance(v) - top) < 1e-6) onTop++;
       zMax = Math.max(zMax, v.z);
-      if (Math.abs(n.getY(i)) < 1e-6) (Math.abs(v.z - zMax) < 1e-9 && false ? null : faceFoot.push([Math.floor(i / 18), uv.getX(i), uv.getY(i), v.y]));
+      if (Math.abs(n.getY(i)) < 1e-6) {
+        const k = `${Math.floor(i / 18)}:${uv.getX(i).toFixed(6)}`, ys = face.get(k) || [];
+        if (!ys.some((y) => Math.abs(y - v.y) < 1e-7)) ys.push(v.y);
+        face.set(k, ys);
+      }
     }
     assert.equal(onTop, 12, 'top legs lie at `top` in the plane');
     near(zMax - gableZ, out, 1e-6, `bend past the panel edge (kick ${edge?.kickOutIn ?? 'default'})`);
-    // face: the same corner of the quad at the bend and at the foot is 3.5 in. apart vertically
-    for (const [s, u, w, y] of faceFoot) { const k = `${s}:${u.toFixed(6)}`; const o = faceTop.get(k); if (o) near(Math.abs(o[1] - y), 3.5 * IN, 1e-6, 'face drop'); else faceTop.set(k, [w, y]); }
-    assert.ok(faceTop.size >= 4, 'face corners found');
+    // face: at each end of each rake, the bend and the foot are 3.5 in. apart vertically
+    assert.equal(face.size, 4, 'two ends per rake');
+    for (const ys of face.values()) { assert.equal(ys.length, 2); near(Math.abs(ys[0] - ys[1]), 3.5 * IN, 1e-6, 'face drop'); }
   }
   // miter: at the peak the two trims end on one plane, every section point shared (no notch at the apex)
   const g = rakeTrimGeometry(segs.rake, { top, clear: dripReach(null) });
@@ -228,4 +232,12 @@ test('drip edge with a profile: the drop equals the face; no profile keeps today
   const g0 = dripEdgeGeometry(segs, { offEave: 0.0122, offRake: 0.0158 });
   near(drop(g0), 0.045, 1e-6, 'default drop');
   assert.equal(tris(g0), (segs.eave.length + segs.rake.length) * 3 * 2, 'default: flange, drop, kick');
+  // a missing key keeps today's value (as drip_edge_buf in roof_core.py): flange and face only -> today's kick, no hem
+  const gp = dripEdgeGeometry(segs, { offEave: 0.0122, offRake: 0.0158, profile: { flangeIn: 2, faceIn: 1.5 } });
+  near(drop(gp), 1.5 * IN, 1e-6, 'partial profile drop');
+  const g0p = g0.attributes.position.array, gpp = gp.attributes.position.array;
+  assert.equal(gpp.length, g0p.length, 'partial profile: flange, drop, kick');
+  // the kick legs (last two triangles of each segment) are today's 12 mm out, 6 mm down: same vector as the default
+  const kick = (a, i) => [a[i + 3] - a[i], a[i + 4] - a[i + 1], a[i + 5] - a[i + 2]].map((x) => +x.toFixed(6));
+  assert.deepEqual(kick(gpp, 12 * 3), kick(g0p, 12 * 3), 'today\'s kick');
 });
