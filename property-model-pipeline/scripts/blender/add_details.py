@@ -21,7 +21,11 @@ geometry, placed from photo measurements. details.json (metres, model frame):
   "stairs": [ {"top": [x,y], "dir": [dx,dy], "width": 1.0, "top_z": 0.95, "bottom_z": 0.2, "risers": 4} ],
   "ceilings": [ {"polygon": [[x,y],...], "z": 3.19} ],
   "boxes": [ {"name": "...", "min": [x,y,z], "max": [x,y,z], "material": "brick|concrete|trim|deck"} ],
-  "downspouts": [ {"xy": [x,y], "top_z": 3.5, "bottom_z": 0.2} ]
+  "downspouts": [ {"xy": [x,y], "top_z": 3.5, "bottom_z": 0.2} ],
+  "roof_vents": [ {"xy": [x,y], "size": 0.32} ],        # placed on the roof surface; ridge caps are automatic
+  "corner_boards": true,
+  "lights": [ {"wall": "M:-v", "u": 5.4, "z": 2.9} ],
+  "text": [ {"wall": "G:+u", "u": 0.5, "z": 0.9, "text": "1601", "size": 0.16} ]
 }
 Walls are named "<wing>:<side>" as in model.json (e.g. "M:-u"); u runs from bottom[0] to bottom[1].
 """
@@ -294,6 +298,74 @@ def add_stairs(st, c, mats, idx):
         oriented_box(f"stair {idx} stringer", p0, dvec * run * (r - 1), side * 0.05 * sgn, Vector((0, 0, st["top_z"] - st["bottom_z"])), c, mats["deck"])
 
 
+def facet_z(model, x, y):
+    """Top roof surface z at (x, y) from the facet planes (point-in-polygon on the outer rings)."""
+    best = None
+    for f in model["facets"]:
+        a, b, c0 = f["plane"]
+        for poly in f["polygons"]:
+            ring = poly["outer"]
+            inside = False
+            for i in range(len(ring)):
+                x1, y1 = ring[i][:2]; x2, y2 = ring[(i + 1) % len(ring)][:2]
+                if (y1 > y) != (y2 > y) and x < (x2 - x1) * (y - y1) / (y2 - y1 + 1e-12) + x1:
+                    inside = not inside
+            if inside:
+                z = a * x + b * y + c0
+                best = z if best is None else max(best, z)
+    return best
+
+
+def add_roof_extras(model, D, c, mats):
+    up = Vector((0, 0, 1))
+    for i, e in enumerate(model["edges"]):
+        if e["kind"] not in ("ridge", "hip") or e["length_m"] < 0.3:
+            continue
+        p0, p1 = Vector(e["p0"]), Vector(e["p1"])
+        side = (p1 - p0).cross(up).normalized()
+        oriented_box(f"ridge cap {i}", p0 - side * 0.15 + up * 0.005, p1 - p0, side * 0.30, up * 0.05, c, mats["cap"])
+    for i, v in enumerate(D.get("roof_vents", [])):
+        x, y = v["xy"]
+        z = facet_z(model, x, y)
+        if z is None:
+            continue
+        w = v.get("size", 0.32)
+        box(f"roof vent {i}", (x - w / 2, y - w / 2, z - 0.05), (x + w / 2, y + w / 2, z + v.get("height", 0.16)), c, mats["vent"])
+
+
+def add_corner_boards(model, frames, fnd, c, mats, width=0.1):
+    for w in model["walls"]:
+        key = f'{w["wing"]}:{w["side"]}'
+        a, d, n, L, zb = frames[key]
+        top0, top1 = w["profile"][0][2], w["profile"][-1][2]
+        sb = fnd.get("walls", {}).get(key)
+        for u, zt, sgn in ((0.0, top0, 1), (L, top1, -1)):
+            z0 = sb if sb is not None else zb(u) + fnd.get("default_reveal", 0.25)
+            p = a + d * u + n * 0.012 + Vector((0, 0, z0))
+            oriented_box(f"corner board {key}", p, d * (width * sgn), n * 0.02, Vector((0, 0, zt - z0 - 0.05)), c, mats["trim"])
+
+
+def add_lights_and_text(D, frames, c, mats):
+    for i, l in enumerate(D.get("lights", [])):
+        a, d, n, L, _ = frames[l["wall"]]
+        p = a + d * l["u"] + Vector((0, 0, l["z"]))
+        oriented_box(f"light {i} plate", p - d * 0.06 - Vector((0, 0, 0.08)), d * 0.12, n * 0.03, Vector((0, 0, 0.16)), c, mats["fixture"])
+        oriented_box(f"light {i} arm", p - d * 0.015 + Vector((0, 0, 0.04)), d * 0.03, n * 0.22, Vector((0, 0, 0.03)), c, mats["fixture"])
+        oriented_box(f"light {i} shade", p - d * 0.12 + n * 0.12 - Vector((0, 0, 0.1)), d * 0.24, n * 0.24, Vector((0, 0, 0.12)), c, mats["fixture"])
+    for i, t in enumerate(D.get("text", [])):
+        a, d, n, L, _ = frames[t["wall"]]
+        cu = bpy.data.curves.new(f"text {i}", "FONT")
+        cu.body = t["text"]; cu.size = t.get("size", 0.15); cu.align_x = "CENTER"; cu.extrude = 0.004
+        ob = bpy.data.objects.new(f"text {t['text']}", cu)
+        p = a + d * t["u"] + n * t.get("offset", 0.12) + Vector((0, 0, t["z"]))
+        ob.location = p
+        # text faces +Z by default: rotate to stand up and face outward
+        import mathutils
+        ob.rotation_euler = mathutils.Matrix((d, Vector((0, 0, 1)), n)).transposed().to_euler()
+        cu.materials.append(mats.get(t.get("material", "trim")))
+        c.objects.link(ob)
+
+
 def main():
     blend, details, out = args()[:3]
     bpy.ops.wm.open_mainfile(filepath=blend)
@@ -313,6 +385,9 @@ def main():
         "deck": mat("Deck (painted)", tuple(D.get("deck_color", (0.07, 0.12, 0.09))), 0.75),
         "concrete": mat("Concrete", (0.55, 0.55, 0.53), 0.95),
         "brick": mat("Brick", (0.35, 0.12, 0.08), 0.9),
+        "cap": mat("Ridge cap", (0.12, 0.12, 0.13), 0.9),
+        "vent": mat("Roof vent", (0.1, 0.1, 0.11), 0.6, 0.3),
+        "fixture": mat("Light fixture (black)", (0.02, 0.02, 0.02), 0.4, 0.5),
     }
     # siding on the existing walls
     sm = siding_material(tuple(sid.get("color", (0.42, 0.42, 0.30))), sid.get("exposure", 0.1803))
@@ -330,6 +405,10 @@ def main():
     add_trim(model, frames, c, mats, D.get("fascia_height", 0.2), D.get("gutters", True), D.get("soffits", True))
     for o in D.get("openings", []):
         add_opening(o, frames, c, mats)
+    add_roof_extras(model, D, c, mats)
+    if D.get("corner_boards", True):
+        add_corner_boards(model, frames, D.get("foundation", {}), c, mats)
+    add_lights_and_text(D, frames, c, mats)
     for i, dk in enumerate(D.get("decks", [])):
         add_deck(dk, c, mats, i)
     for i, st in enumerate(D.get("stairs", [])):

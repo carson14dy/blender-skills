@@ -11,7 +11,8 @@ argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:]
 blend, out = argv[0], argv[1]
 bpy.ops.wm.open_mainfile(filepath=blend)
 keep = set()
-for cname in ("Roof facets", "Walls", "Details"):   # Details = add_details.py (openings, trim, decks)
+WITH_SITE = "--with-site" in argv
+for cname in ("Roof facets", "Walls", "Details") + (("Site",) if WITH_SITE else ()):   # Details: add_details.py, Site: add_site.py
     c = bpy.data.collections.get(cname)
     if c is None:
         continue
@@ -33,8 +34,10 @@ for i, o in enumerate(roofs):
     o["facet"] = o.name
     o.name = f"Roof F{i + 1}"
 for o in bpy.data.objects:
-    if o.users_collection[0].name == "Details":
+    if o.users_collection[0].name in ("Details", "Site"):
         continue   # keep their own materials
+    if o.name.startswith("Lot line"):
+        continue
     if o.users_collection[0].name == "Roof facets":
         o.data.materials.clear(); o.data.materials.append(roof_mat)
     else:
@@ -45,6 +48,21 @@ bpy.ops.object.select_all(action="DESELECT")
 for o in walls: o.select_set(True)
 bpy.context.view_layer.objects.active = walls[0]
 bpy.ops.object.join(); bpy.context.view_layer.objects.active.name = "Walls"
+# glTF cannot carry procedural shading: bake each procedural base colour to its mean colour
+for m in bpy.data.materials:
+    if not m.use_nodes:
+        continue
+    b = m.node_tree.nodes.get("Principled BSDF")
+    if not b or not b.inputs["Base Color"].is_linked:
+        continue
+    src = b.inputs["Base Color"].links[0].from_node
+    if src.type == "VALTORGB":
+        els = src.color_ramp.elements
+        col = [sum(e.color[i] for e in els) / len(els) for i in range(4)]
+    else:
+        col = list(m.diffuse_color)
+    m.node_tree.links.remove(b.inputs["Base Color"].links[0])
+    b.inputs["Base Color"].default_value = col
 bpy.ops.object.select_all(action="SELECT")
 bpy.ops.export_scene.gltf(filepath=out, export_format="GLB", use_selection=True, export_apply=True, export_yup=True)
 print("ok", [o.name for o in bpy.data.objects])

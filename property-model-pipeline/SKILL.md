@@ -119,6 +119,20 @@ opening by wall (`"M:-u"`), distance along the wall `u`, sill height and size fr
 measurements; mark anything placed by eye as approximate in its label. The studio export
 includes the Details collection.
 
+## Yard and grounding
+
+`scripts/build_site.py JOB features.json site_scene.json` builds the site from the LiDAR ground
+returns (class 2, model datum): a terrain grid plus crisp draped overlays for street, concrete
+(driveway, walks, sidewalks) and rock beds from planimetric polygons (city "impervious surface",
+sidewalk lines buffered by their width), curb lines, the subject parcel and point features
+(hydrants). `scripts/blender/add_site.py detailed.blend site_scene.json yard.json out.blend`
+adds it in Blender (collection `Site`; yard items: AC unit, fire pit, egress well, meters) and
+GROUNDS the house: walls and foundation extend 0.3 m below the terrain under them, deck posts,
+stair stringers, downspouts, piers and stoops land on it. No vegetation is generated. City
+features come in the city's datum — apply the per-source shift the fit estimated.
+`export_studio_glb.py ... --with-site` includes the site; procedural colours are baked to flat
+glTF colours on export.
+
 ## Web viewers / Roof Layer Studio
 
 `scripts/blender/export_studio_glb.py OUT/model.blend house.glb` writes a viewer-ready model:
