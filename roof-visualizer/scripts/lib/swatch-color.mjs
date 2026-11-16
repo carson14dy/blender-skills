@@ -78,9 +78,10 @@ function kmeans(rgb, idx) {
 
 /**
  * Color of an image given as RGB bytes (96 x 96 x 3 from the sampler; any square size works).
- * @returns {{hex: string, palette: string[], method: 'full'|'cutout'|'all', kept: number, check: string[]}}
+ * @returns {{hex: string, palette: string[], method: 'full'|'cutout'|'all', kept: number, check: string[], mean?: string}}
+ *   palette: cluster colors, largest first; mean: the plain mean, present when hex is not it (the mixed rule).
  */
-export function sampleColor(rgb, { whiteName = false, asphalt = false, single = false } = {}) {
+export function sampleColor(rgb, { whiteName = false, asphalt = false, single = false, mixedSpread = MIXED_SPREAD, asphaltLuma = LIGHT_NEUTRAL_LUMA.asphalt } = {}) {
   const n = Math.floor(rgb.length / 3), side = Math.round(Math.sqrt(n));
   if (side * side !== n) throw new Error(`sampleColor: expected a square image, got ${n} pixels`);
   const check = [];
@@ -104,7 +105,7 @@ export function sampleColor(rgb, { whiteName = false, asphalt = false, single = 
   const L = (i) => luma(rgb[i * 3], rgb[i * 3 + 1], rgb[i * 3 + 2]);
   // 3. light neutrals (siding, sky, glare), unless the product itself is white
   if (!whiteName) {
-    const T = asphalt ? LIGHT_NEUTRAL_LUMA.asphalt : LIGHT_NEUTRAL_LUMA.other;
+    const T = asphalt ? asphaltLuma : LIGHT_NEUTRAL_LUMA.other;
     const keep = px.filter((i) => { const r = rgb[i * 3], g = rgb[i * 3 + 1], b = rgb[i * 3 + 2]; return !(L(i) > T && Math.max(r, g, b) - Math.min(r, g, b) < NEUTRAL_CHROMA); });
     const dropped = 1 - keep.length / px.length;
     if (dropped <= 0.75) { if (dropped > 0.15) check.push('scene'); px = keep; }
@@ -119,12 +120,14 @@ export function sampleColor(rgb, { whiteName = false, asphalt = false, single = 
   const clusters = kmeans(rgb, trimmed);
   const palette = clusters.map((c) => hexOf(c.c));
   // 6. hex: linear-light mean; a single-color product with far-apart clusters takes its largest cluster
-  let hex = hexOf(linearMean(rgb, trimmed));
+  const mean = hexOf(linearMean(rgb, trimmed));
+  let hex = mean;
   if (single && clusters.length > 1) {
-    const far = clusters.some((a, i) => clusters.slice(i + 1).some((b) => a.c.some((v, ch) => Math.abs(v - b.c[ch]) > MIXED_SPREAD)));
+    const far = clusters.some((a, i) => clusters.slice(i + 1).some((b) => a.c.some((v, ch) => Math.abs(v - b.c[ch]) > mixedSpread)));
     if (far) { hex = hexOf(linearMean(rgb, clusters[0].members)); check.push('mixed'); }
   }
-  return { hex, palette, method, kept: Math.round(kept * 1000) / 1000, check };
+  // `mean` is kept when the hex is not the mean, so the mixed rule can be re-tuned without downloading again
+  return { hex, palette, method, kept: Math.round(kept * 1000) / 1000, check, ...(hex !== mean ? { mean } : {}) };
 }
 
 const NAME_RULES = [

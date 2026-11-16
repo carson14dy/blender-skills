@@ -2,7 +2,7 @@
 // Sample a color for each store product from its swatch or product photo (lab experiment 016).
 //
 //   node roof-visualizer/scripts/sample-supplier-colors.mjs [--limit N] [--only menards|homedepot] [--match <regex>]
-//        [--refresh] [--scratch <dir>]
+//        [--refresh | --recheck <check|error>] [--scratch <dir>]
 //       downloads the images the catalog links to, one request at a time and 1 s apart per host, and writes the
 //       color cache scripts/data/supplier-colors.json. A URL already in the cache is skipped unless --refresh.
 //   node roof-visualizer/scripts/sample-supplier-colors.mjs --sheet lab/experiments/016-store-picker-colors/img/chips.jpg
@@ -111,7 +111,9 @@ async function sample() {
     if (only && !p.store.startsWith(only)) continue;
     for (const j of colorJobs(p)) if (!jobs.has(j.url) && (!match || match.test(j.url) || match.test(p.id))) jobs.set(j.url, { ...j, product: p, flags: flagsFor(p, j) });
   }
-  const todo = [...jobs.values()].filter((j) => has('refresh') || !cache[j.url]);
+  // --recheck <check|error>: sample again only the images whose cache entry has that check (e.g. mixed) or an error
+  const recheck = arg('recheck');
+  const todo = [...jobs.values()].filter((j) => (recheck ? (recheck === 'error' ? cache[j.url]?.error : cache[j.url]?.check?.includes(recheck)) : has('refresh') || !cache[j.url]));
   const cached = jobs.size - todo.length;
   const queues = new Map(); // host -> jobs, taken in turn so one host's gap is another's request
   for (const j of todo.slice(0, limit)) { const h = new URL(fetchUrl(j.url)).host; if (!queues.has(h)) queues.set(h, []); queues.get(h).push(j); }
@@ -148,7 +150,7 @@ async function sample() {
       if (d.error) entry = { error: d.error, sampled: today };
       else {
         const s = sampleColor(d.rgb, job.flags);
-        entry = { hex: s.hex, palette: s.palette, method: s.method, kept: s.kept, check: s.check, sampled: today };
+        entry = { hex: s.hex, palette: s.palette, method: s.method, kept: s.kept, check: s.check, ...(s.mean ? { mean: s.mean } : {}), sampled: today };
       }
     }
     cache[job.url] = entry;

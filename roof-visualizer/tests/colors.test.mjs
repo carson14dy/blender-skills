@@ -45,13 +45,16 @@ test('a shingle in a scene: light siding is dropped and flagged', () => {
 
 test('a single-color product with a badge takes its largest cluster', () => {
   // 70% gray panel, 30% yellow badge (rows 0-28 of 96 = 30.2%)
-  const r = sampleColor(image((x, y) => (y < 29 ? '#d6b057' : '#686c70')), { single: true });
+  const img = image((x, y) => (y < 29 ? '#d6b057' : '#686c70'));
+  const r = sampleColor(img, { single: true });
   near(r.hex, '#686c70', 4);
   assert.ok(r.check.includes('mixed'), r.check.join());
-  // without the single rule the mean is pulled toward the badge
-  const mean = sampleColor(image((x, y) => (y < 29 ? '#d6b057' : '#686c70')));
-  assert.ok(!mean.check.includes('mixed'));
-  assert.notEqual(mean.hex, r.hex);
+  // without the single rule the mean is pulled toward the badge; the mixed result keeps that mean for re-tuning
+  const plain = sampleColor(img);
+  assert.ok(!plain.check.includes('mixed'));
+  assert.notEqual(plain.hex, r.hex);
+  assert.equal(r.mean, plain.hex);
+  assert.equal(plain.mean, undefined);
 });
 
 test('a white product keeps its light pixels', () => {
