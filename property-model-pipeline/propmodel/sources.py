@@ -166,6 +166,36 @@ def ms_buildings(lat, lon, radius, cache_dir, region=None):
     return out
 
 
+def arcgis_footprints(layer_url, lat, lon, radius, cache_dir, name="city"):
+    """Building footprints from any ArcGIS REST polygon layer (city/county planimetrics).
+
+    Municipal photogrammetric footprints are usually the most accurate public outline
+    (typ. +/-0.15-0.3 m) but may follow walls OR drip edges depending on the capture spec —
+    check against LiDAR/orthophoto and set ``which`` accordingly.
+    """
+    dlat = radius / 111320.0
+    dlon = radius / (111320.0 * math.cos(math.radians(lat)))
+    params = {"geometry": f"{lon - dlon},{lat - dlat},{lon + dlon},{lat + dlat}",
+              "geometryType": "esriGeometryEnvelope", "inSR": 4326, "spatialRel": "esriSpatialRelIntersects",
+              "outFields": "*", "returnGeometry": "true", "outSR": 4326, "f": "geojson"}
+    d = _get(layer_url.rstrip("/") + "/query", cache_dir, params)
+    if "error" in d:
+        raise RuntimeError(f"footprint query error: {d['error']}")
+    out = []
+    for i, f in enumerate(d.get("features", [])):
+        g = f.get("geometry") or {}
+        if g.get("type") == "Polygon":
+            rings = [g["coordinates"][0]]
+        elif g.get("type") == "MultiPolygon":
+            rings = [p[0] for p in g["coordinates"]]
+        else:
+            continue
+        for ring in rings:
+            out.append({"source": name, "id": f"{name}/{f.get('id', i)}", "tags": f.get("properties", {}),
+                        "ring_lonlat": ring})
+    return out
+
+
 def pick_building(candidates, frame, seed_xy=(0.0, 0.0)):
     """Footprint containing the seed point, else the nearest one."""
     from shapely.geometry import Polygon, Point

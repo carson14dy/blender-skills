@@ -115,17 +115,23 @@ def cmd_fetch(a):
             cands += sources.ms_buildings(lat, lon, a.radius, CACHE)
         except Exception as e:
             print("Microsoft footprints failed:", e)
+    if a.footprint_layer:
+        try:
+            cands += sources.arcgis_footprints(a.footprint_layer, lat, lon, a.radius, CACHE, a.footprint_name)
+        except Exception as e:
+            print(f"{a.footprint_name} footprints failed:", e)
     seed = (0.0, 0.0)
     if a.seed:
         seed = tuple(map(float, a.seed.split(",")))
     chosen = {}
-    for src in ("osm", "ms"):
+    srcs = ([a.footprint_name] if a.footprint_layer else []) + ["osm", "ms"]
+    for src in srcs:
         got = sources.pick_building([c for c in cands if c["source"] == src], f0, seed)
         if got and got[1].distance(__import__("shapely").geometry.Point(seed)) < a.max_dist:
             chosen[src] = got
     if chosen:
         # re-centre the site origin on the chosen building
-        ref = (chosen.get("osm") or chosen.get("ms"))[1].centroid
+        ref = next(chosen[k] for k in srcs if k in chosen)[1].centroid
         clat, clon, _ = f0.to_geodetic(ref.x, ref.y, 0)
         site["origin"] = {"lat": float(clat), "lon": float(clon), "h": 0.0}
     elev = sources.dem_elevation(site["origin"]["lat"], site["origin"]["lon"], CACHE)
@@ -146,11 +152,15 @@ def cmd_fetch(a):
         poly = Polygon(ring)
         fps["chosen"][src] = {"id": c["id"], "tags": c["tags"], "ring": ring, "area_m2": poly.area,
                               "perimeter_m": poly.length}
-        obs.append({"target": "outline", "which": "roof_outline", "polygon": ring,
-                    "sigma": SIGMA[f"{src}_outline"], "shift": src, "source": f"auto:{src} footprint",
+        authoritative = a.footprint_layer and src == a.footprint_name
+        obs.append({"target": "outline", "which": a.footprint_which if authoritative else "roof_outline", "polygon": ring,
+                    "sigma": a.footprint_sigma if authoritative else SIGMA[f"{src}_outline"], "shift": src,
+                    "source": f"auto:{src} footprint",
                     "kind": "footprint", "note": "imagery-traced footprints follow the roof edge (incl. overhang)"})
         print(f"{src}: {c['id']} area {poly.area:.1f} m2 ({U.sqft(poly.area):.0f} ft2) perimeter {poly.length:.1f} m")
     save(a.project, "data/footprints.json", fps)
+    if a.footprint_layer:
+        set_auto_obs(a.project, f"auto:{a.footprint_name}", [o for o in obs if o["source"] == f"auto:{a.footprint_name} footprint"])
     set_auto_obs(a.project, "auto:osm", [o for o in obs if "osm" in o["source"]])
     set_auto_obs(a.project, "auto:ms", [o for o in obs if "ms" in o["source"]])
     try:
@@ -404,6 +414,11 @@ def cmd_camera_match(a):
     """pairs.json: {"pairs": [{"px":[u,v], "xyz":[x,y,z]} ...]}  (xyz in the local ENU frame)."""
     from propmodel import photo
     info = photo.exif(a.image)
+    if a.f35 and not info.get("K"):
+        import math as _m
+        fx = a.f35 / photo.DIAG_35MM * _m.hypot(info["width"], info["height"])
+        info["K"] = [[fx, 0, info["width"] / 2], [0, fx, info["height"] / 2], [0, 0, 1]]
+        print(f"no EXIF focal length: assuming {a.f35} mm-equivalent -> fx = {fx:.0f} px (use --refine-focal)")
     d = json.load(open(a.pairs))
     uv = [p["px"] for p in d["pairs"]]
     X = [p["xyz"] for p in d["pairs"]]
@@ -488,7 +503,12 @@ def main():
     s.add_argument("--half", type=float, default=40, help="orthophoto half-size (m)")
     s.add_argument("--imagery", default="esri", choices=["esri", "naip"]); s.add_argument("--no-ms", action="store_true")
     s.add_argument("--seed", help="x,y (m) of the target building relative to the geocode if it picked a neighbour")
-    s.add_argument("--max-dist", type=float, default=25.0); s.set_defaults(fn=cmd_fetch)
+    s.add_argument("--max-dist", type=float, default=25.0)
+    s.add_argument("--footprint-layer", help="ArcGIS REST polygon layer with authoritative footprints (city/county)")
+    s.add_argument("--footprint-name", default="city"); s.add_argument("--footprint-sigma", type=float, default=0.25)
+    s.add_argument("--footprint-which", default="footprint", choices=["footprint", "roof_outline"],
+                   help="does that layer trace walls (footprint) or drip edges (roof_outline)?")
+    s.set_defaults(fn=cmd_fetch)
     s = sp.add_parser("lidar"); s.add_argument("project"); s.add_argument("--dataset")
     s.add_argument("--half", type=float, default=35); s.add_argument("--thr", type=float, default=0.12)
     s.add_argument("--min-pts", type=int, default=25); s.add_argument("--max-obs-pts", type=int, default=600)
@@ -508,7 +528,9 @@ def main():
     s = sp.add_parser("photo-measure"); s.add_argument("--points", required=True); s.set_defaults(fn=cmd_photo_measure)
     s = sp.add_parser("camera-match"); s.add_argument("project"); s.add_argument("--image", required=True)
     s.add_argument("--pairs", required=True); s.add_argument("--refine-focal", action="store_true")
-    s.add_argument("--free-focal", action="store_true"); s.set_defaults(fn=cmd_camera_match)
+    s.add_argument("--free-focal", action="store_true")
+    s.add_argument("--f35", type=float, help="35mm-equivalent focal length when EXIF is missing (iPhone main camera: 26)")
+    s.set_defaults(fn=cmd_camera_match)
     s = sp.add_parser("align"); s.add_argument("--pairs", required=True); s.add_argument("--out"); s.add_argument("--no-scale", action="store_true")
     s.set_defaults(fn=cmd_align)
     s = sp.add_parser("blender"); s.add_argument("project"); s.add_argument("--blender"); s.add_argument("--glb", action="store_true")
