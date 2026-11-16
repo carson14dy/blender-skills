@@ -6,6 +6,8 @@ Newest first. One entry per session: date, cloud or local, what changed, results
 
 ## 2026-11-16 · cloud (8)
 
+**Roof Layer Studio page updated** (claude.ai artifact, version 6): store picker, priced list, project files and tap the roof, with the Sioux Falls catalog (350 KB). Tested statically before publishing: totals $6,746.27 / $6,533.59 / $6,431.38, 0 store-image requests, 0 errors. CSV and JSON saves go through the page's downloads permission. Not yet tried by hand inside claude.ai.
+
 **Review (Fable 5.2) and fixes, applied after the build:**
 - Unknown stock is shown as unknown, not 0.
 - The waste wording points at the List pane.
