@@ -38,12 +38,13 @@ After those five: 029 outline fallback (3 h), 030 `roofer` (4 h), and 031 and 03
 
 If you have no reports, tape the eaves and rakes of one simple gable from the ground and take the pitch with a phone on the rake board. That is about 1 hour per roof. Do not walk an icy roof for this.
 
-Three questions the study should settle, because the lidar comparison raised them:
+Questions the study should settle, because the lidar comparison raised them:
 
-- Is the outline right? This matters most. Lidar confirms the city roof outline only to about 0.1 m, which is 2 to 4% of the area. Tape at least one full eave and one rake on every study roof.
+- Is the outline right? This matters most. Lidar confirms the city roof outline only to about 0.1 m, which is 2 to 5% of the area, and review round 3 found nothing free that does better. On every study roof, tape one eave-to-eave width and one rake-to-rake length at the shingle edge, and note whether there are gutters: lidar sees gutters as roof, and it is not known whether the city line follows the shingles or the gutter lip.
 - Is lidar right about the pitch? Review round 1 found the city pitch low against lidar and switched the tool to the lidar pitch on precise planes. Review round 2 confirmed it on 30 more houses (0.12 in 12 low, lidar on whole-number pitches 85% of the time) and ruled out snow. One taped rake is still the only direct proof (`PREFER_LIDAR` in `lidar.py`).
 - Are the delivered faces or the cleaned faces closer to the truth? Both sets of numbers are in `roof.json` (`sourcePitchDeg`, and `checks.solid.sourceSlopedAreaM2`).
 - Are the `eave-under-wall` and `roof-step` joints real walls, or valleys and ridges that the city model simplified? The answer decides how those lengths enter a takeoff.
+- Are the `skewed-edge` edges eaves? About one house in three has 10 ft or more of open edge that runs at a slant across its plane and is counted as rake.
 
 ## What the plan got wrong or did not know
 

@@ -1,5 +1,6 @@
 """The measuring pipeline: find -> fetch -> decode -> planes and edges -> checks -> files."""
 import json
+import math
 import os
 
 from . import cityapi, esri, export, planes
@@ -9,6 +10,27 @@ RESIDENTIAL = {110, 121, 122, 130, 140, 150, 190, 210, 220}
 SOLID_CAPTURED_MS = 1685577600000   # 2023-06-01
 PERMIT_WATCH_MS = 1672531200000     # 2023-01-01: work permitted from here on was probably not finished at the June 2023 capture
 LIDAR_FLOWN_MS = 1608336000000   # 2020-12-19 UTC: the GPS times of the lidar points over the benchmark houses are 19 and 20 Dec 2020
+SKEW_MAX_DEG = 45.0     # an open edge called rake that runs closer than this to its plane's level line sheds water like an eave
+SKEW_FLAG_M = 3.0       # flag from 10 ft of such edges
+
+
+def skewed_edges_m(model):
+    """Length of open edges classed as rake that run less than SKEW_MAX_DEG off the level line of their plane.
+
+    A real rake runs straight up the slope and a real eave is level. An edge in between means the city
+    model drew the plane or the edge askew (39 houses in review round 3: 14 have 10 ft or more). Water
+    runs off such an edge, so it may need eave treatment; the tool cannot tell and says so.
+    """
+    total = 0.0
+    for e in model.edges:
+        if e["type"] != "rake" or len(e["planes"]) != 1:
+            continue
+        n = model.planes[e["planes"][0]]["normal"]
+        vx, vy = e["b"][0] - e["a"][0], e["b"][1] - e["a"][1]
+        run, h = math.hypot(vx, vy), math.hypot(n[0], n[1])
+        if run > 1e-6 and h > 0.02 and abs(vx * n[0] + vy * n[1]) / (run * h) < math.sin(math.radians(SKEW_MAX_DEG)):
+            total += e["lengthM"]
+    return total
 
 
 def find_house(http, out_root, oid=None, latlon=None, address=None):
@@ -101,6 +123,10 @@ def assess(model, footprint, solid_info=None, lookup=None, lidar=None, permits=N
     if low_wall > 0.3:
         flag("eave-under-wall", "review", "%.1f ft of eave runs under a wall; the model likely simplified a gable tie-in "
              "(expect valleys there on the real roof)" % m_to_ft(low_wall))
+    skew = skewed_edges_m(model)
+    if skew >= SKEW_FLAG_M:
+        flag("skewed-edge", "review", "%.0f ft of open edge is counted as rake but runs at a slant across its plane, so water runs "
+             "off it like an eave; check on a photo whether it is an eave" % m_to_ft(skew))
     st = fa.get("STRUCTURE")
     if st is not None and st not in RESIDENTIAL:
         flag("not-residential", "info", "city structure code %s is not a house; flat roofs and parapets are common" % st)
@@ -112,12 +138,17 @@ def assess(model, footprint, solid_info=None, lookup=None, lidar=None, permits=N
         flag("permits-not-checked", "info", "building permits were not looked up (offline, or the service did not answer); "
              "an addition after June 2023 would not show")
     else:
-        shape = [p for p in permits if p["workClass"] != "Reshingle"]
+        shape = [p for p in permits if p["workClass"] != "Reshingle" and p["workClass"] not in cityapi.PERMIT_OTHER]
         recent = [p for p in shape if (p["issuedMs"] or 0) >= PERMIT_WATCH_MS]
+        other = [p for p in permits if p["workClass"] in cityapi.PERMIT_OTHER and (p["issuedMs"] or 0) >= PERMIT_WATCH_MS]
         resh = [p for p in permits if p["workClass"] == "Reshingle" and p["issuedMs"]]
         checks["permits"] = {"checked": True, "roofShapePermits": len(shape),
                              "sinceCapture": [{"workClass": p["workClass"], "issued": export._date(p["issuedMs"])} for p in recent],
+                             "otherSinceCapture": [{"workClass": p["workClass"], "issued": export._date(p["issuedMs"])} for p in other],
                              "lastReshingle": export._date(resh[0]["issuedMs"]) if resh else None}
+        if other and not recent:
+            flag("permit-other", "info", "a %s permit was issued %s; such work seldom changes the roof shape, ask the owner"
+                 % (other[0]["workClass"], export._date(other[0]["issuedMs"])))
         if recent:
             flag("permit-since-capture", "site-check", "a building permit (%s, issued %s) is newer than the city model or was "
                  "open when it was captured in June 2023; the roof may have changed"
@@ -142,11 +173,22 @@ def assess(model, footprint, solid_info=None, lookup=None, lidar=None, permits=N
         if sm.get("pitchFromLidar", 0) - sm["override"] > 0:
             flag("lidar-pitch", "info", "%d plane(s) agree with lidar and show the more precise lidar pitch"
                  % (sm["pitchFromLidar"] - sm["override"]))
-        noted = [r for r in lidar["planes"] if r.get("surfaceNote")]
+        def listed(rows):
+            return ("; ".join("plane %d, %s" % (r["plane"], r["surfaceNote"]) for r in rows[:3])
+                    + ("; and %d more" % (len(rows) - 3) if len(rows) > 3 else ""))
+        trees = [r for r in lidar["planes"] if r.get("surfaceKind") == "tree"]
+        noted = [r for r in lidar["planes"] if r.get("surfaceNote") and r.get("surfaceKind") != "tree"]
         if noted:
-            flag("lidar-surface", "review", "lidar sees more than the roof surface on %d plane(s): %s. The area there may be off"
-                 % (len(noted), "; ".join("plane %d, %s" % (r["plane"], r["surfaceNote"]) for r in noted[:3])
-                    + ("; and %d more" % (len(noted) - 3) if len(noted) > 3 else "")))
+            flag("lidar-surface", "review", "lidar does not see the modelled roof surface on %d plane(s): %s. Area and lines there may be off"
+                 % (len(noted), listed(noted)))
+        if trees:
+            flag("tree-over-roof", "info", "a tree hangs over %d plane(s): %s. The roof under it is measured from the city model; "
+                 "lidar checked only the open part" % (len(trees), listed(trees)))
+        from .lidar import AZIMUTH_DEG, MIN_POINTS
+        turned = [r for r in lidar["planes"] if abs(r.get("azimuthDiffDeg") or 0) >= AZIMUTH_DEG and r.get("inliers", 0) >= MIN_POINTS]
+        if turned:
+            flag("lidar-azimuth", "review", "%d plane(s) face a different way in lidar than in the city model (%s); their edges "
+                 "may be drawn askew" % (len(turned), ", ".join("plane %d by %.0f deg" % (r["plane"], abs(r["azimuthDiffDeg"])) for r in turned[:3])))
         if sm["planesChecked"] == 0:
             flag("lidar-no-check", "review", "no plane had enough lidar points; the city numbers are unchecked")
         reg = lidar.get("registration") or {}

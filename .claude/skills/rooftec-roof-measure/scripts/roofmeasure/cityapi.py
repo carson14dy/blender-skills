@@ -28,7 +28,11 @@ FOOTPRINT_LAYER = BASE + "/Property/MapServer/5"
 SOLID_LAYER = BASE + "/Community/MapServer/66"
 PERMIT_LAYER = BASE + "/Community/MapServer/3"
 # permit work classes that change the shape of a roof ("New ..." covers every kind of new building)
-PERMIT_WHERE = "WORKCLASS IN ('Addition','Razing','Demolition','Relocated Structure','Reshingle') OR WORKCLASS LIKE 'New%'"
+# PERMIT_OTHER classes are reported as information only: 5 of 30 random houses had one since 2023 (review round 3)
+PERMIT_OTHER = ("Repair", "Remodel/Renovation")
+PERMIT_WHERE = ("WORKCLASS IN ('Addition','Razing','Demolition','Relocated Structure','Reshingle','Repair','Remodel/Renovation') "
+                "OR WORKCLASS LIKE 'New%'")
+PERMIT_MAX_AGE_DAYS = 30   # permits keep coming, so this one cached answer is asked again after a month
 MAX_PERMITS = 25
 USER_AGENT = "rooftec-roof-measure/0.1 (roof measurement skill; python-urllib)"
 ACCESSORY_STRUCTURES = {190, 290, 390}
@@ -95,14 +99,26 @@ class Http:
             os.replace(tmp, cache_path)
         return data
 
-    def get_json(self, url, params, cache_path=None):
+    def get_json(self, url, params, cache_path=None, max_age_days=None):
+        """Cached JSON query. With `max_age_days`, an older cached answer is asked again; if the service
+        does not answer, the old answer is still used."""
         q = urllib.parse.urlencode(dict(params, f="json"))
+        cached = None
         if cache_path and os.path.exists(cache_path):
             with open(cache_path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        data = json.loads(self.get_bytes(url + "?" + q).decode("utf-8"))
-        if isinstance(data, dict) and data.get("error"):
-            raise LookupError_("service error from %s: %s" % (url, data["error"].get("message")))
+                cached = json.load(f)
+            stale = max_age_days is not None and time.time() - os.path.getmtime(cache_path) > max_age_days * 86400
+            if not stale or self.offline:
+                return cached
+        try:
+            data = json.loads(self.get_bytes(url + "?" + q).decode("utf-8"))
+            if isinstance(data, dict) and data.get("error"):
+                raise LookupError_("service error from %s: %s" % (url, data["error"].get("message")))
+        except (LookupError_, ValueError):
+            if cached is None:
+                raise
+            self.log("could not refresh %s; using the cached answer" % os.path.basename(cache_path))
+            return cached
         if cache_path:
             os.makedirs(os.path.dirname(cache_path), exist_ok=True)
             with open(cache_path, "w", encoding="utf-8") as f:
@@ -306,7 +322,8 @@ def permits_for_footprint(http, footprint, out_root):
         "geometry": "%.3f,%.3f,%.3f,%.3f" % (x0, y0, x1, y1), "geometryType": "esriGeometryEnvelope", "inSR": 32164,
         "outSR": 32164, "spatialRel": "esriSpatialRelIntersects", "where": PERMIT_WHERE,
         "outFields": "WORKCLASS,ISSUEDATE,PERMITSTATUS", "orderByFields": "ISSUEDATE DESC", "returnGeometry": "true",
-        "resultRecordCount": MAX_PERMITS}, os.path.join(out_root, str(oid), "raw", "permits.json"))
+        "resultRecordCount": MAX_PERMITS}, os.path.join(out_root, str(oid), "raw", "permits.json"),
+        max_age_days=PERMIT_MAX_AGE_DAYS)
     out = []
     for f in d.get("features", []):
         g, a = f.get("geometry") or {}, f.get("attributes") or {}

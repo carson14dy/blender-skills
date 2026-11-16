@@ -8,12 +8,19 @@ import numpy as np
 
 from . import __version__, proj
 from .units import (ATTRIBUTION_CITY, ATTRIBUTION_LIDAR, CITY_SOLID_CAPTURED, CITY_SRID, FT2_PER_SQUARE,
-                    LIDAR_CAPTURED, m2_to_ft2, m_to_ft)
+                    LIDAR_CAPTURED, m2_to_ft2, m_to_ft, pitch_label)
 
 # Until the accuracy study (plan experiment 027) passes, nothing from tier A may be called "verified".
 # Change this only together with references/validation.md.
 STUDY_PASSED = False
 DEFAULT_OVERHANG_M = 0.3048   # 12 in, typed default; the city data does not hold the wall line
+# Area range (review round 3, references/accuracy.md). On 38 houses the city outline and the lidar roof edge
+# agree within 0.05 m on average, the lidar method itself is good to about 0.08 m, and a gutter adds up
+# to 0.12 m at an eave, so the outline is taken as known to 0.10 m (4 in). Pitch: 0.3 degree where lidar
+# set it, 1 degree where the city pitch was kept.
+OUTLINE_TOLERANCE_M = 0.10
+PITCH_TOLERANCE_LIDAR_DEG = 0.3
+PITCH_TOLERANCE_CITY_DEG = 1.0
 
 EDGE_LABEL = {"ridge": "Ridge", "hip": "Hip", "valley": "Valley", "eave": "Eave", "rake": "Rake",
               "step_flashing": "Step flashing (roof to wall, sloped)", "headwall": "Headwall flashing (roof to wall, level)",
@@ -74,7 +81,8 @@ def build_roof_json(model, footprint=None, solid=None, solid_info=None, address=
             rec["cityAreaM2"] = _r(P["cityAreaM2"], 2)
         if lr:
             rec["lidar"] = {k: lr[k] for k in ("status", "action", "points", "inliers", "rmseM", "pitchSeDeg", "precise",
-                                                    "lidarPitchDeg", "pitchDiffDeg", "surface", "surfaceNote") if k in lr}
+                                                    "lidarPitchDeg", "pitchDiffDeg", "azimuthDiffDeg", "siblingPlane",
+                                                    "surface", "surfaceKind", "surfaceNote") if k in lr}
         planes.append(rec)
     edges = [{"id": e["id"], "type": e["type"], "a": [_r(c) for c in e["a"]], "b": [_r(c) for c in e["b"]],
               "lengthM": _r(e["lengthM"]), "lengthFt": _r(m_to_ft(e["lengthM"]), 2), "planes": e["planes"],
@@ -113,6 +121,7 @@ def build_roof_json(model, footprint=None, solid=None, solid_info=None, address=
             "planAreaM2": _r(model.plan_area, 2), "planAreaFt2": _r(m2_to_ft2(model.plan_area), 1),
             "slopedAreaM2": _r(sloped, 2), "slopedAreaFt2": _r(m2_to_ft2(sloped), 1),
             "squares": _r(m2_to_ft2(sloped) / FT2_PER_SQUARE, 2),
+            "areaRange": area_range(model),
             "predominantPitchDeg": _r(pred, 2), "predominantPitchIn12": _r(12 * math.tan(math.radians(pred or 0)), 2),
             "edgeTotals": {t: {"lengthM": _r(v["lengthM"]), "lengthFt": _r(m_to_ft(v["lengthM"]), 1), "count": v["count"]}
                            for t, v in tot.items()},
@@ -120,13 +129,40 @@ def build_roof_json(model, footprint=None, solid=None, solid_info=None, address=
         },
         "planes": planes, "edges": edges,
         "assumptions": {"overhangM": {"value": DEFAULT_OVERHANG_M,
-                                      "provenance": _prov("default", "-", None, "wall line is not in the city data; typed default 12 in", "assumed")}},
+                                      "provenance": _prov("default", "-", None, "wall line is not in the city data; typed default 12 in. Not added to any area or length here: "
+                                                           "the city outline already is the roof edge", "assumed")}},
         "checks": dict(checks or {}, lidar=lidar, solid=dict(solid_info or {}, **{k: _r(v) if isinstance(v, float) else v for k, v in model.stats.items()})),
         "flags": flags or [],
         "attribution": [ATTRIBUTION_CITY] + ([ATTRIBUTION_LIDAR] if lidar else []),
         "license": {"cityData": "CC BY 4.0; not for mapping products for resale", "lidar": "public domain (USGS)"},
     }
     return doc
+
+
+def area_range(model):
+    """How far the sloped area may be off, from the two things that set it: the outline and the pitch.
+
+    Outline: every open edge (eave or rake) may sit OUTLINE_TOLERANCE_M further in or out, which changes
+    the plan area by that distance times the length of those edges seen from above. Pitch: a plane's area
+    changes by tan(pitch) times the pitch error. The two are combined as independent errors. This is a
+    likely range from public data, not a guarantee, and it does not cover a roof that was changed or a
+    model that misses a part of the roof; the flags cover those.
+    """
+    plan, sloped = model.plan_area, model.sloped_area
+    if plan <= 0 or sloped <= 0:
+        return None
+    open_m = sum(math.hypot(e["b"][0] - e["a"][0], e["b"][1] - e["a"][1]) for e in model.edges if e["type"] in ("eave", "rake"))
+    outline_pct = 100.0 * open_m * OUTLINE_TOLERANCE_M / plan
+    pitch_pct = 100.0 * sum(p["areaM2"] * math.tan(math.radians(p["pitchDeg"])) * math.radians(
+        PITCH_TOLERANCE_LIDAR_DEG if p.get("pitchSource") == "lidar" else PITCH_TOLERANCE_CITY_DEG) for p in model.planes) / sloped
+    pct = math.hypot(outline_pct, pitch_pct)
+    ft2 = m2_to_ft2(sloped)
+    return {"plusMinusPct": _r(pct, 1), "plusMinusFt2": _r(ft2 * pct / 100, 0),
+            "lowFt2": _r(ft2 * (1 - pct / 100), 0), "highFt2": _r(ft2 * (1 + pct / 100), 0),
+            "outlinePct": _r(outline_pct, 1), "pitchPct": _r(pitch_pct, 1),
+            "outlineToleranceM": OUTLINE_TOLERANCE_M, "openEdgePlanM": _r(open_m, 1),
+            "note": "likely range from the outline (known to about 4 in) and the pitch; not a guarantee, and it does not "
+                    "cover a changed roof or a roof part the model misses"}
 
 
 def _date(ms):
@@ -240,9 +276,13 @@ def takeoff_markdown(doc):
     L.append("")
     L.append("| Measure | Value |")
     L.append("|---|---|")
-    L.append("| Sloped roof area | %.0f sq ft = **%.1f squares** (no waste added) |" % (s["slopedAreaFt2"], s["squares"]))
-    L.append("| Plan (flat) area | %.0f sq ft |" % s["planAreaFt2"])
-    L.append("| Predominant pitch | **%.1f/12** (%.1f deg) |" % (s["predominantPitchIn12"], s["predominantPitchDeg"]))
+    L.append("| Sloped roof area | %s sq ft = **%.1f squares** (no waste added) |" % ("{:,.0f}".format(s["slopedAreaFt2"]), s["squares"]))
+    ar = s.get("areaRange")
+    if ar:
+        L.append("| Likely range of the sloped area | %s to %s sq ft (plus or minus %.1f%%) |"
+                 % ("{:,.0f}".format(ar["lowFt2"]), "{:,.0f}".format(ar["highFt2"]), ar["plusMinusPct"]))
+    L.append("| Plan (flat) area | %s sq ft |" % "{:,.0f}".format(s["planAreaFt2"]))
+    L.append("| Predominant pitch | **%s** (%.1f deg) |" % (pitch_label(s["predominantPitchDeg"]), s["predominantPitchDeg"]))
     L.append("| Roof planes | %d |" % s["planeCount"])
     L.append("| City footprint / solid | %s / %s, solid captured %s |" % (doc.get("footprintId"), doc.get("solidId"), CITY_SOLID_CAPTURED))
     L.append("")
@@ -252,19 +292,20 @@ def takeoff_markdown(doc):
     L.append("|---|---|---|")
     for t, v in s["edgeTotals"].items():
         if v["count"]:
-            L.append("| %s | %.1f | %d |" % (EDGE_LABEL[t], v["lengthFt"], v["count"]))
+            L.append("| %s | %.0f | %d |" % (EDGE_LABEL[t], v["lengthFt"], v["count"]))
     L.append("")
     L.append("## Planes")
     L.append("")
     has_lidar = any("lidar" in p for p in doc["planes"])
-    L.append("| # | Pitch | Faces (compass) | Sloped sq ft |%s" % (" Lidar pitch | Lidar check |" if has_lidar else ""))
+    L.append("| # | Pitch | Faces (compass) | Sloped sq ft |%s" % (" Lidar pitch (difference from city, points) | Lidar check |" if has_lidar else ""))
     L.append("|---|---|---|---|%s" % ("---|---|" if has_lidar else ""))
     for p in doc["planes"]:
-        row = "| %d | %.1f/12 (%.1f deg) | %s | %.0f |" % (p["id"], p["pitchIn12"], p["pitchDeg"], _compass(p["azimuthDeg"]), p["areaFt2"])
+        row = "| %d | %s (%.1f deg) | %s | %.0f |" % (p["id"], pitch_label(p["pitchDeg"]), p["pitchDeg"], _compass(p["azimuthDeg"]), p["areaFt2"])
         if has_lidar:
             lr = p.get("lidar") or {}
-            lp = lr.get("lidarPitchDeg")
-            row += " %s | %s |" % ("%.1f/12 (%+.1f deg, %d pts)" % (12 * math.tan(math.radians(lp)), lr.get("pitchDiffDeg", 0), lr.get("inliers", 0)) if lp is not None else "-",
+            # a fit on a handful of points is not a measurement: show a lidar pitch only for a plane that was checked
+            lp = lr.get("lidarPitchDeg") if lr.get("status") not in (None, "not_checked") else None
+            row += " %s | %s |" % ("%s (%+.1f deg, %d pts)" % (pitch_label(lp), lr.get("pitchDiffDeg", 0), lr.get("inliers", 0)) if lp is not None else "-",
                                    (lr.get("status") or "-").replace("_", " "))
         L.append(row)
     L.append("")
@@ -288,14 +329,16 @@ def takeoff_markdown(doc):
                      % sm["pitchFromLidar"])
         reg = lid.get("registration")
         if reg and "eastM" in reg:
-            L.append("Lidar sits %.2f m east, %.2f m north and %.2f m above the city solid."
-                     % (reg["eastM"], reg["northM"], reg["verticalM"]))
+            L.append("Lidar sits %.1f ft east, %.1f ft north and %.1f ft above the city solid (negative means west, south or below)."
+                     % (m_to_ft(reg["eastM"]), m_to_ft(reg["northM"]), m_to_ft(reg["verticalM"])))
     L.append("")
     L.append("## How to read this")
     L.append("")
     L.append("- Every number is an **estimate** from public data until the accuracy study passes. Do not put it on a customer document.")
     L.append("- Areas and eaves are measured at the city's roof outline (the drip line), so overhangs are already included. "
-             "Lidar can only confirm that outline to about 4 in, which is 2 to 4% of the area, so tape one eave on site.")
+             "Lidar confirms that outline to about 4 in%s. Tape one eave to eave width on site to narrow it."
+             % (", which is the largest part of the %.1f%% range above" % ar["plusMinusPct"] if ar else ""))
+    L.append("- Line lengths are rounded to the foot. A single edge can be off by about 1 ft, because each end follows the city outline.")
     L.append("- The model does not show chimneys, pipe boots, skylights or small dormers.")
     L.append("")
     for a in doc["attribution"]:

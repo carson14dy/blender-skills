@@ -40,6 +40,12 @@ PREFER_LIDAR = True      # use a precise lidar pitch even when the city pitch ag
 OFF_SURFACE_M = 0.30     # a lidar point this far above or below the fitted plane is not on the roof surface ...
 OFF_SURFACE_SHARE = 0.10  # ... and this share of such points on one plane is worth a look (tree, dormer, lower roof)
 GROUND_SHARE = 0.25      # this share of ground-level points inside a plane: no roof was there when lidar flew
+TREE_MULTI_SHARE = 0.8   # points above a plane are a tree when this share of them come from pulses with several returns,
+SOLID_MULTI_SHARE = 0.3  # and a solid surface (dormer, raised roof) when no more than this share do (review round 3)
+SIBLING_DEG = 0.5        # a fit that fails "precise" only on its inlier share is trusted when a precise plane of the
+SIBLING_MIN_AREA_M2 = 20.0   # same house (this size or larger) has the same pitch within SIBLING_DEG
+AZIMUTH_DEG = 8.0        # a plane that faces this far from where lidar sees it is drawn wrong in the city model
+AZIMUTH_MIN_PITCH_DEG = 9.5   # ... checked from 2/12 up; the compass direction of a flatter plane is not well defined
 
 
 class LidarUnavailable(RuntimeError):
@@ -123,27 +129,33 @@ def fetch_points(http, bbox_ft, cache_root, buffer_m=4.0, min_depth=6, log=None,
             nodes.append({"key": key, "points": int(len(X)), "kept": int(keep.sum()), "bytes": len(raw)})
             log("lidar node %s: %d points, %d over the house" % (key, len(X), int(keep.sum())))
             if keep.any():
-                chunks.append((X[keep], Y[keep], Z[keep], np.asarray(las.classification)[keep]))
+                chunks.append((X[keep], Y[keep], Z[keep], np.asarray(las.classification)[keep],
+                               np.asarray(las.number_of_returns)[keep]))
         for i in range(8):
             stack.append((d + 1, 2 * x + (i & 1), 2 * y + ((i >> 1) & 1), 2 * z + ((i >> 2) & 1)))
     if chunks:
-        X, Y, Z, C = (np.concatenate([c[i] for c in chunks]) for i in range(4))
+        X, Y, Z, C, NR = (np.concatenate([c[i] for c in chunks]) for i in range(5))
     else:
         X = Y = Z = np.zeros(0)
-        C = np.zeros(0, dtype=np.uint8)
+        C = NR = np.zeros(0, dtype=np.uint8)
     ex, ny = proj.webmerc_to_city(X, Y)
-    return {"x_ft": ex, "y_ft": ny, "z_m": Z, "cls": C.astype(np.uint8), "nodes": nodes, "srs": "EPSG:3857 -> 32164"}
+    # nr = how many returns the pulse of each point gave: 1 on a solid surface, 2 or more through branches
+    return {"x_ft": ex, "y_ft": ny, "z_m": Z, "cls": C.astype(np.uint8), "nr": NR.astype(np.uint8), "nodes": nodes,
+            "srs": "EPSG:3857 -> 32164"}
 
 
 def save_points(path, pts):
     os.makedirs(os.path.dirname(path), exist_ok=True)
+    extra = {"nr": pts["nr"]} if pts.get("nr") is not None else {}
     np.savez_compressed(path, x_ft=pts["x_ft"], y_ft=pts["y_ft"], z_m=pts["z_m"], cls=pts["cls"],
-                        nodes=json.dumps(pts.get("nodes", [])))
+                        nodes=json.dumps(pts.get("nodes", [])), **extra)
 
 
 def load_points(path):
     d = np.load(path, allow_pickle=False)
-    return {"x_ft": d["x_ft"], "y_ft": d["y_ft"], "z_m": d["z_m"], "cls": d["cls"], "nodes": json.loads(str(d["nodes"]))}
+    # files cached before review round 3 hold no return counts; the tree-or-dormer test is then skipped
+    return {"x_ft": d["x_ft"], "y_ft": d["y_ft"], "z_m": d["z_m"], "cls": d["cls"], "nodes": json.loads(str(d["nodes"])),
+            "nr": d["nr"] if "nr" in d.files else None}
 
 
 # --------------------------------------------------------------------------- plane fitting
@@ -222,7 +234,7 @@ def _inside_with_inset(poly, x, y, inset):
     return inside & (dmin >= inset)
 
 
-def _surface_shares(x, y, z, sel, low, fit):
+def _surface_shares(x, y, z, sel, low, fit, nr=None):
     """What lidar sees inside a plane besides the roof surface: shares of points above it, below it and at ground level.
 
     The plane fit ignores these points, so a plane can "agree" while a tree hangs over it, a dormer the
@@ -235,22 +247,43 @@ def _surface_shares(x, y, z, sel, low, fit):
     out = {"groundShare": round(float(low.sum()) / n_all, 3)}
     if fit and sel.sum():
         res = (z[sel] - (fit["a"] * x[sel] + fit["b"] * y[sel] + fit["c"])) / math.sqrt(1 + fit["a"] ** 2 + fit["b"] ** 2)
-        out["aboveShare"] = round(float((res > OFF_SURFACE_M).mean()), 3)
+        above = res > OFF_SURFACE_M
+        out["aboveShare"] = round(float(above.mean()), 3)
         out["belowShare"] = round(float((res < -OFF_SURFACE_M).mean()), 3)
+        if nr is not None and above.any():
+            # a pulse through branches gives several returns, a pulse on a dormer gives one
+            out["aboveMultiShare"] = round(float((nr[sel][above] > 1).mean()), 3)
     return out
+
+
+def surface_kind(surface):
+    """What the shares from `_surface_shares` say: (kind, one short reason), or (None, None) when the plane is clean.
+
+    kind: ground | tree | solid-above | above | below. Only `tree` leaves the roof itself in no doubt.
+    """
+    if not surface:
+        return None, None
+    if surface["groundShare"] >= GROUND_SHARE:
+        return "ground", "%.0f%% of the lidar points are at ground level (built after the lidar flight, or a deck or porch under 2 m)" % (100 * surface["groundShare"])
+    if surface.get("aboveShare", 0) >= OFF_SURFACE_SHARE:
+        pct, multi = 100 * surface["aboveShare"], surface.get("aboveMultiShare")
+        if multi is not None and multi >= TREE_MULTI_SHARE:
+            return "tree", "%.0f%% of the lidar points are in a tree above the roof" % pct
+        if multi is not None and multi <= SOLID_MULTI_SHARE:
+            return "solid-above", "%.0f%% of the lidar points are on a solid surface above this plane (a dormer or raised roof part the model does not show)" % pct
+        return "above", "%.0f%% of the lidar points are above the roof surface (a tree over the roof, or a dormer the model does not show)" % pct
+    if surface.get("belowShare", 0) >= OFF_SURFACE_SHARE:
+        return "below", "%.0f%% of the lidar points are below the roof surface (a lower roof part, a step or an opening the model does not show)" % (100 * surface["belowShare"])
+    return None, None
 
 
 def surface_note(surface):
     """One short reason when the shares from `_surface_shares` are worth a look, else None."""
-    if not surface:
-        return None
-    if surface["groundShare"] >= GROUND_SHARE:
-        return "%.0f%% of the lidar points are at ground level (built after the lidar flight, or a deck or porch under 2 m)" % (100 * surface["groundShare"])
-    if surface.get("aboveShare", 0) >= OFF_SURFACE_SHARE:
-        return "%.0f%% of the lidar points are above the roof surface (a tree over the roof, or a dormer the model does not show)" % (100 * surface["aboveShare"])
-    if surface.get("belowShare", 0) >= OFF_SURFACE_SHARE:
-        return "%.0f%% of the lidar points are below the roof surface (a lower roof or an opening the model does not show)" % (100 * surface["belowShare"])
-    return None
+    return surface_kind(surface)[1]
+
+
+def _azimuth_diff(a, b):
+    return (a - b + 180.0) % 360.0 - 180.0
 
 
 def is_precise(fit):
@@ -307,9 +340,15 @@ def cross_check(model, pts, ground_z_m=None):
                           "ransacTolM": RANSAC_TOL_M, "edgeInsetM": EDGE_INSET_M, "edgeInsetSmallM": EDGE_INSET_SMALL_M,
                           "preciseInlierFraction": PRECISE_INLIER_FRACTION, "preciseSeDeg": PRECISE_SE_DEG,
                           "preferLidar": PREFER_LIDAR, "offSurfaceM": OFF_SURFACE_M,
-                          "offSurfaceShare": OFF_SURFACE_SHARE, "groundShare": GROUND_SHARE},
+                          "offSurfaceShare": OFF_SURFACE_SHARE, "groundShare": GROUND_SHARE,
+                          "treeMultiShare": TREE_MULTI_SHARE, "solidMultiShare": SOLID_MULTI_SHARE,
+                          "siblingDeg": SIBLING_DEG, "azimuthDeg": AZIMUTH_DEG},
            "planes": []}
     high = z > ground_z_m + MIN_HEIGHT_M
+    nr = pts.get("nr")
+    if nr is not None and len(nr) != len(x):
+        nr = None
+    out["returnCounts"] = nr is not None
     rows, dz_rows = [], []
     for P in model.planes:
         poly = np.array(P["polygon"])[:, :2] if P["polygon"] else np.zeros((0, 2))
@@ -327,7 +366,7 @@ def cross_check(model, pts, ground_z_m=None):
             if sel.sum() >= 3:
                 fit = fit_plane(np.column_stack([x[sel], y[sel], z[sel]]))
             rec["points"] = int(sel.sum())
-            rec["surface"] = _surface_shares(x, y, z, sel, _inside_with_inset(poly, x, y, inset) & ~high & ~holes, fit)
+            rec["surface"] = _surface_shares(x, y, z, sel, _inside_with_inset(poly, x, y, inset) & ~high & ~holes, fit, nr)
         status, action, note = reconcile(P["pitchDeg"], fit)
         if fit:
             n = P["normal"]
@@ -341,14 +380,19 @@ def cross_check(model, pts, ground_z_m=None):
                         "pitchDiffDeg": round(fit["pitchDeg"] - P["pitchDeg"], 2),
                         "lidarAzimuthGridDeg": None if fit["azimuthGridDeg"] is None else round(fit["azimuthGridDeg"], 1),
                         "heightDiffM": round(float(z_lidar - c[2]), 3)})
+            if (fit["azimuthGridDeg"] is not None and P.get("azimuthGridDeg") is not None
+                    and min(P["pitchDeg"], fit["pitchDeg"]) >= AZIMUTH_MIN_PITCH_DEG):
+                rec["azimuthDiffDeg"] = round(_azimuth_diff(fit["azimuthGridDeg"], P["azimuthGridDeg"]), 1)
             if status in ("agree", "override") and 8.0 <= P["pitchDeg"] <= 70.0:
                 # city plane as z = a x + b y + c; used to estimate the shift between the two datasets
                 dz_rows.append((-n[0] / n[2], -n[1] / n[2], float(z_lidar - c[2]), fit["inliers"]))
         rec.update({"status": status, "action": action, "note": note})
-        if surface_note(rec.get("surface")):
-            rec["surfaceNote"] = surface_note(rec["surface"])
+        kind, why = surface_kind(rec.get("surface"))
+        if kind:
+            rec["surfaceKind"], rec["surfaceNote"] = kind, why
         out["planes"].append(rec)
         rows.append(rec)
+    _confirm_by_sibling(rows, {P["id"]: P["areaM2"] for P in model.planes})
     out["registration"] = _registration(dz_rows)
     checked = [r for r in rows if r["status"] != "not_checked"]
     area = {P["id"]: P["areaM2"] for P in model.planes}
@@ -362,6 +406,7 @@ def cross_check(model, pts, ground_z_m=None):
         "siteCheck": sum(r["status"] == "site_check" for r in rows),
         "notChecked": sum(r["status"] == "not_checked" for r in rows),
         "surfaceNotes": sum("surfaceNote" in r for r in rows),
+        "confirmedBySibling": sum(bool(r.get("siblingPlane") is not None) for r in rows),
         "meanAbsPitchDiffDeg": round(float(np.mean([abs(r["pitchDiffDeg"]) for r in checked if "pitchDiffDeg" in r])), 2)
         if any("pitchDiffDeg" in r for r in checked) else None,
     }
@@ -373,6 +418,30 @@ def cross_check(model, pts, ground_z_m=None):
     out["pointsAboveGround"] = int(high.sum())
     out["pointsOnRoofOutline"] = int((on_roof & high).sum())
     return out
+
+
+def _confirm_by_sibling(rows, area_m2):
+    """Trust a fit that failed the "precise" test only on its inlier share when another plane confirms its pitch.
+
+    The 80% inlier rule guards against a fit pulled off the roof by a tree or a second surface. A fit with
+    a small standard error whose pitch equals the precise pitch of another main plane of the same house
+    within SIBLING_DEG was not pulled anywhere: houses are framed at one or two pitches. Review round 3:
+    4 of 4 such planes on 38 houses moved to a whole-number pitch (city 0.29 in 12 away, lidar 0.09).
+    Only planes that already agree with the city within the limit are touched, so no status changes.
+    """
+    sibs = [r for r in rows if r.get("precise") and r["status"] in ("agree", "override")
+            and area_m2.get(r["plane"], 0) >= SIBLING_MIN_AREA_M2]
+    for r in rows:
+        if r["status"] != "agree" or r["action"] != "keep_city" or r.get("precise") is not False:
+            continue
+        if r.get("pitchSeDeg") is None or r["pitchSeDeg"] > PRECISE_SE_DEG:
+            continue
+        near = [s for s in sibs if s["plane"] != r["plane"] and abs(s["lidarPitchDeg"] - r["lidarPitchDeg"]) <= SIBLING_DEG]
+        if near and PREFER_LIDAR:
+            s = min(near, key=lambda q: abs(q["lidarPitchDeg"] - r["lidarPitchDeg"]))
+            r["action"], r["siblingPlane"] = "use_lidar", s["plane"]
+            r["note"] = ("city and lidar agree within %.1f deg; the lidar pitch is used because plane %d has the same "
+                         "pitch within %.1f deg" % (AGREE_DEG, s["plane"], SIBLING_DEG))
 
 
 def _registration(rows):

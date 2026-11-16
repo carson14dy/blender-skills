@@ -19,10 +19,20 @@ These come from the plan (`plans/Roof accuracy and quality plan.md`, section 2).
 ## Error budget
 
 - One degree of pitch error changes sloped area by about 0.9% at 6/12. That is why the pitch target is 1 degree and not 1 in 12, which would be about 4 degrees.
-- With plan area inside 1% and pitch inside 1 degree, the combined area error is about 1.3% (root sum of squares).
+- With plan area inside 1% and pitch inside 1 degree, the combined area error is about 1.3% (root sum of squares). The outline does not reach 1% today; see the area range below.
 - Cleaning the city faces so they are flat and meet exactly changes sloped area by 0.25% or less and plan area by 0.33% or less on the benchmark. It changes pitch by under 0.1 degree on most houses; on a low-slope hip roof and on a twin home it moved a corner about 0.6 m and one pitch by 0.5 to 1.4 degrees. The tool flags those cases as `regularize`.
-- **The outline is the largest unknown, not the pitch.** Lidar puts the city outline at the roof edge with a scatter of 0.07 m and a worst case of 0.14 m on 8 houses, and no lean in or out (mean 0.02 m inside). Lidar cannot see finer than that: its laser spot is about 0.5 m wide. A strip 0.1 m wide around a house is 2 to 4% of its plan area, so lidar cannot confirm the 2% area target. Only a taped eave can.
+- **The outline is the largest unknown, not the pitch.** On 38 houses the city outline is the lidar roof edge within 0.05 m on average, the real spread between houses is about 0.05 m, and the lidar method itself is good to about 0.08 m (its laser spot is 0.5 to 1 m wide). Together that is 0.10 m, or 4 in. A strip that wide along the eaves and rakes is 2.3 to 5.4% of the plan area, more on small and cut-up roofs. Lidar and the 2025 aerial photos cannot narrow it, so the 2% area target cannot be confirmed from free data. Only a taped eave-to-eave width can.
 - The city pitch is about 0.13 in 12 (0.5 degree) lower than the lidar pitch on average. Left uncorrected, that understates sloped area by 0.2 to 0.4%, which is small next to the outline.
+
+## The area range
+
+Every roof carries a likely range for its sloped area, in `summary.areaRange` and in the report. Quote it with the area.
+
+1. **Outline part.** The length of the open edges (eaves and rakes, seen from above) times 0.10 m, as a share of the plan area. On the benchmark houses this is 2.3 to 4.4%.
+2. **Pitch part.** For each plane, tan(pitch) times the pitch tolerance: 0.3 degree where lidar set the pitch, 1 degree where the city pitch was kept. On clean houses this is 0.1 to 0.4%.
+3. The two are combined as independent errors (root sum of squares).
+
+The values are `OUTLINE_TOLERANCE_M`, `PITCH_TOLERANCE_LIDAR_DEG` and `PITCH_TOLERANCE_CITY_DEG` in `scripts/roofmeasure/export.py`. The range is what the evidence supports, not a guarantee. It does not cover a roof that was changed, a dormer the model lacks or a wrong building; the flags cover those. One taped eave-to-eave width, measured at the shingle edge, is the cheapest way to narrow it, and it would also show whether the city line follows the shingles or the gutter.
 
 ## What the tool checks on every roof
 
@@ -41,6 +51,7 @@ The values live at the top of `scripts/roofmeasure/lidar.py`. Review round 1 set
 | Points needed to check a plane | 40, at least 2 m above ground and 0.6 m inside the plane outline (0.3 m when that leaves fewer than 80 points) |
 | Precise fit | 80% or more of the points on one plane, and a pitch standard error of 0.25 degree or less |
 | Agree | Pitch difference of 1.5 degrees or less. A precise fit supplies the pitch; otherwise the city pitch is kept |
+| Confirmed by another plane | A fit that agrees, has a standard error of 0.25 degree or less and fails "precise" only on the 80% rule supplies the pitch when a precise plane of 215 sq ft or more on the same house has the same pitch within 0.5 degree |
 | Override | 1.5 to 4 degrees with a precise fit: use the lidar pitch, flag for review |
 | Site check | More than 4 degrees, or 1.5 to 4 degrees with an imprecise fit, or fewer than half the points on one plane |
 | Allowance for an imprecise fit | Twice its own standard error is taken off the difference first |
@@ -63,7 +74,9 @@ This is still indirect evidence, because no roof has been taped. It is now stron
 Two things were tried in round 2 and not adopted:
 
 - Refusing a fit when the two halves of a plane give different pitches. On the 6 planes it would have refused, the lidar pitch was the better one on 3 and within 0.1 in 12 of the city on 3.
-- Using lidar on imprecise fits too. Even those are closer to the house's common pitch than the city is (0.17 against 0.40 in 12 on 26 planes), so a "one house, one pitch" rule would help small planes. It is left for the accuracy study because it changes more than a threshold.
+- Using lidar on imprecise fits too. Round 2 measured 0.17 against 0.40 in 12 from the house's common pitch on 26 planes. Round 3 measured it again on 71 imprecise planes that have a precise plane of similar pitch on the same house: the city is 0.26 in 12 away on average and the plane's own lidar pitch 0.22, and for planes under 215 sq ft 0.29 against 0.26. That is too small a gain for a general "one house, one pitch" rule.
+
+Round 3 adopted one narrow case, "confirmed by another plane" in the table above. The 80% rule guards against a fit pulled off the roof by a tree or a second surface; a sharp fit that lands on the pitch of a precise plane of the same house was not pulled anywhere. All 4 such planes on 38 houses moved to a whole-number pitch (the city was 0.29 in 12 from one on average, lidar 0.09). On benchmark house 176864 it is the largest plane: the model drew three roof sections as one face, lidar fits the middle one, and its pitch equals the other side of the ridge.
 
 ## Flags and what to do
 
@@ -89,11 +102,15 @@ Severity `site-check` blocks use. Severity `review` means look at the named item
 - `no-lidar-check`: run again with `--lidar`.
 - `lidar-override`: lidar and the city differed by 1.5 to 4 degrees on a plane and the lidar pitch was used. Look at that plane in the report.
 - `lidar-no-check`, `outline-shift`, `top-height-mismatch`: the independent check is weak or shows a mismatch.
-- `lidar-surface`: lidar sees more than the roof surface inside a plane, and the plane fit ignores those points, so the plane can still "agree". The message says which of three cases it is. Points above the surface (10% or more of the points, more than 0.3 m up) mean a tree over the roof, or a dormer or upper roof that the city model does not show; expect extra area and valleys if it is a dormer. Points below the surface mean a lower roof or a step the model drew as one plane. Points at ground level (25% or more) mean that part was built after the lidar flight, or is a deck or porch under 2 m. Look at the plane in a photo before you trust its area.
+- `lidar-surface`: lidar does not see the modelled surface on part of a plane, and the plane fit ignores those points, so the plane can still "agree". The message says which case it is. A solid surface above the plane (10% or more of the points, more than 0.3 m up, 30% or fewer of them from multi-return pulses) is a dormer or raised roof part the city model does not show; expect extra area and valleys. Points below the surface mean a lower roof part or a step the model drew as one plane. Points at ground level (25% or more) mean that part was built after the lidar flight, or is a deck or porch under 2 m. Look at the plane in a photo before you trust its area and lines. On 39 houses this fires on about one in four, and every case looked at was a real difference between model and roof.
+- `skewed-edge`: 10 ft or more of open edge is counted as rake but runs less than 45 degrees off the level line of its plane. Water runs off such an edge like an eave. Either the model drew the plane askew or it merged roof facets over an angled wall. Check on a photo whether those edges need eave treatment (drip edge, starter, ice barrier, gutter). About one house in three has this flag.
+- `lidar-azimuth`: a plane faces 8 degrees or more away from where lidar sees it (planes of 2/12 or steeper with 40 lidar points). The pitch check does not see this. Its edges are probably drawn askew.
 
 **Info flags**
 
 - `small-planes`, `hidden-faces`, `duplicate-faces`, `not-residential`: no action needed; they explain what the data can and cannot show.
+- `tree-over-roof`: a tree hangs over a plane (the lidar points above it come from pulses with several returns). The roof under it is taken from the city model; lidar checked only the open part. No action needed.
+- `permit-other`: a `Repair` or `Remodel/Renovation` permit was issued since January 2023. Such work seldom changes the roof shape; ask the owner.
 - `permits-not-checked`: the permit lookup did not run (offline, or the city service did not answer). Run again online before you rely on the roof being unchanged.
 - `lidar-pitch`: planes that agree with lidar show the lidar pitch. The city pitch is in `roof.json` as `cityPitchDeg`.
 - `split-ridge`: the city drew a ridge as two plane tops with a wall a few centimetres tall between them. The tool counts it as one ridge.
@@ -101,7 +118,8 @@ Severity `site-check` blocks use. Severity `review` means look at the named item
 
 ## What the data cannot measure
 
-- The wall line. Overhang is a typed default of 12 in with confidence `assumed`.
+- The wall line. Overhang is a typed default of 12 in with confidence `assumed`; it is not added to any area or length, because the city outline already is the roof edge.
+- The roof edge closer than about 4 in, or whether the outline follows the shingles or the gutter.
 - Anything built or changed after June 2023 without a permit, and for the lidar check after December 2020.
 - Chimneys, pipe boots, skylights and most dormers under about 30 sq ft.
 - The true accuracy of the city solid. The city publishes none, which is why the study in `references/implementation-plan.md` comes first.

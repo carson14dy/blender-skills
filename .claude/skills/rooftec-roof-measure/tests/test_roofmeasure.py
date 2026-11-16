@@ -447,6 +447,179 @@ class LidarSurface(unittest.TestCase):
         self.assertIn("ground level", side["south"]["surfaceNote"])
 
 
+class Round3(unittest.TestCase):
+    """Review round 3: tree or dormer, a pitch confirmed by another plane, the area range, slanted edges."""
+
+    def _gable(self, city12=6.0, edit=None, nr=None, n=2400, seed=21):
+        faces, _ = synthetic.gable(L=12, W=10, pitch12=city12)
+        m = model_of(faces)
+        m.origin_ft = (0.0, 0.0, 0.0)
+        rng = np.random.default_rng(seed)
+        xy = rng.uniform((0, 0), (12, 10), (n, 2))
+        z = 3 + 0.5 * np.minimum(xy[:, 1], 10 - xy[:, 1]) + rng.normal(0, 0.02, n)   # the real roof is 6/12
+        south = xy[:, 1] < 5
+        ret = np.ones(n, np.uint8)
+        if edit:
+            z, ret = edit(xy, z, south, ret, rng)
+        pts = {"x_ft": xy[:, 0] / FT_US, "y_ft": xy[:, 1] / FT_US, "z_m": z, "cls": np.ones(n, np.uint8)}
+        if nr is not False:
+            pts["nr"] = ret
+        chk = lidar.cross_check(m, pts)
+        side = {("south" if m.planes[r["plane"]]["centroid"][1] < 5 else "north"): r for r in chk["planes"]}
+        return m, chk, side
+
+    def test_a_tree_is_told_from_a_dormer_by_the_return_count(self):
+        def tree(xy, z, south, ret, rng):      # branches 2 to 5 m over a third of the south plane: pulses with 2+ returns
+            k = south & (xy[:, 0] < 4)
+            return np.where(k, z + rng.uniform(2, 5, len(z)), z), np.where(k, 3, ret).astype(np.uint8)
+
+        def dormer(xy, z, south, ret, rng):    # a box 0.8 m proud of the plane: single returns
+            k = south & (xy[:, 0] > 4) & (xy[:, 0] < 8) & (xy[:, 1] > 1) & (xy[:, 1] < 4)
+            return np.where(k, z + 0.8, z), ret
+        m, chk, side = self._gable(edit=tree)
+        self.assertEqual(side["south"]["surfaceKind"], "tree")
+        self.assertGreater(side["south"]["surface"]["aboveMultiShare"], 0.95)
+        _, flags, site = pipeline.assess(m, None, {}, {"by": "files"}, chk, permits=[])
+        sev = {f["code"]: f["severity"] for f in flags}
+        self.assertEqual(sev.get("tree-over-roof"), "info")      # a tree does not put the roof itself in doubt ...
+        self.assertNotIn("lidar-surface", sev)
+        m, chk, side = self._gable(edit=dormer)
+        self.assertEqual(side["south"]["surfaceKind"], "solid-above")
+        _, flags, _ = pipeline.assess(m, None, {}, {"by": "files"}, chk, permits=[])
+        sev = {f["code"]: f["severity"] for f in flags}
+        self.assertEqual(sev.get("lidar-surface"), "review")     # ... a surface the model lacks does
+        self.assertNotIn("tree-over-roof", sev)
+
+    def test_points_cached_before_round_3_still_work(self):
+        def tree(xy, z, south, ret, rng):
+            k = south & (xy[:, 0] < 4)
+            return np.where(k, z + rng.uniform(2, 5, len(z)), z), ret
+        m, chk, side = self._gable(edit=tree, nr=False)          # no return counts: cannot tell, so it stays a review
+        self.assertFalse(chk["returnCounts"])
+        self.assertEqual(side["south"]["surfaceKind"], "above")
+        _, flags, _ = pipeline.assess(m, None, {}, {"by": "files"}, chk, permits=[])
+        self.assertEqual({f["code"]: f["severity"] for f in flags}.get("lidar-surface"), "review")
+        tmp = tempfile.mkdtemp(prefix="roofmeasure-test-")
+        try:
+            old = os.path.join(tmp, "old.npz")
+            np.savez_compressed(old, x_ft=np.zeros(3), y_ft=np.zeros(3), z_m=np.zeros(3), cls=np.ones(3, np.uint8), nodes="[]")
+            self.assertIsNone(lidar.load_points(old)["nr"])
+            new = os.path.join(tmp, "new.npz")
+            lidar.save_points(new, {"x_ft": np.zeros(3), "y_ft": np.zeros(3), "z_m": np.zeros(3), "cls": np.ones(3, np.uint8),
+                                    "nr": np.array([1, 2, 3], np.uint8)})
+            self.assertEqual(list(lidar.load_points(new)["nr"]), [1, 2, 3])
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_a_pitch_confirmed_by_another_plane_is_used(self):
+        # Benchmark 176864: 28% of the largest plane lies 0.4 m lower (a step the model lacks). The fit on the
+        # other 72% is sharp and equals the precise pitch of the planes across the ridge, yet the city pitch
+        # (0.2 in 12 low) was kept because fewer than 80% of the points lie on one plane.
+        def step(xy, z, south, ret, rng):
+            return np.where(south & (xy[:, 0] > 8.6), z - 0.4, z), ret
+        m, chk, side = self._gable(city12=5.6, edit=step)
+        s, n = side["south"], side["north"]
+        self.assertFalse(s["precise"])
+        self.assertLessEqual(s["pitchSeDeg"], lidar.PRECISE_SE_DEG)
+        self.assertEqual((s["status"], s["action"], s["siblingPlane"]), ("agree", "use_lidar", n["plane"]))
+        self.assertEqual(chk["summary"]["confirmedBySibling"], 1)
+        lidar.apply_overrides(m, chk)
+        for p in m.planes:
+            self.assertAlmostEqual(p["pitchIn12"], 6.0, delta=0.06)
+
+        def step_and_other_pitch(xy, z, south, ret, rng):       # no plane confirms it: the north side is 7/12
+            z = np.where(south, z, 3 + (7 / 12) * (10 - xy[:, 1]) + rng.normal(0, 0.02, len(z)))
+            return np.where(south & (xy[:, 0] > 8.6), z - 0.4, z), ret
+        _, chk, side = self._gable(city12=5.6, edit=step_and_other_pitch)
+        self.assertEqual(side["south"]["action"], "keep_city")
+        self.assertNotIn("siblingPlane", side["south"])
+
+    def test_area_range_follows_outline_and_pitch(self):
+        faces, _ = synthetic.gable(L=10, W=8, pitch12=6)
+        m = model_of(faces)
+        r = export.area_range(m)
+        # open edges seen from above: 2 eaves of 10 m and 4 rakes of 4 m = 36 m; 36 m x 0.10 m over 80 m2 = 4.5%
+        self.assertAlmostEqual(r["openEdgePlanM"], 36.0, delta=0.05)
+        self.assertAlmostEqual(r["outlinePct"], 4.5, delta=0.05)
+        # city pitch, 1 degree: tan(26.57 deg) x 0.01745 = 0.87%; together sqrt(4.5^2 + 0.87^2) = 4.58%
+        self.assertAlmostEqual(r["pitchPct"], 0.9, delta=0.05)
+        self.assertAlmostEqual(r["plusMinusPct"], 4.6, delta=0.05)
+        sloped_ft2 = m2_to_ft2(m.sloped_area)
+        self.assertAlmostEqual(r["lowFt2"], sloped_ft2 * (1 - 0.0458), delta=1.0)
+        self.assertAlmostEqual(r["highFt2"], sloped_ft2 * (1 + 0.0458), delta=1.0)
+        for p in m.planes:
+            p["pitchSource"] = "lidar"                          # a lidar pitch is known to 0.3 degree
+        self.assertAlmostEqual(export.area_range(m)["pitchPct"], 0.3, delta=0.05)
+        big, _ = synthetic.gable(L=20, W=16, pitch12=6)          # twice the size: half the share
+        self.assertAlmostEqual(export.area_range(model_of(big))["outlinePct"], 2.25, delta=0.05)
+
+    def test_a_slanted_open_edge_is_flagged(self):
+        # one plane z = 3 + 0.5 y whose outer edge from (10, 5) to (2, 8) runs 21 degrees off the level line
+        roof = [[(0, 0, 3), (10, 0, 3), (10, 5, 5.5), (2, 8, 7), (0, 8, 7)]]
+        m = model_of(roof)
+        self.assertAlmostEqual(pipeline.skewed_edges_m(m), math.sqrt(64 + 9 + 1.5 ** 2), delta=0.01)
+        _, flags, _ = pipeline.assess(m, None, {}, {"by": "files"}, None, permits=[])
+        f = [x for x in flags if x["code"] == "skewed-edge"]
+        self.assertEqual([x["severity"] for x in f], ["review"])
+        self.assertIn("28 ft", f[0]["message"])
+        gable, _ = synthetic.gable()
+        self.assertEqual(pipeline.skewed_edges_m(model_of(gable)), 0.0)   # true rakes run straight up the slope
+
+    def test_a_plane_that_faces_another_way_in_lidar_is_flagged(self):
+        a = math.radians(12)
+
+        def turned(xy, z, south, ret, rng):     # the south plane really faces 12 degrees off south, same pitch
+            zs = 3 + 0.5 * (math.cos(a) * xy[:, 1] + math.sin(a) * (xy[:, 0] - 6)) + rng.normal(0, 0.02, len(z))
+            return np.where(south, zs, z), ret
+        m, chk, side = self._gable(edit=turned)
+        self.assertEqual(side["south"]["status"], "agree")       # the pitch check alone does not see it
+        self.assertAlmostEqual(abs(side["south"]["azimuthDiffDeg"]), 12.0, delta=1.0)
+        self.assertAlmostEqual(side["north"]["azimuthDiffDeg"], 0.0, delta=1.0)
+        _, flags, _ = pipeline.assess(m, None, {}, {"by": "files"}, chk, permits=[])
+        self.assertEqual([f["severity"] for f in flags if f["code"] == "lidar-azimuth"], ["review"])
+
+    def test_cached_permits_are_asked_again_after_a_month(self):
+        tmp = tempfile.mkdtemp(prefix="roofmeasure-test-")
+        try:
+            path = os.path.join(tmp, "permits.json")
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump({"features": ["old"]}, f)
+
+            class Fresh(cityapi.Http):
+                calls = 0
+
+                def get_bytes(self, url, cache_path=None):
+                    Fresh.calls += 1
+                    return b'{"features": ["new"]}'
+
+            class Down(cityapi.Http):
+                def get_bytes(self, url, cache_path=None):
+                    raise cityapi.LookupError_("no answer")
+            self.assertEqual(Fresh().get_json("u", {}, path, max_age_days=30)["features"], ["old"])   # young: not asked
+            self.assertEqual(Fresh.calls, 0)
+            two_months_ago = os.path.getmtime(path) - 60 * 86400
+            os.utime(path, (two_months_ago, two_months_ago))
+            self.assertEqual(Fresh().get_json("u", {}, path)["features"], ["old"])                    # other layers: forever
+            self.assertEqual(Down().get_json("u", {}, path, max_age_days=30)["features"], ["old"])    # service down: old answer
+            self.assertEqual(cityapi.Http(offline=True).get_json("u", {}, path, max_age_days=30)["features"], ["old"])
+            self.assertEqual(Fresh().get_json("u", {}, path, max_age_days=30)["features"], ["new"])
+            with open(path, encoding="utf-8") as f:
+                self.assertEqual(json.load(f)["features"], ["new"])
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_repair_permit_is_information_not_a_site_check(self):
+        fp, solid = fixture_house()
+        m, _ = pipeline.model_from_features(fp, solid)
+        checks, flags, site = pipeline.assess(m, fp, {}, {"by": "oid"}, None,
+                                              permits=[{"workClass": "Repair", "issuedMs": 1709856000000, "status": "Finaled"}])
+        sev = {f["code"]: f["severity"] for f in flags}
+        self.assertEqual(sev.get("permit-other"), "info")
+        self.assertNotIn("permit-since-capture", sev)
+        self.assertEqual(checks["permits"]["roofShapePermits"], 0)
+        self.assertNotIn("Site check required", site)
+
+
 class Permits(unittest.TestCase):
     """Review round 2: an addition built after the June 2023 capture gave a clean estimate of the old roof."""
 
@@ -484,8 +657,8 @@ class Permits(unittest.TestCase):
         on_house = ring.mean(axis=0)
 
         class FakeHttp:
-            def get_json(self, url, params, cache_path=None):
-                self.params = params
+            def get_json(self, url, params, cache_path=None, max_age_days=None):
+                self.params, self.max_age_days = params, max_age_days
                 return {"features": [
                     {"attributes": {"WORKCLASS": "Addition", "ISSUEDATE": 1709856000000}, "geometry": {"x": on_house[0], "y": on_house[1]}},
                     {"attributes": {"WORKCLASS": "Razing", "ISSUEDATE": 1719856000000}, "geometry": {"x": x0 - 40.0, "y": y0 - 40.0}}]}
@@ -603,6 +776,10 @@ class Outputs(unittest.TestCase):
         s = self.doc["summary"]
         self.assertEqual(s["planeCount"], 7)
         self.assertAlmostEqual(s["squares"], 32.7, delta=0.2)
+        r = s["areaRange"]                                   # review round 3: the area never travels without its range
+        self.assertLess(r["lowFt2"], s["slopedAreaFt2"])
+        self.assertGreater(r["highFt2"], s["slopedAreaFt2"])
+        self.assertTrue(2.0 < r["plusMinusPct"] < 5.0, r)
         self.assertAlmostEqual(s["predominantPitchIn12"], 5.9, delta=0.3)
         self.assertAlmostEqual(self.doc["origin"]["lat"], 43.4809, delta=0.001)
         self.assertAlmostEqual(self.doc["origin"]["lon"], -96.7424, delta=0.001)
@@ -612,8 +789,23 @@ class Outputs(unittest.TestCase):
     def test_report_is_readable(self):
         with open(self.paths["report"], encoding="utf-8") as f:
             report = f.read()
-        for needle in ("squares", "Ridge", "ESTIMATE", "Lidar cross-check"):
+        for needle in ("squares", "Ridge", "ESTIMATE", "Lidar cross-check", "Likely range of the sloped area"):
             self.assertIn(needle, report)
+
+    def test_report_shows_no_lidar_pitch_for_a_plane_that_was_not_checked(self):
+        # Review round 3: benchmark 235247 printed "16.6/12 (+24.5 deg, 6 pts)" beside a 36 sq ft plane. A fit on
+        # six points is not a measurement and must not look like one in the report.
+        doc = json.loads(json.dumps(self.doc))
+        p = doc["planes"][0]
+        p["lidar"] = {"status": "not_checked", "action": "keep_city", "points": 6, "inliers": 6, "lidarPitchDeg": 54.1, "pitchDiffDeg": 24.5}
+        row = [ln for ln in export.takeoff_markdown(doc).split("\n") if ln.startswith("| %d |" % p["id"])][0]
+        self.assertNotIn("16.6/12", row)
+        self.assertIn("| - | not checked |", row)
+        # one pitch is printed one way: 33.20 deg used to show as 7.8/12 in one column and 7.9/12 in the next
+        p["pitchDeg"], p["pitchIn12"] = 33.2, 7.85
+        p["lidar"] = {"status": "agree", "action": "use_lidar", "points": 90, "inliers": 86, "lidarPitchDeg": 33.2, "pitchDiffDeg": 1.4}
+        row = [ln for ln in export.takeoff_markdown(doc).split("\n") if ln.startswith("| %d |" % p["id"])][0]
+        self.assertEqual(row.count("7.9/12"), 2)
 
     def test_site_check_is_not_reported_as_an_estimate(self):
         # Review round 2: a house that must not be used carried the headline "Status: ESTIMATE" and the same

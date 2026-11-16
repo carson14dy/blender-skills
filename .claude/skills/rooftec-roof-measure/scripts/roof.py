@@ -121,6 +121,9 @@ def main(argv=None):
     print("Footprint %s, solid %s: %d planes, %.0f sq ft sloped = %.1f squares, predominant pitch %.1f/12  [%s]"
           % (doc["footprintId"], doc["solidId"], s["planeCount"], s["slopedAreaFt2"], s["squares"], s["predominantPitchIn12"],
              "site check required" if s.get("siteCheckRequired") else s["confidence"]))
+    if s.get("areaRange"):
+        print("Likely range of the sloped area: %.0f to %.0f sq ft (plus or minus %.1f%%; the outline is known to about 4 in)"
+              % (s["areaRange"]["lowFt2"], s["areaRange"]["highFt2"], s["areaRange"]["plusMinusPct"]))
     print("Lines (ft): " + ", ".join("%s %.1f" % (t, v["lengthFt"]) for t, v in s["edgeTotals"].items() if v["count"]))
     lid = doc["checks"].get("lidar")
     if lid:

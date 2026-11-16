@@ -1,6 +1,6 @@
 # Review benchmark
 
-Use these 13 buildings and 1 missing-data point for every review round, and do not change the list. Review round 2 added building 14, because no building covered a roof changed under a permit after the capture. A round reports its change level from the difference between two runs of this benchmark.
+Use these 13 buildings and 1 missing-data point for every review round, and do not change the list. Review round 2 added building 14, because no building covered a roof changed under a permit after the capture. Review round 3 added none. A round reports its change level from the difference between two runs of this benchmark.
 
 Buildings are listed by city footprint id only. Addresses are kept out of this file on purpose.
 
@@ -10,7 +10,7 @@ Buildings are listed by city footprint id only. Addresses are kept out of this f
 python3 scripts/benchmark.py --out out/benchmark --json out/benchmark/round-N.json --compare out/benchmark/round-N-1.json
 ```
 
-The first run makes about 180 small requests and takes about 3 minutes. Later runs use the cache and take about 10 seconds. To compare two code versions fairly, copy the `raw/` and `_ept/` cache folders so both read the same city answers and the same lidar points.
+The first run makes about 180 small requests and takes about 3 minutes. Later runs use the cache and take about 10 seconds. To compare two code versions fairly, copy the `raw/` and `_ept/` cache folders so both read the same city answers and the same lidar points. Run the comparison with `--offline`: the permit answer is asked again once it is 30 days old, and a new permit would change a result for a reason that has nothing to do with the code.
 
 A "main plane" is a plane of 215 sq ft (20 m²) or more. That is the size from which the plan's 1 degree pitch target applies.
 
@@ -76,6 +76,32 @@ No number changed on any building: sloped area 0.00%, every main-plane pitch 0.0
 
 Building 199138 measured with the round 1 code gives the same numbers. With `--lidar` it was already a site check there, because lidar disagrees on two planes; without `--lidar` the round 1 code returned a plain estimate.
 
+### Round 3 (2026-11-16)
+
+Three houses changed, each because one large plane now takes a lidar pitch that another plane of the same house confirms. Largest sloped-area change: +0.28%. Largest main-plane pitch change: 0.39 in 12. No building changed between estimate and site check. Every roof now carries a likely range for its area.
+
+| Footprint | Round 2 area | Round 3 area | Change | Pitch (round 2, round 3) | Largest pitch change | Likely range of the area | Result | Flags added or dropped |
+|---|---|---|---|---|---|---|---|---|
+| 177261 | 1,217.4 | 1,220.3 | +0.24% | 3.95, 3.95 | 0.20 | 1,173 to 1,268 (3.9%) | Estimate | `tree-over-roof` replaces `lidar-surface` |
+| 218452 | 1,540.3 | 1,540.3 | 0.00% | 4.10, 4.10 | 0.00 | 1,479 to 1,602 (4.0%) | Estimate | none |
+| 175156 | 1,101.9 | 1,101.9 | 0.00% | 5.29, 5.29 | 0.00 | 1,053 to 1,150 (4.4%) | Estimate | none |
+| 235245 | 3,284.1 | 3,284.1 | 0.00% | 6.03, 6.03 | 0.00 | 3,179 to 3,389 (3.2%) | Estimate | none |
+| 235246 | 4,796.9 | 4,796.9 | 0.00% | 3.46, 3.46 | 0.00 | 4,687 to 4,907 (2.3%) | Estimate | none |
+| 235247 | 3,183.1 | 3,190.1 | +0.22% | 7.99, 7.99 | 0.39 | 3,062 to 3,318 (4.0%) | Estimate | `skewed-edge` (28 ft) |
+| 235248 | 3,595.9 | 3,595.9 | 0.00% | 5.92, 5.92 | 0.00 | 3,467 to 3,725 (3.6%) | Estimate | `skewed-edge` (71 ft) |
+| 176864 | 3,702.9 | 3,713.4 | +0.28% | 4.66, 4.85 | 0.19 | 3,606 to 3,821 (2.9%) | Estimate | `skewed-edge` (12 ft) |
+| 204065 | 1,767.4 | 1,767.4 | 0.00% | 10.24, 10.24 | 0.00 | 1,697 to 1,838 (4.0%) | Site check | `skewed-edge` |
+| 250390 | 14,985.8 | 14,985.8 | 0.00% | 0.02, 0.02 | 0.00 | 14,627 to 15,344 (2.4%) | Site check | `tree-over-roof` |
+| 363469 | 4,586.8 | 4,586.8 | 0.00% | 5.94, 5.94 | 0.00 | 4,416 to 4,757 (3.7%) | Site check | `skewed-edge` |
+| 363456 | 3,685.6 | 3,685.6 | 0.00% | 6.01, 6.01 | 0.00 | 3,528 to 3,843 (4.3%) | Site check | `skewed-edge` |
+| 199138 | 2,308.3 | 2,308.3 | 0.00% | 5.25, 5.25 | 0.00 | 2,225 to 2,391 (3.6%) | Site check | none |
+
+- The planes that changed: 177261 plane 1 (3.83 to 4.03 in 12), 235247 plane 3 (7.45 to 7.85) and 176864 plane 0 (4.66 to 4.86). All three moved towards a whole-number pitch.
+- Line totals moved by 0.2 ft at most (rakes and hips follow the new pitch).
+- `lidar-surface` now fires on 2 of the 8 clean houses (235247 and 176864), both real differences between model and roof. The tree on 177261 is an info flag.
+- The range on a site-check building is printed too, but it means nothing there: the numbers must not be used.
+- Both runs read the same cached city answers and the same lidar nodes. The point files were rebuilt from those nodes, because round 3 also stores the return count of each point.
+
 ### Line totals in feet, round 1 (v1 in brackets where it changed by more than 1 ft)
 
 | Footprint | Ridge | Hip | Valley | Eave | Rake | Step flashing | Headwall | High edge |
@@ -103,3 +129,4 @@ Building 199138 measured with the round 1 code gives the same numbers. With `--l
 2. Buildings 1 to 8 keep a plan area within 0.5% of the city footprint area.
 3. On buildings 1 to 8, every main plane with a precise lidar fit shows a pitch within 0.25 degree of that lidar pitch.
 4. All unit tests pass with no network.
+5. Every roof has `summary.areaRange`, and the GLB holds the same sloped area as `roof.json` within 0.01% on buildings 1 to 8.
