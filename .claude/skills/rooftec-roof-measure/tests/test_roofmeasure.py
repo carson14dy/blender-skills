@@ -144,6 +144,57 @@ class SyntheticRoofs(unittest.TestCase):
         self.assertEqual(m.stats["hiddenFaces"], 1)
         self.check(m, exp)
 
+    def test_face_delivered_twice_is_counted_once(self):
+        # Review round 1: a duplicated roof face doubled its area in version 1.
+        faces, exp = synthetic.gable()
+        m = model_of(faces + [faces[0]])
+        self.assertAlmostEqual(m.sloped_area, exp["sloped"], delta=0.01)
+        self.assertEqual(m.stats["duplicateFaces"], 1)
+        self.assertAlmostEqual(totals(m)["ridge"], exp["ridge"], delta=0.01)
+
+    def test_ridge_drawn_with_a_sliver_wall_is_one_ridge(self):
+        # Review round 1: some city solids put a wall a few centimetres tall between the two sides of a ridge
+        # (benchmark houses 176864 and 363469). Version 1 reported the ridge as two "top" edges, twice the length.
+        L, W, eave, step = 10.0, 8.0, 3.0, 0.06
+        r = eave + 2.0
+        roofs = [[(0, 0, eave), (L, 0, eave), (L, W / 2, r), (0, W / 2, r)],
+                 [(L, W, eave), (0, W, eave), (0, W / 2, r - step), (L, W / 2, r - step)]]
+        walls = [[(0, 0, 0), (L, 0, 0), (L, 0, eave), (0, 0, eave)],
+                 [(L, W, 0), (0, W, 0), (0, W, eave), (L, W, eave)],
+                 [(0, W, 0), (0, 0, 0), (0, 0, eave), (0, W / 2, r), (0, W / 2, r - step), (0, W, eave)],
+                 [(L, 0, 0), (L, W, 0), (L, W, eave), (L, W / 2, r - step), (L, W / 2, r), (L, 0, eave)],
+                 [(0, W / 2, r - step), (L, W / 2, r - step), (L, W / 2, r), (0, W / 2, r)]]     # the sliver
+        m = model_of(roofs + walls)
+        t = totals(m)
+        self.assertAlmostEqual(t["ridge"], L, delta=0.01)
+        self.assertAlmostEqual(t["top"], 0.0, delta=0.01)
+        self.assertAlmostEqual(t["headwall"], 0.0, delta=0.01)
+        self.assertAlmostEqual(m.stats["splitRidgeM"], L, delta=0.01)
+        # a real step (0.5 m) stays a wall joint: high edge on one side, headwall flashing on the other
+        roofs[1] = [(L, W, eave), (0, W, eave), (0, W / 2, r - 0.5), (L, W / 2, r - 0.5)]
+        walls[2] = [(0, W, 0), (0, 0, 0), (0, 0, eave), (0, W / 2, r), (0, W / 2, r - 0.5), (0, W, eave)]
+        walls[3] = [(L, 0, 0), (L, W, 0), (L, W, eave), (L, W / 2, r - 0.5), (L, W / 2, r), (L, 0, eave)]
+        walls[4] = [(0, W / 2, r - 0.5), (L, W / 2, r - 0.5), (L, W / 2, r), (0, W / 2, r)]
+        t = totals(model_of(roofs + walls))
+        self.assertAlmostEqual(t["ridge"], 0.0, delta=0.01)
+        self.assertAlmostEqual(t["top"], L, delta=0.01)
+        self.assertAlmostEqual(t["headwall"], L, delta=0.01)
+
+    def test_eave_a_few_degrees_out_of_level_stays_an_eave(self):
+        # Review round 1: version 1 called any outer edge sloping more than 3 degrees a rake. An eave that the
+        # source drew 5 degrees out of level (about 0.9 m over 10 m) still runs along the contour of its plane.
+        L, W, eave, r = 10.0, 8.0, 3.0, 5.0
+        roofs = [[(0, 0, eave), (L, 0, eave + 0.45), (L, W / 2, r), (0, W / 2, r)],
+                 [(L, W, eave), (0, W, eave), (0, W / 2, r), (L, W / 2, r)]]
+        walls = [[(0, 0, 0), (L, 0, 0), (L, 0, eave + 0.45), (0, 0, eave)],
+                 [(L, W, 0), (0, W, 0), (0, W, eave), (L, W, eave)],
+                 [(0, W, 0), (0, 0, 0), (0, 0, eave), (0, W / 2, r), (0, W, eave)],
+                 [(L, 0, 0), (L, W, 0), (L, W, eave), (L, W / 2, r), (L, 0, eave + 0.45)]]
+        t = totals(model_of(roofs + walls))
+        self.assertAlmostEqual(t["eave"], L + math.hypot(L, 0.45), delta=0.05)
+        self.assertAlmostEqual(t["ridge"], L, delta=0.01)
+        self.assertEqual(sum(1 for e in model_of(roofs + walls).edges if e["type"] == "rake"), 4)
+
     def test_feet_input_gives_metres(self):
         faces, exp = synthetic.gable()
         ft = [np.array(f, float) / FT_US + np.array([2239372.9, 15802731.7, 1482.5]) for f in faces]
@@ -184,7 +235,9 @@ class House235245(unittest.TestCase):
         t = {k: m_to_ft(v) for k, v in totals(self.m).items()}
         self.assertAlmostEqual(t["ridge"], 78.7, delta=1.0)
         self.assertAlmostEqual(t["valley"], 28.6, delta=1.0)
-        self.assertAlmostEqual(t["eave"], 112.8, delta=1.5)
+        # 112.8 ft of eave is certain; one 3.9 ft outer edge runs about 10 degrees off its plane's contour
+        # and may be called eave or rake
+        self.assertTrue(112.8 - 1.5 <= t["eave"] <= 116.7 + 1.5, t["eave"])
         self.assertGreater(t["step_flashing"] + t["headwall"], 40)   # wall steps are not counted as rake
         self.assertAlmostEqual(sum(t.values()), 472.0, delta=3.0)    # every roof edge counted once (research total: 472 ft)
 
@@ -204,6 +257,12 @@ class Projection(unittest.TestCase):
         e, n = proj.lonlat_to_city(-96.72939748, 43.54765556)
         self.assertAlmostEqual(float(e), 2242198.293825377, delta=0.02)
         self.assertAlmostEqual(float(n), 15827194.793140152, delta=0.02)
+
+    def test_lidar_reprojection_matches_proj(self):
+        # reference: pyproj 3.8 Transformer.from_crs(3857, 32164, always_xy=True).transform(-10768000, 5381000)
+        e, n = proj.webmerc_to_city(-10768000.0, 5381000.0)
+        self.assertAlmostEqual(float(e), 2242834.7675437303, delta=0.02)
+        self.assertAlmostEqual(float(n), 15792269.845577892, delta=0.02)
 
     def test_round_trips(self):
         lon, lat = proj.city_to_lonlat(2239372.9, 15802731.7)
@@ -232,14 +291,71 @@ class LidarMath(unittest.TestCase):
         self.assertAlmostEqual(fit["azimuthGridDeg"], 180.0, delta=1.0)   # faces south (downhill is -y)
 
     def test_reconcile_rule(self):
-        fit = lambda pitch, rmse=0.03, n=100, inl=95: {"pitchDeg": pitch, "rmseM": rmse, "points": n, "inliers": inl}
-        self.assertEqual(lidar.reconcile(26.0, fit(27.0))[0], "agree")
+        fit = lambda pitch, se=0.1, n=100, inl=95: {"pitchDeg": pitch, "rmseM": 0.03, "seDeg": se, "points": n, "inliers": inl}
+        # a precise lidar fit supplies the pitch, whether the city agrees (no review) or differs 1.5-4 deg (review)
+        self.assertEqual(lidar.reconcile(26.0, fit(27.0))[:2], ("agree", "use_lidar"))
         self.assertEqual(lidar.reconcile(26.0, fit(28.0))[:2], ("override", "use_lidar"))
-        self.assertEqual(lidar.reconcile(26.0, fit(28.0, rmse=0.2))[0], "site_check")
+        # an imprecise fit never supplies the pitch: too few points on the plane, or a large standard error
+        self.assertEqual(lidar.reconcile(26.0, fit(27.0, se=0.6))[:2], ("agree", "keep_city"))
+        self.assertEqual(lidar.reconcile(26.0, fit(27.0, inl=70))[:2], ("agree", "keep_city"))
+        self.assertEqual(lidar.reconcile(26.0, fit(28.0, se=0.6))[:2], ("agree", "keep_city"))      # 2.0 deg is within 1.5 + 2 * 0.6
+        self.assertEqual(lidar.reconcile(26.0, fit(29.5, se=0.6))[:2], ("site_check", "keep_city"))
+        self.assertEqual(lidar.reconcile(26.0, fit(26.5, n=45, inl=36))[:2], ("not_checked", "keep_city"))   # 36 points on the plane
+        self.assertEqual(lidar.reconcile(26.0, fit(28.0, inl=70))[:2], ("site_check", "keep_city"))
         self.assertEqual(lidar.reconcile(26.0, fit(31.0))[0], "site_check")
         self.assertEqual(lidar.reconcile(26.0, fit(26.0, n=20, inl=20))[0], "not_checked")
         self.assertEqual(lidar.reconcile(26.0, fit(26.0, n=200, inl=60))[0], "site_check")
         self.assertEqual(lidar.reconcile(26.0, None)[0], "not_checked")
+
+    def test_half_covered_plane_cannot_override(self):
+        # Review round 1, bug: version 1 called a fit "clean" when the RMSE of its inliers was under 0.10 m.
+        # Inliers are within 0.10 m by construction, so a plane half covered by a tree could override the city.
+        rng = np.random.default_rng(5)
+        xy = rng.uniform(0, 6, (200, 2))
+        z = math.tan(math.radians(28.0)) * xy[:, 1] + 3 + rng.normal(0, 0.03, 200)
+        z[:90] += rng.uniform(0.5, 4, 90)    # 45% of the points are branches
+        fit = lidar.fit_plane(np.column_stack([xy, z]))
+        self.assertLess(fit["rmseM"], 0.10)                       # the old test would have passed
+        self.assertFalse(lidar.is_precise(fit))
+        self.assertEqual(lidar.reconcile(26.0, fit)[:2], ("site_check", "keep_city"))
+
+    def test_pitch_standard_error(self):
+        rng = np.random.default_rng(6)
+        wide = rng.uniform(0, 6, (200, 2))
+        narrow = np.column_stack([rng.uniform(0, 6, 60), rng.uniform(0, 0.5, 60)])   # spans 0.5 m of the slope
+        f = lambda xy: lidar.fit_plane(np.column_stack([xy, 0.5 * xy[:, 1] + rng.normal(0, 0.03, len(xy))]))
+        a, b = f(wide), f(narrow)
+        self.assertLess(a["seDeg"], 0.1)
+        self.assertGreater(b["seDeg"], lidar.PRECISE_SE_DEG)      # too little slope under the points to trust the pitch
+        self.assertTrue(lidar.is_precise(a))
+        self.assertFalse(lidar.is_precise(b))
+
+    def test_lidar_pitch_retilts_the_geometry(self):
+        # city gable drawn at 5.5/12, lidar sees 6/12: plan area and outline stay, pitch and sloped area follow lidar
+        faces, _ = synthetic.gable(L=10, W=8, pitch12=5.5)
+        m = model_of(faces)
+        m.origin_ft = (0.0, 0.0, 0.0)
+        rng = np.random.default_rng(7)
+        xy = rng.uniform((0, 0), (10, 8), (2500, 2))
+        z = 3 + 0.5 * np.minimum(xy[:, 1], 8 - xy[:, 1]) + rng.normal(0, 0.02, 2500)
+        chk = lidar.cross_check(m, {"x_ft": xy[:, 0] / FT_US, "y_ft": xy[:, 1] / FT_US, "z_m": z, "cls": np.ones(2500, np.uint8)})
+        self.assertEqual([r["action"] for r in chk["planes"]], ["use_lidar", "use_lidar"])
+        self.assertEqual(sorted(lidar.apply_overrides(m, chk)), [0, 1])
+        k = math.sqrt(1 + 0.5 ** 2)
+        for p in m.planes:
+            self.assertAlmostEqual(p["pitchIn12"], 6.0, delta=0.05)
+            self.assertAlmostEqual(12 * math.tan(math.radians(p["cityPitchDeg"])), 5.5, delta=0.01)
+            self.assertEqual(p["pitchSource"], "lidar")
+        self.assertAlmostEqual(m.plan_area, 80.0, delta=0.02)                 # the outline did not move
+        self.assertAlmostEqual(m.sloped_area, 80.0 * k, delta=80 * k * 0.002)
+        t = totals(m)
+        self.assertAlmostEqual(t["eave"], 20.0, delta=0.01)
+        self.assertAlmostEqual(t["ridge"], 10.0, delta=0.01)
+        self.assertAlmostEqual(t["rake"], 16.0 * k, delta=0.03)               # rakes follow the new pitch
+        self.assertLess(m.stats["regularizeMaxGapM"], 0.005)
+        # the GLB is written from the same geometry, so the studio measures the same area as roof.json
+        tri_area = sum(float(np.linalg.norm(planes.newell(t3))) for _, t3 in m.roof_triangles())
+        self.assertAlmostEqual(tri_area, m.sloped_area, delta=0.01)
 
     def test_ept_node_bounds(self):
         b = (0, 0, 0, 8, 8, 8)
@@ -273,9 +389,17 @@ class LidarMath(unittest.TestCase):
         self.assertGreaterEqual(chk["summary"]["areaCheckedPct"], 90)
         reg = chk["registration"]
         self.assertLess(math.hypot(reg["eastM"], reg["northM"]), 0.5)   # outline within the plan's 0.5 m target
+        plan_before = m.plan_area
         changed = lidar.apply_overrides(m, chk)
+        self.assertTrue({0, 1, 2} <= set(changed))    # precise fits: the main planes take the lidar pitch
         for pid in changed:
             self.assertEqual(m.planes[pid]["pitchSource"], "lidar")
+            self.assertAlmostEqual(m.planes[pid]["pitchDeg"], main[pid]["lidarPitchDeg"], delta=0.15)
+        # independent evidence (references/validation.md): this house is framed at 6/12 and lidar finds it
+        for pid in (0, 1, 2):
+            self.assertAlmostEqual(m.planes[pid]["pitchIn12"], 6.0, delta=0.12)
+        self.assertAlmostEqual(m.plan_area, plan_before, delta=plan_before * 0.0005)   # a re-tilt keeps the outline
+        self.assertAlmostEqual(m2_to_ft2(m.sloped_area), 3284, delta=8)
 
 
 class Outputs(unittest.TestCase):
@@ -438,6 +562,16 @@ class Lookup(unittest.TestCase):
         self.assertIn("newer-than-solid", codes)
         self.assertIn("no-lidar-check", codes)
         self.assertIn("Site check required", site)
+
+    def test_house_newer_than_lidar_is_flagged_without_an_address(self):
+        # Review round 1: version 1 knew the build year only for address lookups, so --oid runs on houses
+        # occupied after the lidar flight got lidar "disagreements" with no explanation.
+        fp, solid = fixture_house()
+        m, _ = pipeline.model_from_features(fp, solid)
+        fp = dict(fp, attributes=dict(fp["attributes"], OCCUPIEDDATE=1640995200000))   # 2022-01-01
+        _, flags, _ = pipeline.assess(m, fp, {}, {"by": "oid"}, None)
+        self.assertIn("newer-than-lidar", {f["code"] for f in flags})
+        self.assertNotIn("newer-than-solid", {f["code"] for f in flags})
 
 
 if __name__ == "__main__":

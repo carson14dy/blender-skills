@@ -7,7 +7,7 @@ FT2_PER_SQUARE = 100.0
 CITY_SRID = 32164                # NAD83 / BLM 14N (ftUS)
 CITY_SOLID_CAPTURED = "2023-06"  # layer description: "acquisition date June 2023"
 LIDAR_COLLECTION = "SD_EasternSD_3_2020"
-LIDAR_CAPTURED = "2020"
+LIDAR_CAPTURED = "2020-12"        # GPS times of the points over Sioux Falls: 19 and 20 December 2020
 
 ATTRIBUTION_CITY = (
     "Contains data from the City of Sioux Falls, CC BY 4.0 "

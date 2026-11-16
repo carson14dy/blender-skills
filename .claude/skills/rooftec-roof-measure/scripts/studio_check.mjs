@@ -51,7 +51,8 @@ if (roofPath) {
   const roof = JSON.parse(readFileSync(roofPath, 'utf8'));
   const s = roof.summary, t = s.edgeTotals;
   // the studio has no wall-flashing class yet: it counts step flashing as rake and headwall/top as top
-  const cityArea = roof.planes.reduce((a, p) => a + (p.cityAreaM2 ?? p.areaM2), 0);
+  // roof.glb carries the same geometry the areas in roof.json were measured on (lidar re-tilt included)
+  const cityArea = roof.planes.reduce((a, p) => a + p.areaM2, 0);
   out.compare = {
     planes: [m.planes, s.planeCount],
     areaM2: [out.areaM2, +cityArea.toFixed(2)], areaDiffPct: +(100 * (m.areaM2 - cityArea) / cityArea).toFixed(2),

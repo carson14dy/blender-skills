@@ -22,9 +22,15 @@ WALL_NZ = 0.087          # faces within 5 degrees of vertical are walls
 MERGE_DEG = 3.0          # roof faces closer than this in angle, and touching, are one plane
 MERGE_OFFSET_M = 0.10
 HORIZONTAL_DEG = 3.0     # an edge flatter than this is "horizontal" (ridge, eave)
+LEVEL_PLAN_DEG = 10.0    # ... or one that runs within this angle of its plane's contour line, seen from above
 SEAM_SIN = 0.02          # roof-roof folds flatter than about 1 degree are not an edge
 REGULARIZE_ITERS = 40
 REGULARIZE_WARN_SHIFT_M = 0.30
+REGULARIZE_WARN_GAP_M = 0.03
+WALL_NEAR_M = 0.08       # a roof edge this close to a wall's plane is at that wall
+WALL_PROBE_UP_M = (0.10, 0.25)   # heights above a roof edge at which a wall must exist to count
+WALL_WEIGHT = 1e3        # how strongly an outline corner is held on its wall planes during a re-tilt
+SPLIT_RIDGE_M = 0.15     # two plane tops closer than this are one ridge that the source drew with a sliver wall
 ROOF_TYPES = ("ridge", "hip", "valley", "eave", "rake", "step_flashing", "headwall", "top")
 
 
@@ -256,11 +262,17 @@ def build_model(faces_src, unit_m=FT_US, origin=None, ground_z=None):
     # 1. snap vertices, drop degenerate faces, classify
     verts, ids = _snap(np.concatenate(local), SNAP_M)
     faces, k = [], 0
+    seen, duplicates = set(), 0
     for f in local:
         ring = _dedupe_loop([int(v) for v in ids[k:k + len(f)]])
         k += len(f)
         if len(ring) < 3:
             continue
+        key = tuple(sorted(ring))
+        if key in seen:        # the same face delivered twice would count its area twice
+            duplicates += 1
+            continue
+        seen.add(key)
         A = newell(verts[ring])
         area = float(np.linalg.norm(A))
         if area < 1e-4:
@@ -311,7 +323,7 @@ def build_model(faces_src, unit_m=FT_US, origin=None, ground_z=None):
         for i in g:
             faces[i]["plane"] = pi
 
-    # 4. fit planes (area-weighted) and regularize vertices so planes are flat and meet exactly
+    # 4. fit planes (area-weighted) to the faces as delivered
     fits = []
     raw_plan = raw_sloped = 0.0
     for g in plane_faces:
@@ -324,37 +336,74 @@ def build_model(faces_src, unit_m=FT_US, origin=None, ground_z=None):
         used = sorted({v for i in g for v in faces[i]["ring"]})
         planarity = float(np.abs((verts[used] - c) @ n).max())
         fits.append({"n": n, "d": float(n @ c), "planarityM": planarity})
+    m.faces = faces
+    m._ctx = {"plane_faces": plane_faces, "fits": fits, "edge_faces": edge_faces, "roof_ids": roof_ids,
+              "hidden": hidden, "partly": partly, "duplicates": duplicates, "raw_plan": raw_plan,
+              "raw_sloped": raw_sloped, "base_z": float(base_z), "points": int(sum(len(f) for f in faces_src))}
+    _solve_and_measure(m)
+    return m
+
+
+def retilt(m, pitch_deg_by_plane):
+    """Re-tilt planes to a given pitch (degrees) and rebuild the geometry, the plane records and the edges.
+
+    Used when lidar supplies the pitch. Each named plane takes the new pitch and keeps facing the way the
+    city face does (it may turn by a fraction of a degree so the corners still meet); the corners are then
+    solved again, held on the wall lines. Plane ids do not change. Returns the ids that were re-tilted.
+    """
+    fixed = {}
+    for pid, pitch in pitch_deg_by_plane.items():
+        n0 = m._ctx["fits"][pid]["n"]
+        if math.hypot(n0[0], n0[1]) < 0.0087 or not 0.5 <= pitch < 85.0:   # a flat face has no direction to tilt along
+            continue
+        fixed[pid] = float(pitch)
+    m._ctx["fixed"] = fixed
+    _solve_and_measure(m)
+    return sorted(fixed)
+
+
+def _solve_and_measure(m):
+    """Steps 4b to 6 of `build_model`: make the planes flat, then measure planes and classify edges."""
+    ctx = m._ctx
+    faces, verts = m.faces, m.verts_raw
+    plane_faces, fits, edge_faces, roof_ids = ctx["plane_faces"], ctx["fits"], ctx["edge_faces"], ctx["roof_ids"]
+    fixed = ctx.get("fixed") or {}
+    m.planes, m.edges = [], []
     vplanes, pverts = {}, []
     for pi, g in enumerate(plane_faces):
         used = sorted({v for i in g for v in faces[i]["loop"]})
         pverts.append(used)
         for v in used:
             vplanes.setdefault(v, set()).add(pi)
-    # Alternate between "move each vertex onto its planes" and "refit each plane to its vertices".
-    # One pass alone fails on low slopes: three planes that are each a few centimetres off meet
-    # far from the delivered corner. Letting the planes move too keeps every shift small.
-    reg = verts.copy()
-    lam = 1e-3
-    cur = [(f["n"], f["d"]) for f in fits]
-    for _ in range(REGULARIZE_ITERS):
-        for v, ps in vplanes.items():
-            N = np.array([cur[p][0] for p in ps])
-            d = np.array([cur[p][1] for p in ps])
-            # least squares on the plane equations, lightly tied to the delivered position
-            reg[v] = np.linalg.solve(N.T @ N + lam * np.eye(3), N.T @ d + lam * verts[v])
-        nxt = []
-        for pi, used in enumerate(pverts):
-            pts = reg[used]
-            c = pts.mean(axis=0)
-            _, sv, vt = np.linalg.svd(pts - c, full_matrices=False)
-            n = vt[-1] if vt[-1][2] > 0 else -vt[-1]
-            if len(used) < 3 or sv[1] < 1e-6 or n @ fits[pi]["n"] < 0.99:
-                nxt.append(cur[pi])   # degenerate or drifting: keep the previous plane
-            else:
-                nxt.append((n, float(n @ c)))
-        cur = nxt
+    # Stage 1: make the delivered faces flat. Alternate between "move each vertex onto its planes" and
+    # "refit each plane to its vertices". One pass alone fails on low slopes: three planes that are each
+    # a few centimetres off meet far from the delivered corner. Letting the planes move too keeps every
+    # shift small.
+    reg, cur = _regularize(verts, vplanes, pverts, [(f["n"], f["d"]) for f in fits], refit=True)
+    if fixed:
+        # Stage 2 (re-tilt): the named planes take their new pitch, and the planes and corners settle
+        # again. A corner that touches a wall
+        # may slide along that wall or move up and down, but it may not leave the wall's plane: the wall
+        # lines come from the city footprint, so the roof keeps its plan area while it is re-tilted.
+        vwalls = {}
+        for f in faces:
+            if f["kind"] != "wall":
+                continue
+            h = np.array([f["n"][0], f["n"][1], 0.0])
+            h /= np.linalg.norm(h)
+            for v in f["loop"]:
+                vwalls.setdefault(v, []).append(h)
+        start, hold = [], {}
+        for pi in range(len(fits)):
+            n = cur[pi][0]
+            # every plane keeps a given pitch: the new one if it is re-tilted, its own from stage 1 if not
+            hold[pi] = fixed.get(pi, math.degrees(math.atan2(math.hypot(n[0], n[1]), n[2])))
+            n = _with_pitch(n, hold[pi])
+            start.append((n, float(n @ reg[pverts[pi]].mean(axis=0))))
+        reg, cur = _regularize(reg, vplanes, pverts, start, refit=True, vwalls=vwalls, hold=hold)
     shifts = np.linalg.norm(reg - verts, axis=1)
     max_shift = float(shifts.max()) if len(shifts) else 0.0
+    max_shift_xy = float(np.linalg.norm((reg - verts)[:, :2], axis=1).max()) if len(shifts) else 0.0
     max_gap = 0.0
     for v, ps in vplanes.items():
         for p in ps:
@@ -380,7 +429,6 @@ def build_model(faces_src, unit_m=FT_US, origin=None, ground_z=None):
             "zMinM": float(zs.min()), "zMaxM": float(zs.max()),
             "centroid": sum(faces[i]["area"] * verts[faces[i]["ring"]].mean(0) for i in g) / sum(faces[i]["area"] for i in g),
         })
-    m.faces = faces
 
     # 6. classify atomic roof edges
     walls = []
@@ -394,13 +442,19 @@ def build_model(faces_src, unit_m=FT_US, origin=None, ground_z=None):
         walls.append({"n": n, "d": float(n @ p.mean(0)), "t": t, "poly2": np.column_stack([p @ t, p[:, 2]])})
 
     def wall_above(mid):
-        probe = mid + np.array([0, 0, 0.05])
+        # Is there a wall rising from this roof edge? Probe at two heights so the answer does not flip
+        # when cleaning or a re-tilt moves a corner by a few centimetres. A wall shorter than the lower
+        # probe is a sliver in the source model, not a wall that needs flashing.
         for w in walls:
-            if abs(w["n"] @ probe - w["d"]) < 0.03 and _pnpoly(w["poly2"], probe @ w["t"], probe[2]):
+            if abs(w["n"] @ mid - w["d"]) >= WALL_NEAR_M:
+                continue
+            s = mid @ w["t"]
+            if any(_pnpoly(w["poly2"], s, mid[2] + up) for up in WALL_PROBE_UP_M):
                 return True
         return False
 
     tan_h = math.tan(math.radians(HORIZONTAL_DEG))
+    sin_level = math.sin(math.radians(LEVEL_PLAN_DEG))
     atoms = []
     for (va, vb), lst in edge_faces.items():
         rf = [x for x in lst if faces[x[0]]["kind"] == "roof"]
@@ -417,8 +471,17 @@ def build_model(faces_src, unit_m=FT_US, origin=None, ground_z=None):
         if L < 1e-6:
             continue
         run = math.hypot(vec[0], vec[1])
-        horizontal = abs(vec[2]) <= max(tan_h * run, 0.02)
         pl = sorted(by_plane)
+        # Level means: nearly no rise, or running along the contour of (one of) its plane(s). The second
+        # test keeps an eave an eave when the source or a re-tilt leaves it a few degrees out of level;
+        # rakes and hips run far from the contour, so they are not affected.
+        horizontal = abs(vec[2]) <= max(tan_h * run, 0.02)
+        if not horizontal and run > 1e-6:
+            for q in pl[:2]:
+                nq = m.planes[q]["normal"]
+                h = math.hypot(nq[0], nq[1])
+                if h > 0.02 and abs(vec[0] * nq[0] + vec[1] * nq[1]) / (run * h) <= sin_level:
+                    horizontal = True
         if len(pl) >= 2:
             (fa, a1, b1), (fb, a2, b2) = by_plane[pl[0]][0], by_plane[pl[1]][0]
             nA, nB = m.planes[pl[0]]["normal"], m.planes[pl[1]]["normal"]
@@ -448,21 +511,76 @@ def build_model(faces_src, unit_m=FT_US, origin=None, ground_z=None):
             etype = "rake"
         atoms.append({"type": etype, "va": va, "vb": vb, "planes": (pl[0],), "L": L, "low": low_side})
 
-    m.edges = _merge_lines(atoms, verts)
+    m.edges, split_ridge_m = _pair_split_ridges(_merge_lines(atoms, verts))
     for i, e in enumerate(m.edges):
         e["id"] = i
     m.stats = {
         "faces": len(faces), "roofFaces": len(roof_ids), "wallFaces": sum(f["kind"] == "wall" for f in faces),
-        "points": int(sum(len(f) for f in faces_src)), "vertices": int(len(verts)),
-        "hiddenFaces": hidden, "partlyCoveredFaces": partly,
-        "sourcePlanAreaM2": raw_plan, "sourceSlopedAreaM2": raw_sloped,
-        "regularizeMaxShiftM": max_shift, "regularizeMaxGapM": max_gap,
-        "maxPitchChangeDeg": max((abs(p["pitchDeg"] - p["sourcePitchDeg"]) for p in m.planes), default=0.0),
+        "points": ctx["points"], "vertices": int(len(verts)),
+        "hiddenFaces": ctx["hidden"], "partlyCoveredFaces": ctx["partly"], "duplicateFaces": ctx["duplicates"],
+        "sourcePlanAreaM2": ctx["raw_plan"], "sourceSlopedAreaM2": ctx["raw_sloped"],
+        "regularizeMaxShiftM": max_shift, "regularizeMaxShiftXyM": max_shift_xy, "regularizeMaxGapM": max_gap,
+        "maxPitchChangeDeg": max((abs(p["pitchDeg"] - p["sourcePitchDeg"]) for i, p in enumerate(m.planes)
+                                  if i not in fixed), default=0.0),
         "maxPlanarityM": max((p["planarityM"] for p in m.planes), default=0.0),
-        "baseZM": float(base_z), "topZM": float(verts[:, 2].max()),
+        "splitRidgeM": split_ridge_m, "retiltedPlanes": sorted(fixed),
+        "baseZM": ctx["base_z"], "topZM": float(verts[:, 2].max()),
         "bboxM": [float(v) for v in (verts[:, 0].max() - verts[:, 0].min(), verts[:, 1].max() - verts[:, 1].min())],
     }
-    return m
+
+
+def _with_pitch(n, pitch_deg):
+    """The unit normal with the compass direction of `n` and the given pitch."""
+    h = math.hypot(n[0], n[1])
+    t = math.radians(pitch_deg)
+    if h < 1e-6:
+        return np.array([0.0, 0.0, 1.0])
+    return np.array([n[0] / h * math.sin(t), n[1] / h * math.sin(t), math.cos(t)])
+
+
+def _regularize(verts, vplanes, pverts, planes0, refit, vwalls=None, hold=None):
+    """Move vertices onto their planes. Returns (vertices, [(normal, offset)]).
+
+    refit  : planes are refitted to the moved vertices each round.
+    hold   : {plane: pitch in degrees} for planes whose pitch is given (re-tilt); they may still turn
+             a little and settle in height.
+    vwalls : per vertex, the horizontal normals of the walls it must stay on (re-tilt).
+    """
+    hold = hold or {}
+    reg = verts.copy()
+    lam = 1e-3
+    cur = list(planes0)
+    for _ in range(REGULARIZE_ITERS):
+        for v, ps in vplanes.items():
+            N = np.array([cur[p][0] for p in ps])
+            d = np.array([cur[p][1] for p in ps])
+            # least squares on the plane equations, lightly tied to the starting position
+            M = N.T @ N + lam * np.eye(3)
+            rhs = N.T @ d + lam * verts[v]
+            if vwalls and v in vwalls:
+                W = np.array(vwalls[v])
+                M = M + WALL_WEIGHT * (W.T @ W)
+                rhs = rhs + WALL_WEIGHT * (W.T @ (W @ verts[v]))
+            reg[v] = np.linalg.solve(M, rhs)
+        nxt = []
+        for pi, used in enumerate(pverts):
+            pts = reg[used]
+            c = pts.mean(axis=0)
+            if not refit:
+                nxt.append((cur[pi][0], float(cur[pi][0] @ c)))
+                continue
+            _, sv, vt = np.linalg.svd(pts - c, full_matrices=False)
+            n = vt[-1] if vt[-1][2] > 0 else -vt[-1]
+            if len(used) < 3 or sv[1] < 1e-6 or n @ planes0[pi][0] < 0.99:
+                n = cur[pi][0]        # degenerate or drifting: keep the previous direction
+                if pi not in hold:
+                    nxt.append(cur[pi])
+                    continue
+            if pi in hold:            # the pitch is given; the compass direction and the height may settle
+                n = _with_pitch(n, hold[pi])
+            nxt.append((n, float(n @ c)))
+        cur = nxt
+    return reg, cur
 
 
 def _mark_hidden(faces, verts):
@@ -590,3 +708,58 @@ def _merge_lines(atoms, verts):
     order = {t: i for i, t in enumerate(ROOF_TYPES)}
     lines.sort(key=lambda e: (order[e["type"]], -e["lengthM"]))
     return lines
+
+
+def _pair_split_ridges(lines):
+    """Turn pairs of `top` lines that lie on each other into one ridge.
+
+    Some city solids put a wall a few centimetres tall between the two sides of a ridge. Each side then
+    looks like the high edge of a single-slope plane, the ridge is missing and its length is counted twice
+    as `top`. Two tops of different planes that run parallel within SPLIT_RIDGE_M are one ridge over the
+    length they share. Returns (lines, metres of ridge recovered).
+    """
+    tops = [e for e in lines if e["type"] == "top"]
+    rest = [e for e in lines if e["type"] != "top"]
+    spans = []
+    for e in tops:
+        a, b = np.array(e["a"]), np.array(e["b"])
+        spans.append({"e": e, "a": a, "d": (b - a) / (np.linalg.norm(b - a) or 1.0), "free": [(0.0, float(np.linalg.norm(b - a)))]})
+    ridges, recovered = [], 0.0
+    cos_tol = math.cos(math.radians(5.0))
+    for i in range(len(spans)):
+        for j in range(i + 1, len(spans)):
+            si, sj = spans[i], spans[j]
+            if si["e"]["planes"] == sj["e"]["planes"] or abs(si["d"] @ sj["d"]) < cos_tol:
+                continue
+            pj = [np.array(sj["e"]["a"]), np.array(sj["e"]["b"])]
+            t = [float((p - si["a"]) @ si["d"]) for p in pj]
+            off = max(float(np.linalg.norm(p - (si["a"] + tk * si["d"]))) for p, tk in zip(pj, t))
+            if off > SPLIT_RIDGE_M:
+                continue
+            lo_j, hi_j = min(t), max(t)
+            for (lo_i, hi_i) in list(si["free"]):
+                lo, hi = max(lo_i, lo_j), min(hi_i, hi_j)
+                if hi - lo < 0.3:
+                    continue
+                si["free"].remove((lo_i, hi_i))
+                si["free"] += [seg for seg in ((lo_i, lo), (hi, hi_i)) if seg[1] - seg[0] > 0.05]
+                # the same stretch measured along j
+                u = sorted(float((si["a"] + x * si["d"] - sj["a"]) @ sj["d"]) for x in (lo, hi))
+                new_free = []
+                for (a0, a1) in sj["free"]:
+                    new_free += [seg for seg in ((a0, min(a1, u[0])), (max(a0, u[1]), a1)) if seg[1] - seg[0] > 0.05]
+                sj["free"] = new_free
+                pa, pb = si["a"] + lo * si["d"], si["a"] + hi * si["d"]
+                ridges.append({"type": "ridge", "a": [float(c) for c in pa], "b": [float(c) for c in pb],
+                               "lengthM": float(hi - lo), "planes": sorted(si["e"]["planes"] + sj["e"]["planes"]),
+                               "pieces": 1, "splitRidge": True})
+                recovered += float(hi - lo)
+    left = []
+    for s in spans:
+        for (lo, hi) in s["free"]:
+            pa, pb = s["a"] + lo * s["d"], s["a"] + hi * s["d"]
+            left.append(dict(s["e"], a=[float(c) for c in pa], b=[float(c) for c in pb], lengthM=float(hi - lo)))
+    out = rest + ridges + left
+    order = {t: i for i, t in enumerate(ROOF_TYPES)}
+    out.sort(key=lambda e: (order[e["type"]], -e["lengthM"]))
+    return out, recovered

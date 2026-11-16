@@ -55,6 +55,8 @@ def build_roof_json(model, footprint=None, solid=None, solid_info=None, address=
         if lr:
             note = {"agree": "pitch cross-checked by lidar", "override": "pitch replaced by lidar; review",
                     "site_check": "lidar disagrees; site check required", "not_checked": "too small for a lidar check"}[lr["status"]]
+            if lr["status"] == "agree" and lr.get("action") == "use_lidar":
+                note = "pitch from lidar; the city pitch agreed within the limit"
         prov = city_prov(note, roof_ok and bool(lr) and lr["status"] == "agree")
         rec = {
             "id": P["id"],
@@ -67,11 +69,12 @@ def build_roof_json(model, footprint=None, solid=None, solid_info=None, address=
             "provenance": prov,
         }
         if P.get("pitchSource") == "lidar":
-            rec["pitchProvenance"] = _prov("usgs-3dep-lidar", "B", LIDAR_CAPTURED, "overrides city pitch %.2f deg" % P["cityPitchDeg"])
+            rec["pitchProvenance"] = _prov("usgs-3dep-lidar", "B", LIDAR_CAPTURED, "replaces city pitch %.2f deg" % P["cityPitchDeg"])
             rec["cityPitchDeg"] = _r(P["cityPitchDeg"], 2)
             rec["cityAreaM2"] = _r(P["cityAreaM2"], 2)
         if lr:
-            rec["lidar"] = {k: lr[k] for k in ("status", "points", "inliers", "rmseM", "lidarPitchDeg", "pitchDiffDeg") if k in lr}
+            rec["lidar"] = {k: lr[k] for k in ("status", "action", "points", "inliers", "rmseM", "pitchSeDeg", "precise",
+                                                    "lidarPitchDeg", "pitchDiffDeg") if k in lr}
         planes.append(rec)
     edges = [{"id": e["id"], "type": e["type"], "a": [_r(c) for c in e["a"]], "b": [_r(c) for c in e["b"]],
               "lengthM": _r(e["lengthM"]), "lengthFt": _r(m_to_ft(e["lengthM"]), 2), "planes": e["planes"],
@@ -278,6 +281,9 @@ def takeoff_markdown(doc):
         L.append("")
         L.append("%d of %d planes checked (%.0f%% of the area): %d agree, %d overridden by lidar, %d need a site check, %d too small."
                  % (sm["planesChecked"], sm["planes"], sm["areaCheckedPct"], sm["agree"], sm["override"], sm["siteCheck"], sm["notChecked"]))
+        if sm.get("pitchFromLidar"):
+            L.append("%d plane(s) show the lidar pitch, because the lidar fit was precise; the city pitch is kept in roof.json as `cityPitchDeg`."
+                     % sm["pitchFromLidar"])
         reg = lid.get("registration")
         if reg and "eastM" in reg:
             L.append("Lidar sits %.2f m east, %.2f m north and %.2f m above the city solid."

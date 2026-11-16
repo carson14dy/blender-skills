@@ -12,7 +12,7 @@ Use the three city layers and the one lidar collection below. Everything here wa
 
 ## City of Sioux Falls ArcGIS REST
 
-Base: `https://gis.siouxfalls.gov/arcgis/rest/services/Data`. All three layers use EPSG 32164 (NAD83, BLM zone 14N, US survey feet), allow 1,000 records per query and support paging. Licence: CC BY 4.0, "not intended for use in mapping products for resale".
+Base: `https://gis.siouxfalls.gov/arcgis/rest/services/Data`. All three layers use EPSG 32164 (NAD83, BLM zone 14N, US survey feet), allow 1,000 records per query and support paging. Licence: the city's DataWorks portal states CC BY 4.0 for its open data. The sentence "not intended for use in mapping products for resale" comes from the research note; review round 1 could not find it again on any reachable page, so treat it as a caution that still applies.
 
 ### Address points: `Property/MapServer/0`
 
@@ -27,7 +27,8 @@ Base: `https://gis.siouxfalls.gov/arcgis/rest/services/Data`. All three layers u
 - `objectIds=<id>&outFields=*&returnGeometry=true&outSR=32164&f=json` returns one outline.
 - Verified fields: `STRUCTURE` (110 single family, 121 twin home, 190 accessory structure, 220 multi-family, and more), `NUMBERSTORIES`, `GROUNDELEVATION`, `BUILDINGTOPELEVATION`, `OCCUPIEDDATE`, `STATUS`, `CAPTUREMETH`, `Shape.STArea()` in square feet.
 - The two elevations are feet and agree with NAVD88 to under 1 ft on four houses. The city does not document the datum, so treat NAVD88 as inferred.
-- The outline is the roof edge including overhang, not the wall line. The tool uses `GROUNDELEVATION` as z = 0.
+- The outline is the roof edge including overhang, not the wall line. Lidar confirms this within about 0.07 m on 6 houses (`references/validation.md`). The tool uses `GROUNDELEVATION` as z = 0.
+- `GROUNDELEVATION` is one height per building. It matches the lidar ground within 0.15 m on level lots and differs by up to 1.1 m on sloping lots.
 
 ### 3D building solids ("Building Wireframe"): `Community/MapServer/66`
 
@@ -48,7 +49,7 @@ The layer holds 95,901 solids captured in June 2023. Each building is one closed
 
 ## USGS 3DEP lidar
 
-Collection `SD_EasternSD_3_2020` was flown in 2020 and is public domain. The public Entwine Point Tile (EPT) root is `https://s3-us-west-2.amazonaws.com/usgs-lidar-public/SD_EasternSD_3_2020/ept.json`.
+Collection `SD_EasternSD_3_2020` is public domain. The 3DEP index lists it as quality level 2, collected from 2020-04-10 to 2020-12-22, with heights in NAVD88 (GEOID18). The points over the benchmark houses were all flown on 19 and 20 December 2020 (read from their GPS times). No newer 3DEP lidar covers the city (checked 2026-11-16). The public Entwine Point Tile (EPT) root is `https://s3-us-west-2.amazonaws.com/usgs-lidar-public/SD_EasternSD_3_2020/ept.json`.
 
 **How the tool reads it**
 
@@ -59,8 +60,14 @@ Collection `SD_EasternSD_3_2020` was flown in 2020 and is public domain. The pub
 **What was measured on the test houses**
 
 - Only classes 1 (unclassified) and 2 (ground) are present. There is no building class, so roof points are picked by height (more than 2 m above ground) and by the city roof outline.
-- Roof density was 4 to 5 points per square metre, about twice the nominal figure for this quality level.
+- Roof density was 4.2 to 7.4 points per square metre of plan area on a single flight line and 11.5 to 14.4 where two lines overlap. The nominal figure for this quality level is 2.
+- The laser spot is about 0.5 m wide. Returns within that distance of a roof edge, ridge or valley mix two surfaces, so the tool fits planes to points at least 0.6 m inside each plane where it can.
 - The lidar roof sits 0.09 to 0.24 m from the city solid horizontally and 0.11 to 0.14 m above it (four houses). No datum correction is applied, and none is needed at that size.
+
+### Building permits: `Community/MapServer/3` (verified, not used yet)
+
+- Point per permit since September 2014. Fields: `MAINADDRESS`, `PERMITNUMBER`, `PERMITTYPE`, `WORKCLASS`, `ISSUEDATE`, `FINALIZEDATE`, `PERMITSTATUS`.
+- Useful `WORKCLASS` values: `Addition`, `New – Single Family`, `Remodel/Renovation`, `Reshingle`. A permit issued after June 2023 for the first three means the solid may be out of date.
 
 ## Sources this skill does not use
 

@@ -6,6 +6,7 @@ from . import cityapi, esri, export, planes
 from .units import ATTRIBUTION_CITY, ATTRIBUTION_LIDAR, FT_US, m2_to_ft2, m_to_ft
 
 RESIDENTIAL = {110, 121, 122, 130, 140, 150, 190, 210, 220}
+LIDAR_FLOWN_MS = 1608336000000   # 2020-12-19 UTC: the GPS times of the lidar points over the benchmark houses are 19 and 20 Dec 2020
 
 
 def find_house(http, out_root, oid=None, latlon=None, address=None):
@@ -65,14 +66,22 @@ def assess(model, footprint, solid_info=None, lookup=None, lidar=None):
             flag("top-height-mismatch", "review", "highest roof point is %.1f ft from the footprint's top elevation" % d)
     if model.stats["maxPlanarityM"] > 0.1524:
         flag("non-planar-face", "review", "a city roof face is %.2f ft out of flat (limit 0.5 ft)" % m_to_ft(model.stats["maxPlanarityM"]))
-    if model.stats["regularizeMaxShiftM"] > planes.REGULARIZE_WARN_SHIFT_M or model.stats["regularizeMaxGapM"] > 0.03:
-        flag("regularize", "review", "making the planes flat moved a corner %.2f ft (gap left %.2f ft); the city faces do not fit together well"
-             % (m_to_ft(model.stats["regularizeMaxShiftM"]), m_to_ft(model.stats["regularizeMaxGapM"])))
-    if solid_info and (solid_info.get("candidates", 1) > 1 or solid_info.get("bboxIoU", 1) < 0.8):
+    if model.stats["regularizeMaxShiftM"] > planes.REGULARIZE_WARN_SHIFT_M or model.stats["regularizeMaxGapM"] > planes.REGULARIZE_WARN_GAP_M:
+        flag("regularize", "review", "making the planes flat%s moved a corner %.2f ft (gap left %.2f ft); the city faces do not fit together well"
+             % (" and giving them the lidar pitch" if model.stats.get("retiltedPlanes") else "",
+                m_to_ft(model.stats["regularizeMaxShiftM"]), m_to_ft(model.stats["regularizeMaxGapM"])))
+    if solid_info and solid_info.get("exceededTransferLimit"):
+        flag("solid-match", "review", "more solids touch this footprint than one request returns; the right one may be missing")
+    elif solid_info and (solid_info.get("candidates", 1) > 1 or solid_info.get("bboxIoU", 1) < 0.8):
         flag("solid-match", "review", "%d solids touched this footprint; picked the best overlap (%.0f%%). Check it is the right building"
              % (solid_info.get("candidates", 1), 100 * solid_info.get("bboxIoU", 0)))
     if model.stats.get("hiddenFaces"):
         flag("hidden-faces", "info", "%d face(s) under the roof surface were ignored (extra faces in the city solid)" % model.stats["hiddenFaces"])
+    if model.stats.get("duplicateFaces"):
+        flag("duplicate-faces", "info", "%d face(s) were delivered twice and counted once" % model.stats["duplicateFaces"])
+    if model.stats.get("splitRidgeM", 0) > 0.3:
+        flag("split-ridge", "info", "%.1f ft of ridge was drawn in the city model as two plane tops with a sliver wall between; "
+             "counted as ridge" % m_to_ft(model.stats["splitRidgeM"]))
     if model.stats.get("partlyCoveredFaces"):
         flag("overlapping-faces", "review", "%d roof face(s) partly lie under another face; area may be overstated" % model.stats["partlyCoveredFaces"])
     low = [p for p in model.planes if p["pitchIn12"] < 2.0 and m2_to_ft2(p["areaM2"]) >= 30]
@@ -98,8 +107,10 @@ def assess(model, footprint, solid_info=None, lookup=None, lidar=None):
     yb = int(yb) if yb and str(yb).isdigit() else None
     if (occ and occ > 1685577600000) or (yb and yb >= 2023):
         flag("newer-than-solid", "site-check", "built or occupied after the June 2023 capture; the solid may be wrong")
-    elif yb and yb >= 2020:
-        flag("newer-than-lidar", "info", "built in %d, after the 2020 lidar; the lidar check does not apply" % yb)
+    elif (yb and yb >= 2020) or (occ and occ >= LIDAR_FLOWN_MS):
+        flag("newer-than-lidar", "review" if lidar else "info",
+             "built or occupied after the December 2020 lidar flight; lidar may show the lot before the house was finished, "
+             "so the lidar check does not apply")
     if st in cityapi.ACCESSORY_STRUCTURES:
         flag("accessory-structure", "review", "this footprint is an accessory structure (garage or shed), not the main building")
     if (lookup or {}).get("distanceFt", 0) > 0:
@@ -110,7 +121,10 @@ def assess(model, footprint, solid_info=None, lookup=None, lidar=None):
         if sm["siteCheck"]:
             flag("lidar-disagrees", "site-check", "%d plane(s) disagree with lidar by more than the limit" % sm["siteCheck"])
         if sm["override"]:
-            flag("lidar-override", "review", "%d plane(s) took their pitch from lidar (differed 1.5-4 deg)" % sm["override"])
+            flag("lidar-override", "review", "%d plane(s) differ from lidar by 1.5-4 deg; the lidar pitch is used" % sm["override"])
+        if sm.get("pitchFromLidar", 0) - sm["override"] > 0:
+            flag("lidar-pitch", "info", "%d plane(s) agree with lidar and show the more precise lidar pitch"
+                 % (sm["pitchFromLidar"] - sm["override"]))
         if sm["planesChecked"] == 0:
             flag("lidar-no-check", "review", "no plane had enough lidar points; the city numbers are unchecked")
         reg = lidar.get("registration") or {}

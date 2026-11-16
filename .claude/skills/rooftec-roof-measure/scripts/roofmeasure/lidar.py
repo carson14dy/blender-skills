@@ -21,15 +21,22 @@ from .units import FT_US, LIDAR_COLLECTION
 EPT_ROOT = "https://s3-us-west-2.amazonaws.com/usgs-lidar-public/%s" % LIDAR_COLLECTION
 EPT_HOST = "s3-us-west-2.amazonaws.com"
 
-# Reconcile thresholds from the plan (section 4). Experiment 027 tunes them.
+# Reconcile thresholds. The plan (section 4) proposed the first three; review round 1 added the
+# "precise fit" test and the rule that a precise lidar pitch is used even when the city agrees
+# (see references/accuracy.md for the evidence). Experiment 027 tunes them against ground truth.
 MIN_POINTS = 40
 AGREE_DEG = 1.5
 OVERRIDE_DEG = 4.0
-CLEAN_RMSE_M = 0.10
 RANSAC_TOL_M = 0.10
 MIN_HEIGHT_M = 2.0       # points lower than this above ground are not roof
-EDGE_INSET_M = 0.30      # stay this far inside a plane's outline (lidar footprint + outline uncertainty)
-MIN_INLIER_FRACTION = 0.5
+EDGE_INSET_M = 0.60      # stay this far inside a plane's outline: the laser spot is about 0.5 m wide,
+                         # so returns nearer a ridge, valley or eave mix two surfaces
+EDGE_INSET_SMALL_M = 0.30  # used when the wide inset leaves fewer than INSET_KEEP_POINTS points
+INSET_KEEP_POINTS = 80
+MIN_INLIER_FRACTION = 0.5       # below this lidar sees no single plane here
+PRECISE_INLIER_FRACTION = 0.8   # a "precise" fit: at least this share of the points on the plane ...
+PRECISE_SE_DEG = 0.25           # ... and a pitch standard error no larger than this
+PREFER_LIDAR = True      # use a precise lidar pitch even when the city pitch agrees with it
 
 
 class LidarUnavailable(RuntimeError):
@@ -178,10 +185,20 @@ def fit_plane(pts, tol=RANSAC_TOL_M, iters=300, seed=0):
     res = (p[inl, 2] - A @ coef) * (1.0 / math.sqrt(1 + coef[0] ** 2 + coef[1] ** 2))
     a, b = float(coef[0]), float(coef[1])
     pitch = math.degrees(math.atan(math.hypot(a, b)))
+    # standard error of the pitch from the least-squares covariance (points treated as independent,
+    # so it is a lower bound; it grows quickly when the points span little of the slope)
+    k = int(inl.sum())
+    se = float("inf")
+    if k > 3:
+        zres = p[inl, 2] - A @ coef
+        cov = float(zres @ zres) / (k - 3) * np.linalg.pinv(A.T @ A)[:2, :2]
+        g = np.array([a, b]) / math.hypot(a, b) if math.hypot(a, b) > 1e-9 else None
+        var = float(g @ cov @ g) if g is not None else float(np.linalg.eigvalsh(cov).max())
+        se = math.degrees(math.sqrt(max(var, 0.0)) * math.cos(math.radians(pitch)) ** 2)
     az = (math.degrees(math.atan2(-a, -b)) + 360) % 360 if pitch > 0.5 else None
     return {"a": a, "b": b, "c": float(coef[2] + c0[2] - a * c0[0] - b * c0[1]),
             "pitchDeg": pitch, "azimuthGridDeg": az, "inliers": int(inl.sum()), "points": n,
-            "rmseM": float(math.sqrt(np.mean(res ** 2)))}
+            "rmseM": float(math.sqrt(np.mean(res ** 2))), "seDeg": se}
 
 
 def _inside_with_inset(poly, x, y, inset):
@@ -202,22 +219,40 @@ def _inside_with_inset(poly, x, y, inset):
     return inside & (dmin >= inset)
 
 
-def reconcile(city_pitch_deg, fit, min_points=MIN_POINTS):
-    """The plan's rule for one plane. Returns (status, action, note).
+def is_precise(fit):
+    """True when a lidar fit is good enough to supply the pitch: most points on one plane, small standard error.
 
-    status: agree | override | site_check | not_checked
+    Version 1 tested the inlier RMSE against 0.10 m. Inliers are within 0.10 m by construction, so that
+    test could never fail and a half-covered plane could override the city pitch.
+    """
+    return (fit["inliers"] >= PRECISE_INLIER_FRACTION * fit["points"]
+            and fit.get("seDeg", float("inf")) <= PRECISE_SE_DEG)
+
+
+def reconcile(city_pitch_deg, fit, min_points=MIN_POINTS):
+    """The reconcile rule for one plane. Returns (status, action, note).
+
+    status: agree | override | site_check | not_checked;  action: keep_city | use_lidar
     """
     if fit is None or fit["points"] < min_points:
         return "not_checked", "keep_city", "fewer than %d lidar points on this plane" % min_points
-    if fit["inliers"] < min_points or fit["inliers"] < MIN_INLIER_FRACTION * fit["points"]:
+    if fit["inliers"] < MIN_INLIER_FRACTION * fit["points"]:
         return "site_check", "keep_city", "lidar finds no clean plane here (trees, or the roof changed)"
+    if fit["inliers"] < min_points:
+        return "not_checked", "keep_city", "fewer than %d lidar points lie on this plane" % min_points
     diff = abs(fit["pitchDeg"] - city_pitch_deg)
+    precise = is_precise(fit)
+    if not precise and math.isfinite(fit.get("seDeg", float("inf"))):
+        # an imprecise fit cannot tell a small difference from none: allow it twice its own standard error
+        diff = max(0.0, diff - 2.0 * fit["seDeg"])
     if diff <= AGREE_DEG:
+        if precise and PREFER_LIDAR:
+            return "agree", "use_lidar", "city and lidar agree within %.1f deg; the precise lidar pitch is used" % AGREE_DEG
         return "agree", "keep_city", "city and lidar pitch agree within %.1f deg" % AGREE_DEG
     if diff <= OVERRIDE_DEG:
-        if fit["rmseM"] <= CLEAN_RMSE_M:
-            return "override", "use_lidar", "pitch differs %.1f deg; clean lidar fit overrides; review" % diff
-        return "site_check", "keep_city", "pitch differs %.1f deg and the lidar fit is noisy" % diff
+        if precise:
+            return "override", "use_lidar", "pitch differs %.1f deg; precise lidar fit overrides; review" % diff
+        return "site_check", "keep_city", "pitch differs %.1f deg and the lidar fit is not precise enough to override" % diff
     return "site_check", "keep_city", "pitch differs %.1f deg: changed or wrong, site check required" % diff
 
 
@@ -235,7 +270,9 @@ def cross_check(model, pts, ground_z_m=None):
         ground_z_m = 0.0
     out = {"source": "USGS 3DEP %s (EPT)" % LIDAR_COLLECTION, "pointsFetched": int(len(x)),
            "thresholds": {"minPoints": MIN_POINTS, "agreeDeg": AGREE_DEG, "overrideDeg": OVERRIDE_DEG,
-                          "cleanRmseM": CLEAN_RMSE_M, "ransacTolM": RANSAC_TOL_M, "edgeInsetM": EDGE_INSET_M},
+                          "ransacTolM": RANSAC_TOL_M, "edgeInsetM": EDGE_INSET_M, "edgeInsetSmallM": EDGE_INSET_SMALL_M,
+                          "preciseInlierFraction": PRECISE_INLIER_FRACTION, "preciseSeDeg": PRECISE_SE_DEG,
+                          "preferLidar": PREFER_LIDAR},
            "planes": []}
     high = z > ground_z_m + MIN_HEIGHT_M
     rows, dz_rows = [], []
@@ -244,9 +281,14 @@ def cross_check(model, pts, ground_z_m=None):
         rec = {"plane": P["id"], "cityPitchDeg": round(P["pitchDeg"], 2)}
         fit = None
         if len(poly) >= 3:
-            sel = _inside_with_inset(poly, x, y, EDGE_INSET_M) & high
+            holes = np.zeros(len(x), dtype=bool)
             for hole in P["holes"]:
-                sel &= ~_inside_with_inset(np.array(hole)[:, :2], x, y, 0.0)
+                holes |= _inside_with_inset(np.array(hole)[:, :2], x, y, 0.0)
+            for inset in (EDGE_INSET_M, EDGE_INSET_SMALL_M):
+                sel = _inside_with_inset(poly, x, y, inset) & high & ~holes
+                if sel.sum() >= INSET_KEEP_POINTS:
+                    break
+            rec["insetM"] = inset
             if sel.sum() >= 3:
                 fit = fit_plane(np.column_stack([x[sel], y[sel], z[sel]]))
             rec["points"] = int(sel.sum())
@@ -256,6 +298,8 @@ def cross_check(model, pts, ground_z_m=None):
             c = P["centroid"]
             z_lidar = fit["a"] * c[0] + fit["b"] * c[1] + fit["c"]
             rec.update({"inliers": fit["inliers"], "rmseM": round(fit["rmseM"], 3),
+                        "pitchSeDeg": round(fit["seDeg"], 3) if math.isfinite(fit["seDeg"]) else None,
+                        "precise": is_precise(fit),
                         "lidarPitchDeg": round(fit["pitchDeg"], 2),
                         "lidarPitchIn12": round(12 * math.tan(math.radians(fit["pitchDeg"])), 2),
                         "pitchDiffDeg": round(fit["pitchDeg"] - P["pitchDeg"], 2),
@@ -276,6 +320,7 @@ def cross_check(model, pts, ground_z_m=None):
         "areaCheckedPct": round(100 * sum(area[r["plane"]] for r in checked) / tot, 1),
         "agree": sum(r["status"] == "agree" for r in rows),
         "override": sum(r["status"] == "override" for r in rows),
+        "pitchFromLidar": sum(r["action"] == "use_lidar" for r in rows),
         "siteCheck": sum(r["status"] == "site_check" for r in rows),
         "notChecked": sum(r["status"] == "not_checked" for r in rows),
         "meanAbsPitchDiffDeg": round(float(np.mean([abs(r["pitchDiffDeg"]) for r in checked if "pitchDiffDeg" in r])), 2)
@@ -315,17 +360,20 @@ def _registration(rows):
 
 
 def apply_overrides(model, check):
-    """Re-tilt planes whose reconcile action is `use_lidar`: pitch from lidar, sloped area from plan area."""
-    changed = []
-    for r in check["planes"]:
-        if r.get("action") != "use_lidar":
-            continue
-        P = model.planes[r["plane"]]
-        P["cityPitchDeg"] = P["pitchDeg"]
-        P["cityAreaM2"] = P["areaM2"]
-        P["pitchDeg"] = r["lidarPitchDeg"]
-        P["pitchIn12"] = 12 * math.tan(math.radians(P["pitchDeg"]))
-        P["areaM2"] = P["planAreaM2"] / math.cos(math.radians(P["pitchDeg"]))
+    """Give every plane whose reconcile action is `use_lidar` the lidar pitch, and rebuild the geometry.
+
+    The plane keeps its compass direction and its outline; `planes.retilt` solves the corners again, so
+    roof.json, the GLB and the report keep describing one and the same roof. Returns the plane ids changed.
+    """
+    from . import planes as _planes
+    want = {r["plane"]: r["lidarPitchDeg"] for r in check["planes"] if r.get("action") == "use_lidar"}
+    if not want:
+        return []
+    before = {P["id"]: (P["pitchDeg"], P["areaM2"]) for P in model.planes}
+    changed = _planes.retilt(model, want)
+    for pid in changed:
+        P = model.planes[pid]
+        P["cityPitchDeg"], P["cityAreaM2"] = before[pid]
+        P["lidarPitchDeg"] = want[pid]
         P["pitchSource"] = "lidar"
-        changed.append(P["id"])
     return changed

@@ -21,13 +21,14 @@ All lengths are metres in a local frame: x is east, y is north, z is up, and z =
 
 ## A plane
 
-`id`, `polygon` (outer corner points, counter-clockwise seen from above), `holes`, `pitchDeg`, `pitchIn12`, `azimuthDeg` (the compass direction the plane faces, true north), `planAreaM2`, `areaM2`, `areaFt2`, `planarityM` (how far the delivered city face was from flat), `sourcePitchDeg` (pitch of the face exactly as delivered), `faceCount`, and `provenance`. When lidar was run, `lidar` holds the status, point count, fit error and lidar pitch. When lidar replaced the pitch, `pitchProvenance`, `cityPitchDeg` and `cityAreaM2` record the change.
+`id`, `polygon` (outer corner points, counter-clockwise seen from above), `holes`, `pitchDeg`, `pitchIn12`, `azimuthDeg` (the compass direction the plane faces, true north), `planAreaM2`, `areaM2`, `areaFt2`, `planarityM` (how far the delivered city face was from flat), `sourcePitchDeg` (pitch of the face exactly as delivered), `faceCount`, and `provenance`. When lidar was run, `lidar` holds `status` (agree, override, site_check or not_checked), `action` (use_lidar or keep_city), the point counts, the fit error, `pitchSeDeg` (standard error of the lidar pitch), `precise` and the lidar pitch. When lidar supplied the pitch, `pitchProvenance`, `cityPitchDeg` and `cityAreaM2` record what the city solid said, and `polygon`, `pitchDeg` and `areaM2` describe the re-tilted plane. `pitchDeg` can differ from `lidar.lidarPitchDeg` by up to about 0.2 degree where neighbouring planes had to meet.
 
 ## An edge
 
 `id`, `type`, end points `a` and `b`, `lengthM`, `lengthFt`, `planes` (the plane ids it belongs to) and `provenance`. The types are:
 
-- `ridge`, `hip`, `valley`: two planes meet. Convex and level is a ridge, convex and sloped is a hip, concave is a valley.
+- `ridge`, `hip`, `valley`: two planes meet. Convex and level is a ridge, convex and sloped is a hip, concave is a valley. A ridge with `splitRidge: true` was drawn in the city model as two plane tops with a sliver wall between them.
+- Level means the edge rises less than 3 degrees, or runs within 10 degrees of its plane's contour line seen from above.
 - `eave`, `rake`: the outer roof edge. Level at the low side is an eave; sloped is a rake.
 - `step_flashing`, `headwall`: the roof meets a wall that rises above it, sloped or level. A `headwall` with `lowSide: true` sits at the bottom of its plane, which usually means the city model simplified a gable tie-in.
 - `top`: the level high edge of a single-slope plane that ends at a wall drop.

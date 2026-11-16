@@ -10,7 +10,7 @@ This page re-sequences experiments 024 to 034 from `plans/Roof accuracy and qual
 |---|---|---|
 | 024 City solid into the studio | Done through the GLB path | Provenance badges in the studio (part of step 4 below) |
 | 025 Edge classes | Done in Python, with wall-flashing classes | The studio's own classifier (step 3 below) |
-| 026 Lidar cross-check | Done and working on 8 buildings | Thresholds tuned by 027 |
+| 026 Lidar cross-check | Done and working on the 12 benchmark buildings; lidar now supplies the pitch on precise planes | Thresholds tuned by 027 |
 | 028 Address lookup, cache, attribution | Done as a command line tool; `SKILL.md` written | The address box and `/api/roof` in the studio (step 4 below) |
 | 027, 029 to 034 | Not started | See the order below |
 
@@ -40,7 +40,7 @@ If you have no reports, tape the eaves and rakes of one simple gable from the gr
 
 Three questions the study should settle, because the lidar comparison raised them:
 
-- Is the city pitch really about 0.6 degrees low? If so, use the lidar pitch on every checked plane, not only on overrides.
+- Is lidar right about the pitch? Review round 1 found the city pitch 0.16 in 12 low against lidar, with lidar landing on whole-number pitches, and switched the tool to the lidar pitch on precise planes. One taped rake confirms or overturns that (`PREFER_LIDAR` in `lidar.py`).
 - Are the delivered faces or the cleaned faces closer to the truth? Both sets of numbers are in `roof.json` (`sourcePitchDeg`, and `checks.solid.sourceSlopedAreaM2`).
 - Are the `eave-under-wall` and `roof-step` joints real walls, or valleys and ridges that the city model simplified? The answer decides how those lengths enter a takeoff.
 
@@ -52,7 +52,7 @@ Three questions the study should settle, because the lidar comparison raised the
 - Some solids hold extra faces under the roof. The plan's rule "keep faces whose normal points up" double-counts them, and face winding cannot tell up from down. The tool keeps the top surface only.
 - Roof plan area does not always match the footprint "to the square foot". It did on the four research houses and failed by 10% on an older multi-unit house.
 - Address points of type `Parcel` can sit 50 to 120 ft from the building, so "the footprint containing the point" is not enough. The tool takes the nearest footprint within 100 ft and flags it.
-- Lidar density on roofs was 4 to 5 points per square metre, not 2, so planes down to about 150 sq ft get a check.
+- Lidar density on roofs was 4 to 7 points per square metre, not 2, so planes down to about 150 sq ft get a check.
 
 **About the tools**
 
@@ -64,7 +64,11 @@ Three questions the study should settle, because the lidar comparison raised the
 
 ## Known gaps in this skill, smallest first
 
-1. A lidar override changes the pitch and area numbers and leaves the 3D geometry as the city drew it. Re-tilting the plane about its eave is about 2 hours.
-2. Year built is known only for address lookups, and permits are not checked. Adding an address-point query for every lookup is about 1 hour; the permits layer is unverified.
-3. Twin homes and townhomes may share one solid across several footprints. The `plan-area-mismatch` flag will fire; clipping the solid to the footprint is about 3 hours.
+The ranked list of open issues is kept in `references/review-log.md`. The ones that need code:
+
+1. Permits are not checked. The layer is verified (`Data/Community/MapServer/3`); a flag for an `Addition` or `New` permit after June 2023 is about 1 hour.
+2. Faces that lie partly under another face are kept or dropped whole. Clipping them to the visible surface is about 3 hours and would fix buildings like 204065.
+3. Cleaning the delivered faces moves outline corners; plan area drifts up to 0.33% from the footprint. A first attempt to hold the corners made pitches worse, so this needs a better idea.
 4. The check in a real browser has not been run. It takes 5 minutes on your PC.
+
+Done in review round 1: the 3D geometry is now re-tilted when lidar supplies a pitch, and houses newer than the lidar are flagged for every kind of lookup.
