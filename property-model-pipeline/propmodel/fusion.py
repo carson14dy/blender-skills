@@ -52,9 +52,10 @@ def build(wings):
 HUBER_K = 2.0
 
 BOUNDS = {
-    "length": (0.5, 200), "width": (0.5, 200), "pitch": (0.0, 4.0), "pitch_b": (0.0, 4.0), "end_pitch": (0.0, 4.0),
-    "upper_pitch": (0.0, 4.0), "eave_height": (0.3, 60), "eave_overhang": (0.0, 2.0),
-    "rake_overhang": (0.0, 2.0), "break_inset": (0.05, 50), "shed_high_overhang": (0.0, 2.0),
+    "length": (0.3, 200), "width": (0.3, 200), "pitch": (0.0, 4.0), "pitch_b": (0.0, 4.0), "end_pitch": (0.0, 4.0),
+    "upper_pitch": (0.0, 4.0), "eave_height": (0.3, 60), "eave_overhang": (0.0, 4.0),
+    "rake_overhang": (0.0, 2.0), "break_inset": (0.05, 50), "shed_high_overhang": (0.0, 4.0),
+    "eave_overhang_b": (0.0, 4.0), "eave_height_b": (0.3, 60),
 }
 STEP = {"azimuth": 0.01, "pitch": 1e-4, "pitch_b": 1e-4, "end_pitch": 1e-4, "upper_pitch": 1e-4}
 DEFAULT_STEP = 1e-4
@@ -122,10 +123,28 @@ class ParamSpace:
     def __init__(self, wings, free, ties=(), nuisance=()):
         self.wings0 = [w if isinstance(w, Wing) else Wing.from_dict(w) for w in wings]
         self.groups = []   # list of lists of "wing.field"
-        tied = {}
+        # union-find so overlapping tie groups ([a,b],[b,c]) become one group [a,b,c]
+        parent = {}
+
+        def find(a):
+            parent.setdefault(a, a)
+            while parent[a] != a:
+                parent[a] = parent[parent[a]]
+                a = parent[a]
+            return a
         for grp in ties:
-            for name in grp:
-                tied[name] = grp
+            for name in grp[1:]:
+                ra, rb = find(grp[0]), find(name)
+                if ra != rb:
+                    parent[rb] = ra
+        members = {}
+        for name in list(parent):
+            members.setdefault(find(name), []).append(name)
+        tied = {}
+        for root, names in members.items():
+            ordered = sorted(names, key=lambda nm: (nm not in free, free.index(nm) if nm in free else 0))
+            for nm in names:
+                tied[nm] = ordered
         seen = set()
         for name in free:
             if name in seen:
@@ -188,6 +207,10 @@ class ParamSpace:
 def _implicit(w: Wing, fld):
     if fld in ("end_pitch", "pitch_b"):
         return w.pitch
+    if fld == "eave_height_b":
+        return w.eave_height
+    if fld == "eave_overhang_b":
+        return w.eave_overhang
     if fld == "upper_pitch":
         return w.pitch / 3.0
     if fld == "break_inset":
@@ -354,7 +377,7 @@ def _huber_w(r, k=HUBER_K):
     return np.where(a <= k, 1.0, k / np.maximum(a, 1e-12))
 
 
-def _fit_once(spec: dict, observations: List[dict], max_iter=40, robust=True, verbose=False):
+def _fit_once(spec: dict, observations: List[dict], max_iter=40, robust=True, verbose=False, mc_samples=48):
     """Fit wing parameters. ``spec`` = {"wings": [...], "free": [...], "ties": [...],
     "priors": {name: {"value": v, "sigma": s}}, "nuisance": [...]}."""
     obs = prepare(observations)
@@ -444,22 +467,29 @@ def _fit_once(spec: dict, observations: List[dict], max_iter=40, robust=True, ve
     model = build(wings)
     meas = model.measurements()
 
-    # propagate to every measurement
+    # propagate to every measurement by Monte-Carlo sampling of the parameter covariance.
+    # Robust (MAD) spread: derived quantities such as edge lengths are piecewise-smooth
+    # (an edge can change class), where linear propagation explodes.
     meas_sigma = {}
-    if n:
-        h = ps.steps(x)
-        grads = {k: np.zeros(n) for k in meas}
-        for j in range(n):
-            xp = x.copy()
-            xp[j] += h[j]
-            xm = x.copy()
-            xm[j] -= h[j]
-            mp = build(ps.apply(xp)[0]).measurements()
-            mm = build(ps.apply(xm)[0]).measurements()
-            for k in meas:
-                grads[k][j] = (mp.get(k, 0) - mm.get(k, 0)) / (2 * h[j])
-        for k, gk in grads.items():
-            meas_sigma[k] = float(math.sqrt(max(gk @ C @ gk, 0.0)))
+    if n and np.all(np.isfinite(C)):
+        rng = np.random.default_rng(12345)
+        try:
+            Lc = np.linalg.cholesky(C + 1e-12 * np.eye(n))
+        except np.linalg.LinAlgError:
+            w_, V_ = np.linalg.eigh(C)
+            Lc = V_ @ np.diag(np.sqrt(np.clip(w_, 0, None)))
+        samples = []
+        for _ in range(mc_samples):
+            xs = ps.clamp(x + Lc @ rng.standard_normal(n))
+            try:
+                samples.append(build(ps.apply(xs)[0]).measurements())
+            except Exception:
+                continue
+        for k in meas:
+            vals = np.array([sm.get(k, np.nan) for sm in samples], float)
+            vals = vals[np.isfinite(vals)]
+            if len(vals) >= 5:
+                meas_sigma[k] = float(1.4826 * np.median(np.abs(vals - np.median(vals))))
 
     # residual table (unweighted, in sigma units)
     table = []

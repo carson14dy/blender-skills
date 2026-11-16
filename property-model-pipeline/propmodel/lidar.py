@@ -18,7 +18,7 @@ import shapely
 
 from .geo import mercator_to_lonlat
 
-NON_SURFACE = {2, 7, 9, 18}   # ground, low noise, water, high noise
+NON_SURFACE = {2, 3, 4, 5, 7, 9, 18}   # ground, low/medium/high vegetation, low noise, water, high noise
 
 
 def to_local(pts3857, frame):
@@ -57,9 +57,13 @@ def density(local, area_poly=None):
     return d, 1.0 / math.sqrt(max(d, 1e-9))
 
 
-def building_points(local, ground, footprint=None, min_hag=1.8, seed_xy=(0.0, 0.0), cell=0.6):
-    """Non-ground points above min_hag belonging to the building.
+def building_points(local, ground, footprint=None, min_hag=1.8, seed_xy=(0.0, 0.0), cell=0.6, single_returns=True):
+    """Non-ground points above min_hag belonging to the building — trees kept out.
 
+    Vegetation classes (3-5) are dropped, and with ``single_returns`` every *non-last*
+    return of a multi-return pulse is dropped too: those are canopy hits (or pulses split
+    on a roof edge), while a roof under bare branches still gives a last return. Many
+    3DEP projects leave trees as class 1, so the return test is the one that matters.
     With a footprint polygon (local metres) the points inside it (buffered 1.2 m for
     overhangs) are taken; otherwise the 8-connected raster blob nearest ``seed_xy``.
     Returns rows [x, y, z_abs, cls, ret, nret, hag].
@@ -67,6 +71,8 @@ def building_points(local, ground, footprint=None, min_hag=1.8, seed_xy=(0.0, 0.
     a, b, c = ground
     hag = local[:, 2] - (a * local[:, 0] + b * local[:, 1] + c)
     m = (~np.isin(local[:, 3], list(NON_SURFACE))) & (hag > min_hag)
+    if single_returns and local.shape[1] >= 6:
+        m &= ~((local[:, 5] > 1) & (local[:, 4] < local[:, 5]))
     pts = np.column_stack([local[m], hag[m]])
     if len(pts) == 0:
         return pts
@@ -211,13 +217,16 @@ def segment_planes(pts, thr=0.12, min_pts=25, iters=400, radius=2.5, conn_cell=N
     return planes
 
 
-def outline(pts_xy, spacing, ratio=0.15, simplify=0.25):
-    """Concave hull of roof points, grown by half the point spacing (points lie inside edges)."""
+def outline(pts_xy, spacing, ratio=0.15, simplify=0.25, grow=None):
+    """Concave hull of roof points, grown outward because the last roof return lies inside
+    the drip edge. Default growth 0.65 x point spacing (measured: hull 0.32 m inside the
+    drip edge at 0.45 m spacing on a 3DEP QL2 house)."""
     mp = MultiPoint([tuple(p) for p in pts_xy])
     hull = shapely.concave_hull(mp, ratio=ratio)
     if hull.geom_type != "Polygon":
         hull = mp.convex_hull
-    return hull.buffer(spacing / 2, join_style="mitre").simplify(simplify)
+    g = 0.65 * spacing if grow is None else grow
+    return hull.buffer(g, join_style="mitre").simplify(simplify)
 
 
 def dominant_azimuth(planes):

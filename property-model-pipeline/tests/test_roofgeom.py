@@ -118,3 +118,30 @@ def test_walls_follow_sloped_grade():
     assert low_end.area_exposed == pytest.approx(8 * 3.5 + 8, rel=1e-3)
     assert sl.wall_area() == pytest.approx(flat.wall_area(), rel=1e-3)
     assert sl.roof_area() == pytest.approx(flat.roof_area())
+
+
+def test_lopsided_gable_with_porch_overhang():
+    # equal pitch, plates at different heights: ridge shifts toward the lower side's opposite
+    w = Wing("M", "gable", azimuth=0, length=8, width=11, eave_height=5.0, eave_height_b=4.4, pitch=0.5,
+             eave_overhang=0, eave_overhang_b=2.0, rake_overhang=0)
+    m = build([w])
+    assert len(m.facets) == 2
+    # +v (west) plate 5.0 at v=+5.5, -v (east) plate 4.4 at v=-5.5: ridge where 5.0+0.5(5.5-v) = 4.4+0.5(v+5.5)
+    ridge_v = 0.6
+    z_ridge = 5.0 + 0.5 * (5.5 - ridge_v)
+    assert m.max_height() == pytest.approx(z_ridge)
+    plan = 8 * (11 + 2.0)
+    assert m.roof_area() == pytest.approx(plan * SF, rel=1e-9)
+    assert m.footprint().area == pytest.approx(88)
+
+
+def test_roof_only_patch_coplanar_is_merged_not_double_counted():
+    main = Wing("M", "shed", azimuth=180, cx=0, cy=0, length=10, width=6, eave_height=3.0, pitch=0.5,
+                eave_overhang=0, rake_overhang=0)
+    # roof-only patch continuing the same plane 4 m further north (tiny height mismatch, 1 cm)
+    patch = Wing("J", "shed", azimuth=180, cx=0, cy=7, length=4, width=6, eave_height=3.01, pitch=0.5,
+                 eave_overhang=0, rake_overhang=0, roof_only=True)
+    m = build([main, patch])
+    assert len(m.facets) == 1
+    assert m.roof_area() == pytest.approx(6 * 14 * SF, rel=2e-3)
+    assert len(m.walls) == 4 and m.footprint().area == pytest.approx(60)

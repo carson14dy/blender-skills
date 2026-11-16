@@ -67,11 +67,14 @@ class Wing:
     rake_overhang: float = 0.30
     base_z: float = 0.0                     # bottom of walls (e.g. split level, wing on a deck)
     shed_high_overhang: Optional[float] = None
+    eave_height_b: Optional[float] = None   # -v side plate height (split level / lopsided gable); default = eave_height
+    eave_overhang_b: Optional[float] = None # -v side overhang (e.g. roof continued over a porch); default = eave_overhang
+    roof_only: bool = False                 # roof patch without walls of its own (porch/junction/carport roofs)
     label: str = ""
 
     NUMERIC = ("cx", "cy", "azimuth", "length", "width", "eave_height", "pitch", "pitch_b", "end_pitch",
                "upper_pitch", "break_inset", "eave_overhang", "rake_overhang", "base_z",
-               "shed_high_overhang")
+               "shed_high_overhang", "eave_height_b", "eave_overhang_b")
 
     @classmethod
     def from_dict(cls, d):
@@ -82,7 +85,7 @@ class Wing:
         return w
 
     def to_dict(self):
-        return {k: v for k, v in asdict(self).items() if v is not None and v != ""}
+        return {k: v for k, v in asdict(self).items() if v is not None and v != "" and not (k == "roof_only" and not v)}
 
     # ---- frame helpers -------------------------------------------------
     @property
@@ -108,15 +111,26 @@ class Wing:
         L, W = self.length, self.width
         return self.rect(-L / 2, L / 2, -W / 2, W / 2)
 
-    def roof_outline(self):
-        L, W, oe, ork = self.length, self.width, self.eave_overhang, self.rake_overhang
+    def extents(self):
+        """(umax, vlo, vhi) of the roof outline in the wing frame (u symmetric)."""
+        L, W, ork = self.length, self.width, self.rake_overhang
+        oa = self.eave_overhang
+        ob = self.eave_overhang_b if self.eave_overhang_b is not None else oa
         t = self.type
         if t in ("hip", "pyramid", "mansard", "flat"):
-            return self.rect(-L / 2 - oe, L / 2 + oe, -W / 2 - oe, W / 2 + oe)
+            return L / 2 + oa, -W / 2 - ob, W / 2 + oa
         if t == "shed":
-            hi = self.shed_high_overhang if self.shed_high_overhang is not None else oe
-            return self.rect(-L / 2 - ork, L / 2 + ork, -W / 2 - hi, W / 2 + oe)
-        return self.rect(-L / 2 - ork, L / 2 + ork, -W / 2 - oe, W / 2 + oe)
+            hi = self.shed_high_overhang if self.shed_high_overhang is not None else ob
+            return L / 2 + ork, -W / 2 - hi, W / 2 + oa
+        return L / 2 + ork, -W / 2 - ob, W / 2 + oa
+
+    def roof_outline(self):
+        umax, vlo, vhi = self.extents()
+        return self.rect(-umax, umax, vlo, vhi)
+
+    def solid_polygon(self):
+        """Region treated as 'solid building' for visibility (walls, or the outline of a roof-only wing)."""
+        return self.roof_outline() if self.roof_only else self.wall_polygon()
 
     def _plane(self, p0_uv, n_uv, h, s):
         """Plane z = h + s * n.(p - p0) with n an inward unit vector (wing uv)."""
@@ -137,17 +151,19 @@ class Wing:
             return [self._plane((0, W / 2), (0, -1), h, s)]
         # side planes (rise from the +v and -v walls); pitch_b makes the -v side asymmetric
         sb = self.pitch_b if self.pitch_b is not None else s
+        hb = self.eave_height_b if self.eave_height_b is not None else h
         P.append(self._plane((0, W / 2), (0, -1), h, s))
-        P.append(self._plane((0, -W / 2), (0, 1), h, sb))
+        P.append(self._plane((0, -W / 2), (0, 1), hb, sb))
         if t in ("hip", "pyramid", "mansard"):
             P.append(self._plane((L / 2, 0), (-1, 0), h, se))
             P.append(self._plane((-L / 2, 0), (1, 0), h, se))
         if t in ("gambrel", "mansard"):
             su = self.upper_pitch if self.upper_pitch is not None else s / 3.0
             b = self.break_inset if self.break_inset is not None else W / 4.0
-            hb = h + s * b
-            P.append(self._plane((0, W / 2 - b), (0, -1), hb, su))
-            P.append(self._plane((0, -W / 2 + b), (0, 1), hb, su))
+            hbrk = h + s * b
+            hbrk_b = hb + sb * b
+            P.append(self._plane((0, W / 2 - b), (0, -1), hbrk, su))
+            P.append(self._plane((0, -W / 2 + b), (0, 1), hbrk_b, su))
             if t == "mansard":
                 be = self.break_inset if self.break_inset is not None else W / 4.0
                 hbe = h + se * be
@@ -160,23 +176,17 @@ class Wing:
         xy = np.atleast_2d(np.asarray(xy, float))
         P = np.array(self.planes())
         z = (xy[:, :1] * P[:, 0] + xy[:, 1:2] * P[:, 1] + P[:, 2]).min(axis=1)
-        L, W = self.length, self.width
         rel = xy - np.array([self.cx, self.cy])
         uu, vv = rel @ self.u, rel @ self.v
-        oe, orr = self.eave_overhang, self.rake_overhang
-        if self.type in ("hip", "pyramid", "mansard", "flat"):
-            umax, vlo, vhi = L / 2 + oe, -W / 2 - oe, W / 2 + oe
-        elif self.type == "shed":
-            hi = self.shed_high_overhang if self.shed_high_overhang is not None else oe
-            umax, vlo, vhi = L / 2 + orr, -W / 2 - hi, W / 2 + oe
-        else:
-            umax, vlo, vhi = L / 2 + orr, -W / 2 - oe, W / 2 + oe
+        umax, vlo, vhi = self.extents()
         inside = (np.abs(uu) <= umax + 1e-9) & (vv >= vlo - 1e-9) & (vv <= vhi + 1e-9)
         z[~inside] = np.nan
         return z
 
     def inside_walls(self, xy, tol=1e-3):
         xy = np.atleast_2d(np.asarray(xy, float))
+        if self.roof_only:
+            return np.zeros(len(xy), bool)
         rel = xy - np.array([self.cx, self.cy])
         return (np.abs(rel @ self.u) <= self.length / 2 + tol) & (np.abs(rel @ self.v) <= self.width / 2 + tol)
 
@@ -234,6 +244,20 @@ def plane_z(plane, x, y):
 
 def same_plane(p, q, tol=1e-6):
     return abs(p[0] - q[0]) < tol and abs(p[1] - q[1]) < tol and abs(p[2] - q[2]) < 1e-4
+
+
+COPLANAR_SLOPE_TOL = 0.004   # rise/run (~0.05/12)
+COPLANAR_Z_TOL = 0.03        # m, evaluated where the two pieces meet/overlap
+
+
+def near_plane(p, q, where):
+    """True when planes p and q coincide within tolerance over the polygon ``where``."""
+    if abs(p[0] - q[0]) > COPLANAR_SLOPE_TOL or abs(p[1] - q[1]) > COPLANAR_SLOPE_TOL:
+        return False
+    if where is None or where.is_empty:
+        return abs(p[2] - q[2]) < 1e-4
+    xs, ys = zip(*where.envelope.exterior.coords) if where.envelope.geom_type == "Polygon" else ((where.centroid.x,), (where.centroid.y,))
+    return all(abs(plane_z(p, x, y) - plane_z(q, x, y)) <= COPLANAR_Z_TOL for x, y in zip(xs, ys))
 
 
 def plane_slope(plane):
@@ -319,7 +343,7 @@ class BuildingModel:
         return sum(f.area_plan for f in self.facets)
 
     def footprint(self):
-        return unary_union([w.wall_polygon() for w in self.wings])
+        return unary_union([w.wall_polygon() for w in self.wings if not w.roof_only])
 
     def roof_outline(self):
         return unary_union([w.roof_outline() for w in self.wings])
@@ -425,7 +449,7 @@ def build(wings: List[Wing], wall_step=0.02, ground=None) -> BuildingModel:
     above that grade. Without ``ground`` walls start at z = base_z."""
     wings = [w if isinstance(w, Wing) else Wing.from_dict(w) for w in wings]
     regions = {w.id: _wing_regions(w) for w in wings}
-    wall_polys = {w.id: w.wall_polygon() for w in wings}
+    wall_polys = {w.id: w.solid_polygon() for w in wings}
     allb = unary_union([w.roof_outline() for w in wings]).bounds
 
     # ---- visibility between wings -------------------------------------------
@@ -439,7 +463,8 @@ def build(wings: List[Wing], wall_step=0.02, ground=None) -> BuildingModel:
                     continue
                 hide_parts = []
                 for gplane, greg in regions[V.id]:
-                    if same_plane(plane, gplane):
+                    ov = greg.intersection(reg)
+                    if same_plane(plane, gplane) or (not ov.is_empty and near_plane(plane, gplane, ov)):
                         if vi < wi:
                             hide_parts.append(greg)
                         continue
@@ -463,7 +488,8 @@ def build(wings: List[Wing], wall_step=0.02, ground=None) -> BuildingModel:
     merged = []
     for wid, plane, poly, hid in raw:
         for m in merged:
-            if same_plane(m["plane"], plane, tol=1e-6) and m["poly"].buffer(EDGE_TOL).intersects(poly):
+            touch = m["poly"].buffer(EDGE_TOL).intersection(poly.buffer(EDGE_TOL))
+            if not touch.is_empty and (same_plane(m["plane"], plane, tol=1e-6) or near_plane(m["plane"], plane, touch)):
                 m["poly"] = _clean(unary_union([m["poly"], poly]).buffer(0))
                 if wid not in m["wings"]:
                     m["wings"].append(wid)
@@ -616,6 +642,8 @@ def _walls(wings: List[Wing], step, ground=None):
         return b
 
     for W in wings:
+        if W.roof_only:
+            continue
         L, Wd = W.length, W.width
         corners = W.to_world([-L / 2, L / 2, L / 2, -L / 2], [-Wd / 2, -Wd / 2, Wd / 2, Wd / 2])
         names = ["-v", "+u", "+v", "-u"]

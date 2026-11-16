@@ -76,3 +76,9 @@ def test_snooping_excludes_blunder_and_keeps_answer():
     res = fusion.fit(spec, obs)
     assert [o["source"] for o in res["excluded"]] == ["old"]
     assert res["measurements"]["roof.area"] == pytest.approx(true_area, rel=0.005)
+
+
+def test_chained_ties_form_one_group():
+    ps = fusion.ParamSpace([dict(id="A"), dict(id="B"), dict(id="C")], ["A.pitch", "B.pitch", "C.pitch"],
+                           ties=[["A.pitch", "B.pitch"], ["B.pitch", "C.pitch"]])
+    assert len(ps.groups) == 1 and sorted(ps.groups[0]) == ["A.pitch", "B.pitch", "C.pitch"]

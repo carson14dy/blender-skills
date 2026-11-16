@@ -220,8 +220,11 @@ def cmd_lidar(a):
     fp = unary_union([Polygon(v["ring"]) for v in fps.values()]) if fps else None
     if a.seed_only:
         fp = None
-    b = lidar.building_points(loc, ground, footprint=fp)
-    xyz = np.column_stack([b[:, 0], b[:, 1], b[:, 6]])  # height above ground
+    b = lidar.building_points(loc, ground, footprint=fp, single_returns=not a.keep_multi_returns)
+    # Model datum = ground elevation at the site origin (a LEVEL datum). Heights above a
+    # tilted ground plane would tilt every roof plane by the lot slope and bias pitches.
+    datum = float(ground[2])
+    xyz = np.column_stack([b[:, 0], b[:, 1], b[:, 2] - datum])
     planes = lidar.segment_planes(xyz, thr=a.thr, min_pts=a.min_pts)
     inl = np.zeros(len(xyz), bool)
     label = -np.ones(len(xyz))
@@ -230,14 +233,17 @@ def cmd_lidar(a):
         label[p["indices"]] = i
     # outline from roof-plane inliers only: overhanging branches / antennas don't inflate it
     roof_outline = lidar.outline(xyz[inl, :2] if inl.sum() > 20 else xyz[:, :2], spacing)
-    np.save(P(a.project, "data/lidar_points.npy"), np.column_stack([loc[:, :3], loc[:, 3]]))
+    np.save(P(a.project, "data/lidar_points.npy"), loc[:, :6])  # x, y, z_abs, class, return, n_returns
     np.save(P(a.project, "data/lidar_roof.npy"), np.column_stack([xyz, label]))
     out = {"dataset": pick["name"], "year": pick.get("year"), "points": int(len(raw)),
            "density_pts_m2": dens, "spacing_m": spacing, "ground_plane": ground, "ground_points": ng,
-           "ground_z_at_origin": ground[2], "building_points": int(len(xyz)),
+           "ground_z_at_origin": ground[2], "datum_m": datum,
+           "ground_local": [ground[0], ground[1], 0.0], "building_points": int(len(xyz)),
            "planes": [{k: v for k, v in p.items() if k != "indices"} for p in planes],
            "roof_outline": list(roof_outline.exterior.coords)[:-1]}
     save(a.project, "data/lidar.json", out)
+    site["datum_m"] = datum
+    save(a.project, "site.json", site)
     # observations: plane-inlier heights (subsampled) + outline
     rng = np.random.default_rng(0)
     idx = np.flatnonzero(inl)
@@ -280,7 +286,7 @@ def cmd_suggest(a):
         info = {}
     wing = {k: (round(v, 3) if isinstance(v, float) else v) for k, v in wing.items()}
     free = [f"{wing['id']}.{k}" for k in ("cx", "cy", "azimuth", "length", "width", "eave_height", "pitch")]
-    spec = {"wings": [wing], "free": free, "ties": [], "priors": {
+    spec = {"wings": [wing], "free": free, "ties": [], "ground": (li or {}).get("ground_local"), "priors": {
         f"{wing['id']}.eave_overhang": {"value": wing.get("eave_overhang", 0.45), "sigma": 0.15}}}
     if os.path.exists(P(a.project, "spec.json")) and not a.force:
         print("spec.json exists (use --force to overwrite). Suggested:")
@@ -512,10 +518,8 @@ def cmd_blender(a):
     if not a.no_points:
         if a.all_points and os.path.exists(P(a.project, "data/lidar_points.npy")):
             pts = np.load(P(a.project, "data/lidar_points.npy"))
-            g = load(a.project, "data/lidar.json")["ground_plane"]
-            hag = pts[:, 2] - (g[0] * pts[:, 0] + g[1] * pts[:, 1] + g[2])
             keep = np.hypot(pts[:, 0], pts[:, 1]) < 40
-            xyz = np.column_stack([pts[keep, :2], hag[keep]])
+            xyz = np.column_stack([pts[keep, :2], pts[keep, 2] - model_datum(a.project)])
         elif os.path.exists(P(a.project, "data/lidar_roof.npy")):
             xyz = np.load(P(a.project, "data/lidar_roof.npy"))[:, :3]  # building points, height above ground
         else:
@@ -556,6 +560,7 @@ def main():
     s.add_argument("--half", type=float, default=35); s.add_argument("--thr", type=float, default=0.12)
     s.add_argument("--min-pts", type=int, default=25); s.add_argument("--max-obs-pts", type=int, default=600)
     s.add_argument("--seed-only", action="store_true", help="ignore footprints; take the blob at the origin")
+    s.add_argument("--keep-multi-returns", action="store_true", help="keep non-last returns (default drops them: tree canopy)")
     s.set_defaults(fn=cmd_lidar)
     s = sp.add_parser("suggest"); s.add_argument("project"); s.add_argument("--force", action="store_true"); s.set_defaults(fn=cmd_suggest)
     s = sp.add_parser("obs"); s.add_argument("project"); s.add_argument("action", choices=["add", "import", "import-geo", "list", "remove"])
