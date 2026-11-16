@@ -55,7 +55,7 @@ node lab/tools/closeup.mjs --url "http://127.0.0.1:8080/?quality=standard" --out
 
 Cloud only: `bash lab/tools/setup-cloud.sh` creates a Python venv with `bpy` (about 430 MB download) and prints the paths to use.
 
-Blender work uses the **blender-suite** skill in `.claude/skills/blender-suite/` (MIT; sources in its `NOTICE.md`). If `blender-master` or separate `blender-*` skills are also listed, they are older copies of the same material: use `blender-suite`. `roof_qa.py` imports its `qa_check.py`. Its rule applies here too: report numbers, then look at the result. Run `roof_qa.py`, then a close-up. Check the skill itself with `python .claude/skills/blender-suite/tests/check_skill.py`.
+Blender work uses the **blender-suite** skill in `.claude/skills/blender-suite/` (MIT; sources in its `NOTICE.md`). If `blender-master` or separate `blender-*` skills are also listed, they are older copies of the same material: use `blender-suite`. `roof_qa.py` imports its `qa_check.py`. Its rule applies here too: report numbers, then look at the result. Run `roof_qa.py`, then a close-up. Check the skill itself with `python .claude/skills/blender-suite/tests/check_skill.py`. Package it for claude.ai with `python lab/tools/package_skill.py .claude/skills/blender-suite out/skills` (180 files; the test suite stays in the repo).
 
 ## Long-running commands
 

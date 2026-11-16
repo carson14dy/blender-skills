@@ -17,6 +17,7 @@ Your memory of `bpy` is probably out of date, and a mesh that looks fine in code
 - A name in backticks such as `blender-asset-qa` or `long-renders` means `references/<name>.md`. A mention of `SKILL.md` means this file.
 - Read only the reference for the task at hand. They hold the procedures, numbers and gotchas.
 - `look`, `generate_3d`, `import_asset`, `search_assets` and `world_bounding_box` are tools that some Blender MCP servers offer. Use whatever your server has. Without them, use `review_shots.py` to look, `gpt_model_spec.py` and `build_from_spec.py` to generate, `polyhaven_fetch.py` for assets, and `ob.dimensions` or `ob.bound_box` for size.
+- `tests/` is only in the repository copy. A packaged `.skill` carries just `tests/check_skill.py`.
 - A bare script name means `scripts/<name>`. Files under `pipelines/` are the real scripts from three finished films. They are tied to those scenes, so read them, copy the folder into the project and adapt it. They are the one exception to the next rule.
 - **Run scripts instead of reading them.** Each one documents its flags in its docstring and prints one compact JSON result. They are large, and reading them wastes context.
 

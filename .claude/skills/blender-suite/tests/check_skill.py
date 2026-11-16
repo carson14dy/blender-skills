@@ -11,6 +11,11 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent          # the skill folder
 REPO = ROOT.parents[2] if ROOT.parent.name == "skills" and ROOT.parents[1].name == ".claude" else None
+if REPO and not (REPO / "roof-blender").is_dir():
+    REPO = None                                                # installed copy, not the RoofTec repository
+# A packaged .skill leaves out tests/ except this file (lab/tools/package_skill.py), to stay under the upload limit.
+PACKAGED = not (ROOT / "tests" / "run_all.py").exists()
+MAX_SHIPPED = 199                                              # claude.ai takes at most 200 files per skill
 NAME = "blender-suite"
 # bytes: (max for one file, max for the folder)
 BUDGET = {"SKILL.md": (15000, 15000), "references": (10000, 300000), "scripts": (24000, 520000),
@@ -116,7 +121,8 @@ def check_docs(files):
         for tok in set(FILE_RE.findall(code_free)):
             base = tok.rsplit("/", 1)[-1]
             if tok.startswith(SKILL_PREFIXES):
-                if not (ROOT / tok).exists() and base not in PLACEHOLDER:
+                if not (ROOT / tok).exists() and base not in PLACEHOLDER \
+                        and not (PACKAGED and tok.startswith("tests/")):
                     errs.append(f"{r}: path {tok} does not exist in the skill")
             elif tok.startswith(REPO_PREFIXES):
                 if REPO and not (REPO / tok).exists():
@@ -207,6 +213,10 @@ def check_license():
 def main():
     files = sorted(p for p in ROOT.rglob("*") if p.is_file() and "__pycache__" not in p.parts)  # git-ignored
     check_tree(files)
+    shipped = [f for f in files if rel(f).split("/")[0] != "tests" or f.name == "check_skill.py"]
+    print(f"  {'packaged' if PACKAGED else 'repository'} copy: {len(shipped)} files ship in the .skill (max {MAX_SHIPPED})")
+    if len(shipped) > MAX_SHIPPED:
+        errs.append(f"{len(shipped)} files would ship in the .skill > {MAX_SHIPPED}")
     skill_md = (ROOT / "SKILL.md").read_text("utf-8") if (ROOT / "SKILL.md").exists() else ""
     if not skill_md:
         errs.append("SKILL.md: missing")

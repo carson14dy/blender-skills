@@ -4,7 +4,7 @@ This skill merges three MIT-licensed works into one skill. See `LICENSE`.
 
 | Part of this skill | Comes from | Copyright |
 |---|---|---|
-| `scripts/` (43 files), 42 of the references, `assets/`, `tests/` | Blender Agent Skills 1.3.1, https://github.com/EL4CTEO/blender-skills (commit b1b21df) | (c) 2026 EL4CTEO |
+| `scripts/` (43 files), 42 of the references, `assets/`, `tests/` (repository copy only) | Blender Agent Skills 1.3.1, https://github.com/EL4CTEO/blender-skills (commit b1b21df) | (c) 2026 EL4CTEO |
 | `pipelines/`; the text behind `blender-film`, `blender-forest`, `long-renders`, `film-sound` and `asset-safety`; `blend_audit.py` and `blender_send.py` are rewrites of its audit and send scripts | Claude Blender Skills, https://github.com/mromidev/claude-blender-skills (commit 567116b) | (c) 2026 Mr omi |
 | The one-skill layout and router; camera moves, Poly Haven tools, web viewer, photo to 3D scripts and their references | the blender-master skill, version 1.2.1 | its contributors, MIT |
 | The merge, `check_skill.py`, `smoke.py`, the pip `bpy` fallback in `run_in_blender.py`, `rooftec` | blender-suite | its contributors, MIT |

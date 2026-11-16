@@ -11,7 +11,7 @@ The execution model is in `SKILL.md`. Start from `assets/addon_template/` (valid
    blender --command extension build --source-dir ./my_tool --output-dir ./dist
    blender --command extension install-file -r user_default -e ./dist/my_tool-1.0.0.zip
    ```
-4. Test headless: register the package in-process, call operators with `temp_override`, and assert on data (see `tests/test_addon.py`).
+4. Test headless: register the package in-process, call operators with `temp_override`, and assert on data (`tests/test_addon.py` in the repository copy shows how).
 
 ## Rules (extension-era, 5.x)
 - **Relative imports only** (`from . import ops`). The package name is decided by Blender, so preferences use `bl_idname = __package__`.

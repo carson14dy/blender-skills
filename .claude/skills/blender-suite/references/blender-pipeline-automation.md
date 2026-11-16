@@ -48,4 +48,4 @@ Environment variables: `BLENDER_USER_SCRIPTS`, `BLENDER_USER_EXTENSIONS`, `BLEND
 - GPU in containers: Cycles CUDA/OptiX needs the NVIDIA container runtime. Otherwise use CPU. EEVEE needs a GPU/EGL even headless.
 
 ## CI recipe (GitHub Actions)
-Download the Linux tarball (`https://download.blender.org/release/Blender5.3/blender-5.3.0-linux-x64.tar.xz`), cache it, then `blender -b --factory-startup --python-exit-code 1 -P tests/run_all.py`.
+Download the Linux tarball (`https://download.blender.org/release/Blender5.3/blender-5.3.0-linux-x64.tar.xz`), cache it, then `blender -b --factory-startup --python-exit-code 1 -P your_tests.py`.

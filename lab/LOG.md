@@ -18,6 +18,11 @@ Newest first. One entry per session: date, cloud or local, what changed, results
   - **PC:** `lab/NEXT.md` setup now installs it right after the clone, and `doctor.mjs` checks it.
   - **Cloud:** the "Rooftec 1" environment now has a setup script, approved by the user. It installs graphify, EGL and the npm packages, then builds the graph. It is unproven until a fresh session starts.
 - Sioux Falls project: both answers recorded in the plan. Swatches are approved (hex colors only, no images), and both stores show side by side.
+- **blender-suite.skill trimmed to 180 files** for claude.ai's 200-file limit, following Fable 5.2's plan.
+  - The package leaves out `tests/` except `check_skill.py`. The repo copy keeps all 211 files, so `run_all.py` and `smoke.py` still run here: 71 passed, 0 failed, 2 skipped, and smoke 0 failures.
+  - `package_skill.py` refuses more than 199 files, then lints the unpacked copy.
+  - `check_skill.py` has a packaged mode, and no longer mistakes `~` for the repo when installed under `~/.claude/skills`.
+  - Four one-line text edits say that `tests/` is in the repo copy only.
 
 **Next:** step 016, the product picker with real colors.
 
