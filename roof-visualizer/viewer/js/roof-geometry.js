@@ -231,7 +231,7 @@ export function buildSurface(parts, o = {}) {
 export const fullParts = (planes) => planes.map((plane) => ({ plane, polys: plane.region() }));
 
 /** Strip parts within `width` of each segment of the given kind, measured inside the plane. */
-export function stripParts(planes, segs, width, { extend = 0 } = {}) {
+export function stripParts(planes, segs, width, { extend = 0, vMin = null } = {}) {
   const parts = [];
   for (const plane of planes) {
     const polys = [];
@@ -251,6 +251,8 @@ export function stripParts(planes, segs, width, { extend = 0 } = {}) {
         [t[0], t[1], -(t[0] * a[0] + t[1] * a[1]) + extend],
         [-t[0], -t[1], (t[0] * b[0] + t[1] * b[1]) + extend],
       ];
+      // vMin: keep only what lies this far up the slope, so a lapping strip is not coplanar with the one below
+      if (vMin) hp.push([0, 1, -vMin]);
       polys.push(...plane.region(hp));
     }
     if (polys.length) parts.push({ plane, polys });
@@ -285,17 +287,21 @@ export function dripEdgeGeometry(segs, { offEave = 0.013, offRake = 0.019, flang
       acc += len;
       const a2 = P.from3(s.A), b2 = P.from3(s.B);
       const inward = inwardDir2(P, { a: a2, b: b2 });
-      const A = P.to3(a2[0], a2[1], off), B = P.to3(b2[0], b2[1], off);
-      const A1 = P.to3(a2[0] + inward[0] * flange, a2[1] + inward[1] * flange, off);
-      const B1 = P.to3(b2[0] + inward[0] * flange, b2[1] + inward[1] * flange, off);
-      quad(A1, B1, B, A, P.n, len, kUp, k0, k1); // top flange (lies on the deck)
       // outward horizontal direction for the drop face
       const outW = P.h.clone().multiplyScalar(-inward[0]).addScaledVector(P.b, -inward[1]);
       outW.y = 0; outW.normalize();
+      // the bend sits 1.5 mm out from the deck edge (in the roof plane, so the flange stays parallel to the
+      // layers): the drop then does not share the deck's edge face at the rakes
+      const A = P.to3(a2[0] - inward[0] * 0.0015, a2[1] - inward[1] * 0.0015, off);
+      const B = P.to3(b2[0] - inward[0] * 0.0015, b2[1] - inward[1] * 0.0015, off);
+      const A1 = P.to3(a2[0] + inward[0] * flange, a2[1] + inward[1] * flange, off);
+      const B1 = P.to3(b2[0] + inward[0] * flange, b2[1] + inward[1] * flange, off);
+      quad(A1, B1, B, A, P.n, len, kUp, k0, k1); // top flange (lies on the deck)
       const A2 = A.clone().add(new THREE.Vector3(0, -drop, 0)), B2 = B.clone().add(new THREE.Vector3(0, -drop, 0));
       quad(A, B, B2, A2, outW, len, kUp, k0, k1);
       const kick = outW.clone().multiplyScalar(0.012).add(new THREE.Vector3(0, -0.006, 0));
-      quad(A2, B2, B2.clone().add(kick), A2.clone().add(kick), new THREE.Vector3(0, -1, 0).add(outW).normalize(), len, kUp, k0, k1);
+      // the kick's outer side (continuing the drop's outer face) looks out and up
+      quad(A2, B2, B2.clone().add(kick), A2.clone().add(kick), outW.clone().multiplyScalar(0.006).add(new THREE.Vector3(0, 0.012, 0)).normalize(), len, kUp, k0, k1);
     }
   }
   return makeGeometry(pos, nor, uv, up, along, true);
@@ -305,7 +311,8 @@ export function dripEdgeGeometry(segs, { offEave = 0.013, offRake = 0.019, flang
  * Caps over ridge and hip lines: a strip bent over the line, `width` down each side.
  * Returns geometry whose u coordinate runs along the line (for cap-shingle textures).
  */
-export function capGeometry(lines, { width = 0.16, off = 0.032, lift = 0, kinds = null } = {}) {
+// profile: [[distance from the line, height above the rafters], ...], crest first (for caps draped over a vent)
+export function capGeometry(lines, { width = 0.16, off = 0.032, lift = 0, profile = null } = {}) {
   const pos = [], nor = [], uv = [], up = [], along = [];
   const add = (p, n, u, v, a) => { pos.push(p.x, p.y, p.z); nor.push(n.x, n.y, n.z); uv.push(u, v); up.push(0); along.push(a); };
   const total = lines.reduce((s, l) => s + l.A.distanceTo(l.B), 0) || 1;
@@ -317,19 +324,25 @@ export function capGeometry(lines, { width = 0.16, off = 0.032, lift = 0, kinds 
     // build from the higher end down so hip caps start at the bottom when installed
     let A = l.A, B = l.B;
     if (A.y > B.y + 0.01) [A, B] = [B, A];
+    // both halves share one crest, the same height above each plane (otherwise a slit opens along the line)
+    const [P0, P1] = l.planes;
+    const dn = P1 ? P0.n.dot(P1.n) : -1;
+    const bis = dn > -0.5 ? P0.n.clone().add(P1.n).divideScalar(1 + dn) : null;
     for (const P of l.planes) {
       const a2 = P.from3(A), b2 = P.from3(B);
       const inward = inwardDir2(P, { a: a2, b: b2 });
       const o = off + lift;
-      const pA = P.to3(a2[0], a2[1], o), pB = P.to3(b2[0], b2[1], o);
-      const qA = P.to3(a2[0] + inward[0] * width, a2[1] + inward[1] * width, o - 0.004);
-      const qB = P.to3(b2[0] + inward[0] * width, b2[1] + inward[1] * width, o - 0.004);
-      // small rise at the line so the cap reads as a rounded piece
-      const n = P.n;
-      const crest = n.clone().multiplyScalar(0.006);
-      pA.add(crest); pB.add(crest);
-      add(qA, n, 0, width, k0); add(qB, n, len, width, k1); add(pB, n, len, 0, k1);
-      add(qA, n, 0, width, k0); add(pB, n, len, 0, k1); add(pA, n, 0, 0, k0);
+      // default: a small rise at the line so the cap reads as a rounded piece
+      const prof = profile || [[0, o + 0.006], [width, o - 0.004]];
+      const across = P.h.clone().multiplyScalar(inward[0]).addScaledVector(P.b, inward[1]);
+      const at = (q, w, h) => (w === 0 && bis ? P.to3(q[0], q[1], 0).addScaledVector(bis, h) : P.to3(q[0] + inward[0] * w, q[1] + inward[1] * w, h));
+      for (let i = 0; i + 1 < prof.length; i++) {
+        const [w0, h0] = prof[i], [w1, h1] = prof[i + 1];
+        const n = across.clone().multiplyScalar(h0 - h1).addScaledVector(P.n, w1 - w0).normalize(); // up and away from the line
+        const qA = at(a2, w1, h1), qB = at(b2, w1, h1), pA = at(a2, w0, h0), pB = at(b2, w0, h0);
+        add(qA, n, 0, w1, k0); add(qB, n, len, w1, k1); add(pB, n, len, w0, k1);
+        add(qA, n, 0, w1, k0); add(pB, n, len, w0, k1); add(pA, n, 0, w0, k0);
+      }
     }
   }
   const g = makeGeometry(pos, nor, uv, up, along, true);
@@ -544,7 +557,20 @@ export function measureRoof(planes, segs) {
 // ---------------------------------------------------------------------------
 // internal helpers
 
+/** Wind every triangle so its front side faces its normal: FrontSide materials cull the rest. */
+function orientTriangles(pos, nor, uv, up, along) {
+  const swap = (arr, w, i, j) => { for (let k = 0; k < w; k++) { const t = arr[i * w + k]; arr[i * w + k] = arr[j * w + k]; arr[j * w + k] = t; } };
+  for (let t = 0; t + 2 < pos.length / 3; t += 3) {
+    const i = t * 3;
+    const ax = pos[i + 3] - pos[i], ay = pos[i + 4] - pos[i + 1], az = pos[i + 5] - pos[i + 2];
+    const bx = pos[i + 6] - pos[i], by = pos[i + 7] - pos[i + 1], bz = pos[i + 8] - pos[i + 2];
+    const d = (ay * bz - az * by) * nor[i] + (az * bx - ax * bz) * nor[i + 1] + (ax * by - ay * bx) * nor[i + 2];
+    if (d < 0) { swap(pos, 3, t + 1, t + 2); swap(nor, 3, t + 1, t + 2); swap(uv, 2, t + 1, t + 2); swap(up, 1, t + 1, t + 2); swap(along, 1, t + 1, t + 2); }
+  }
+}
+
 function makeGeometry(pos, nor, uv, up, along) {
+  orientTriangles(pos, nor, uv, up, along);
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
