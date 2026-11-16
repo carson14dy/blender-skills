@@ -5,6 +5,11 @@ The current to-do list for both sessions. Do the first open item for your kind o
 ## Local session (Windows PC "Omen")
 
 - [ ] **Setup, once (about 30 minutes):** follow "Set up this PC" below, then run `node lab/tools/doctor.mjs` until it shows no `NO` lines.
+- [ ] **Steel panels and edge profiles on the GPU (about 15 minutes, after 001):**
+  1. In the studio (`cd roof-visualizer && npm start`), pick Menards Pro-Rib on the Materials tab and the Style-D drip edge. Copy the command from the **Blender command** button.
+  2. Run it, then `node roof-blender/scripts/roof-blender.mjs still --output out/prorib.png --samples 128` on the GPU.
+  3. Look at the eave, the gable peak and a hip. Ribs should stand at the eave, caps should ride on the ribs, the trims should meet at the peak, and the drip edge should show a 1-11/16 in. face.
+  4. Write one line per view in experiments 019 and 020, add a small JPG, and add the render time to `lab/LOG.md`.
 - [ ] **Experiment 001, GPU baseline (about 45 minutes, mostly renders running in the background):** follow `lab/experiments/001-local-gpu-baseline/README.md` from top to bottom, including its "Report back" checklist.
 - [ ] **Experiment 014, geometry check with real Blender (about 10 minutes):**
   1. Run `blender -b --factory-startup --python-exit-code 1 --python lab/tools/roof_qa.py -- --save out/qa/roof.blend`. Pass = `roof QA passed`.
@@ -27,11 +32,7 @@ The current to-do list for both sessions. Do the first open item for your kind o
 ## Cloud session
 
 - [x] **Sioux Falls studio, steps 016, 017 and 018** (store picker with sampled colors, priced list, project files), plus the texture part of 019 and a read-only 022. See the experiment folders and the newest `lab/LOG.md` entry.
-- [ ] **Sioux Falls studio, step 019 geometry with 020 (about 4 hours):**
-  1. Add real Pro-Rib and Pro-Snap ribs, the metal ridge cap and rake trim, and edge profiles (drip edge C/D, gutter apron) from product sizes, in `roof-geometry.js` and `roof_core.py` (plan section 2, "later").
-  2. Run `$LAB_BPY_PYTHON lab/tools/roof_qa.py`, `$LAB_BPY_PYTHON roof-blender/tests/test_roof_core.py` and `npm test`.
-  3. Measure the rib spacing in a close-up the way `lab/tools/supplier-shots.mjs --checks` does, and write it up in 019 and a new 020.
-  4. Leave a GPU close-up for the local session.
+- [x] **Sioux Falls studio, step 019 geometry with 020:** real ribs (Pro-Rib, Pro-Snap, corrugated), metal caps on the ribs, rake trim, edge profiles from the drip-edge product, in both apps with a parity test. See experiments 019 and 020.
 - [ ] After any change to `roof_core.py`, `roof-geometry.js` or the layer heights: run `$LAB_BPY_PYTHON lab/tools/roof_qa.py` and `npm test`.
 - [ ] After 001 is pushed: read the results, then pick the next experiment from `lab/GOALS.md` (likely 006, lighter GLB files for phones, or 012, sturdier roof detection for scans).
 

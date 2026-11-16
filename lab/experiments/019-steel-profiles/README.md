@@ -5,7 +5,7 @@
 | Track | T2, project `lab/projects/sioux-falls-studio/` |
 | Session | cloud |
 | Date | 2026-11-16 |
-| Status | texture part done, geometry later |
+| Status | done: textures, then geometry (cloud); GPU close-up open (local) |
 
 ## Question
 
@@ -54,3 +54,61 @@ Can the store's steel panels be drawn at their measured profile in the web studi
 **Keep the textures** for choosing a product in the studio.
 - **019 geometry and 020 edge profiles:** real ribs, the metal ridge cap and rake trim in `roof-geometry.js` and `roof_core.py`. Do them in one session, with the `roof_qa.py` gate and a GPU close-up (local).
 - **Blender:** it draws flat panels today. The studio's **Blender command** button says so on its hint.
+
+
+---
+
+## Geometry part (2026-11-16, cloud)
+
+**Question:** do real ribs, caps on the ribs and a rake trim make the steel roofs read correctly at the eave, rake, ridge and gable peak in both apps, without breaking the geometry gate?
+
+**Method**
+- **One shared profile table.** `PROFILES` in `roof-visualizer/viewer/js/profiles.js` and `PANEL_PROFILES` in `roof-blender/scripts/roof_core.py` hold the same JSON. `tests/profiles.test.mjs` fails if they ever differ.
+  - Pro-Rib: 9 in. period, 3/4 in. trapezoid ribs and two minor ribs.
+  - Pro-Snap: 16 in. period, a 3/4 in. seam.
+  - Corrugated: 2.67 in. pitch, 1/2 in. sine.
+  - Rib heights and spacings are Menards spec. Rib widths, seam tops and the corrugated profile are assumed, and the table says so.
+- **Ribbed surface.** Each roof plane is cut into strips between profile breakpoints, so the height is linear and planar inside a strip. Each vertex is lifted by `h(u)` and gets a normal tilted by the strip's slope.
+  - Web: `ribbedSurface()` in `profiles.js`.
+  - Blender: `ribbed_surface()`.
+- **On the ribs.** On metal roofs, hip and ridge caps use a metal cap profile at `covering + maxH + 3 mm`. Its width is half the cap product's width, or 6 in. by default. The ridge vent, and the vent cap over it, rise by `maxH`.
+- **Rake trim.**
+  - Shape: a 1.5 in. top leg on the ribs, a face 3.5 in. down and a 0.5 in. hem.
+  - Placement: the bend sits 1/8 in. outside the drip edge's kick (16.7 mm with the default edge), so the kick never pokes through. The two trims are mitered at the gable peak.
+  - It is drawn in the covering's color.
+- **Textures** take `ribs: false` when geometry draws the ribs, so ribs don't appear twice.
+- **Blender:** `layers --panel proRib|proSnap|corrugated|flat --cap-width-in N`. The studio's Blender button passes them. Metal caps use the panel's painted steel.
+
+**Result**
+
+| | Pro-Rib | Pro-Snap | Corrugated |
+|---|---|---|---|
+| Covering triangles, web (ranch demo) | 12,651 | 3,245 | 30,989 |
+| Covering triangles, Blender | 12,659 | 3,251 | 30,999 |
+| Whole layer stack (Blender gate) | 30,872 | 21,464 | 49,212 |
+| `roof_qa.py` | passed | passed | passed |
+
+The shingle stack is 130,874 triangles, so every metal roof is lighter than shingles.
+
+- **Area:** the ribbed surface projected back onto the planes covers 254.856 m², exactly the plane area. There are no gaps, no overlaps and no zero-area triangles.
+- **Tests:**
+  - Web: 87/87, including 8 new tests, parity among them.
+  - Blender: core checks all pass. The default shingle run is byte-identical to before: vertex, polygon and triangle counts and a coordinate checksum match.
+- **Gate:** `roof_qa.py --layers '<json>'` passes for shingles, Pro-Rib, Pro-Snap, corrugated and a Style-D edge, with the same single accepted item (the valley membrane lap).
+
+| Web studio (software WebGL) | Blender (Workbench, colored by layer) |
+|---|---|
+| ![Pro-Rib eave: ribs stand up](img/web-prorib-eave.jpg) | ![Blender Pro-Rib eave](img/blender-prorib-eave.jpg) |
+| ![Pro-Rib ridge: cap on the ribs](img/web-prorib-ridge.jpg) | ![Blender hip cap on ribs](img/blender-prorib-hip.jpg) |
+| ![Gable peak: trims mitered](img/web-prorib-peak.jpg) | ![Blender rake trim](img/blender-prorib-rake.jpg) |
+| ![Corrugated eave](img/web-corrugated-eave.jpg) | ![Pro-Snap eave](img/web-prosnap-eave.jpg) |
+
+**Decision**
+
+**Keep.**
+- Real ribs, caps on the ribs and rake trims are now the default for store steel panels in both apps.
+- **Open, local:** a Cycles close-up on the GPU of a Pro-Rib roof at an eave and at the gable peak, made with the studio's Blender button. Judge the rib shading by eye.
+- **Later:**
+  - the cap hem dips 3 mm below the rib tops, as specified; fine at viewing distance, but revisit if it shows in GPU renders;
+  - closures and end caps under the ridge;
+  - per-plane panel direction.

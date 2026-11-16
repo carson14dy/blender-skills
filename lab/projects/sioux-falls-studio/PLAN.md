@@ -11,7 +11,7 @@
 - **step 019, texture part:** Pro-Rib, Pro-Snap and corrugated textures at measured spacing (ribs 9.00 in. on centre);
 - **step 022, read-only:** tap a roof plane for its area, pitch, facing and covering.
 
-Open: 019 geometry with 020 (cloud, then local), 021 Blender look-dev (local), 023 data gaps and price refresh (pricing session), and the port to the Rooftec app.
+Done since: 019 geometry and 020 edge profiles (cloud; GPU close-up open, local). Open: 021 Blender look-dev (local), 023 data gaps and price refresh (pricing session), and the port to the Rooftec app.
 
 ---
 

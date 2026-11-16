@@ -4,6 +4,38 @@ Newest first. One entry per session: date, cloud or local, what changed, results
 
 ---
 
+## 2026-11-16 · cloud (9)
+
+**Changed**
+- Steps **019 (geometry)** and **020** built in both apps from one shared spec: an Opus builder per app, verified by the coordinator.
+- **Real steel panel ribs:**
+  - Pro-Rib: 9 in. period, 3/4 in. ribs.
+  - Pro-Snap: 16 in. period, 3/4 in. seam.
+  - Corrugated: 2.67 in. pitch, 1/2 in. deep.
+  - One profile table is shared by `profiles.js` and `roof_core.py`, and a test fails if they differ.
+- **Metal roofs:**
+  - caps and the vent ride on the rib tops;
+  - a rake trim covers the panel edge, mitered at the gable peak and clearing the drip edge's kick;
+  - Blender's metal caps use the panel steel.
+- **Drip edge from the product:**
+  - `edgeProfileFor()` reads the style (A, C/C3, D/F-codes, gutter apron, rake trim) and the flange × face size from the name, marking assumed sizes.
+  - Both apps sweep the cross-section; with no profile, today's shape is unchanged.
+- **New Blender options:** `layers --panel --edge --cap-width-in`; the studio's Blender button passes them. `roof_qa.py --layers '<json>'`.
+
+**Results**
+- Web tests 87/87 (8 new). Blender core checks all pass, and the default shingle run is byte-identical to before.
+- `roof_qa.py` passes for shingles, Pro-Rib, Pro-Snap, corrugated and a Style-D edge.
+- Covering triangles (ranch demo): Pro-Rib about 12.7k, Pro-Snap about 3.2k, corrugated about 31k. The ribbed area projected back onto the planes is exactly 254.856 m².
+- Close-ups from both apps are in experiments 019 and 020.
+
+**Next:**
+- local: the GPU close-up (in `lab/NEXT.md`), then 001;
+- cloud: pick the next experiment from `lab/GOALS.md` (006, lighter GLB files for phones, or 012, plane detection for scans).
+
+**Needs local:** the Cycles close-up of Pro-Rib with the Style-D edge, made with the Blender button (`lab/NEXT.md`, "Steel panels and edge profiles on the GPU").
+
+---
+
 ## 2026-11-16 · cloud (8)
 
 **Roof Layer Studio page updated** (claude.ai artifact, version 6): store picker, priced list, project files and tap the roof, with the Sioux Falls catalog (350 KB). Tested statically before publishing: totals $6,746.27 / $6,533.59 / $6,431.38, 0 store-image requests, 0 errors. CSV and JSON saves go through the page's downloads permission. Not yet tried by hand inside claude.ai.
