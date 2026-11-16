@@ -40,7 +40,15 @@ def main():
     cov = bpy.data.objects["RT_layer_covering"]
     zs = sorted({round(v.co.z, 4) for v in cov.data.vertices})
     check(len(zs) > 100, "shingle courses are stepped geometry, not a flat plane")
+    # found by blender-master's qa_check (lab experiment 014)
+    for lid in ("ridgeCap", "dripEdge"):
+        me = bpy.data.objects[f"RT_layer_{lid}"].data
+        low = min(p.normal.z for p in me.polygons)
+        check(low > -0.3, f"{lid} faces point up or out, none face down into the roof (lowest normal z {low:.2f})")
+    old = [bpy.data.objects[f"RT_layer_{lid}"] for lid in ("oldShingles", "oldFelt")]
+    check(all(o.hide_render for o in old), "finished roof: the old shingles and felt are torn off (hidden in renders)")
     b = rc.run({"cmd": "build", "orbit": False})
+    check(not any(o.hide_render for o in old), "build animation brings the old roof back for the tear-off")
     check(b["frame_end"] > b["frame_start"], "build sequence keyframed")
     node = cov.data.materials[0].node_tree.nodes["RT_Reveal"]
     bpy.context.scene.frame_set(b["frame_start"])

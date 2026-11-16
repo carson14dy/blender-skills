@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildRoofPlanes, HOUSE_PRESETS } from '../viewer/js/house.js';
-import { analyzeRoof, measureRoof } from '../viewer/js/roof-geometry.js';
+import { analyzeRoof, measureRoof, capGeometry, ridgeVentGeometry, dripEdgeGeometry, buildSurface } from '../viewer/js/roof-geometry.js';
 
 const near = (actual, expected, tol, what) => assert.ok(Math.abs(actual - expected) <= tol, `${what}: ${actual.toFixed(3)} vs ${expected.toFixed(3)}`);
 
@@ -43,4 +43,25 @@ test('cottage full hip at 6/12', () => {
   near(m.ridgeM, 11.8 - 9.8, 0.05, 'ridge');
   near(m.hipM, 4 * Math.hypot(4.9 * Math.SQRT2, 4.9 * 0.5), 0.05, 'hips');
   near(m.rakeM + m.valleyM, 0, 0.01, 'no rakes or valleys');
+});
+
+test('every triangle faces its normal (FrontSide materials cull the rest)', () => {
+  // found by the blender-master qa_check: half of each cap and 2/3 of the drip edge were wound backwards
+  const planes = buildRoofPlanes(HOUSE_PRESETS['ranch-hip'], 6);
+  const segs = analyzeRoof(planes);
+  const vent = ridgeVentGeometry(segs.ridge);
+  const geoms = {
+    capRidge: capGeometry(segs.ridge), capHip: capGeometry(segs.hip), ventTop: vent.top, ventSkirt: vent.skirt,
+    drip: dripEdgeGeometry(segs), courses: buildSurface(planes.map((P) => ({ plane: P, polys: P.region() })), { courseH: 0.1429 }),
+  };
+  for (const [name, g] of Object.entries(geoms)) {
+    const p = g.attributes.position.array, n = g.attributes.normal.array;
+    let bad = 0;
+    for (let i = 0; i < p.length; i += 9) {
+      const ax = p[i + 3] - p[i], ay = p[i + 4] - p[i + 1], az = p[i + 5] - p[i + 2];
+      const bx = p[i + 6] - p[i], by = p[i + 7] - p[i + 1], bz = p[i + 8] - p[i + 2];
+      if ((ay * bz - az * by) * n[i] + (az * bx - ax * bz) * n[i + 1] + (ax * by - ay * bx) * n[i + 2] < 0) bad++;
+    }
+    assert.equal(bad, 0, `${name}: ${bad} of ${p.length / 9} triangles wound against their normal`);
+  }
 });

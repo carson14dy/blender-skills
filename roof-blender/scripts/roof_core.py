@@ -36,7 +36,7 @@ COLL = "RT_Layers"
 # stack heights above the rafters (metres), same as the web viewer
 H = {
     "deck": 0.0111, "oldFelt": 0.0128, "oldShingles": 0.0145, "dripEave": 0.0122, "iceWater": 0.0134,
-    "underlayment": 0.0146, "dripRake": 0.0158, "starter": 0.0168, "nails": 0.0222, "covering": 0.0190,
+    "underlayment": 0.0146, "dripRake": 0.0158, "starter": 0.0172, "nails": 0.0222, "covering": 0.0190,
     "ridgeVent": 0.0235, "cap": 0.0262,
 }
 
@@ -54,6 +54,11 @@ LAYER_INFO = {
     "ridgeVent": ("Ridge vent", "Shingle-over vent"),
     "ridgeCap": ("Hip & ridge cap", "Matching cap shingles"),
 }
+# shingle-over ridge vent: a 32 mm body whose sides stand on the shingles, and the cap draped over it
+_VC, _VH = H["covering"], 0.032
+VENT_PROFILE = [(0.0, _VC + _VH + 0.006), (0.14, _VC + _VH - 0.004), (0.1402, _VC)]
+CAP_OVER_VENT = [(0.0, _VC + _VH + 0.009), (0.142, _VC + _VH - 0.0015), (0.17, _VC + 0.006)]
+
 STACK = ["oldFelt", "oldShingles", "deck", "deckRepair", "dripEdge", "iceWater", "underlayment", "starter",
          "nails", "covering", "ridgeVent", "ridgeCap"]
 
@@ -280,7 +285,9 @@ def full_parts(planes):
     return [(P, P.region()) for P in planes]
 
 
-def strip_parts(planes, segs, width, extend=0.0):
+def strip_parts(planes, segs, width, extend=0.0, vmin=None):
+    """Bands `width` either side of each line. `vmin`: keep only the part this far up the slope from the
+    eave (so a strip that laps another one does not lie in the same plane as it)."""
     parts = []
     for P in planes:
         polys = []
@@ -301,6 +308,8 @@ def strip_parts(planes, segs, width, extend=0.0):
                 (t[0], t[1], -(t[0] * a[0] + t[1] * a[1]) + extend),
                 (-t[0], -t[1], (t[0] * b[0] + t[1] * b[1]) + extend),
             ]
+            if vmin:
+                hp.append((0.0, 1.0, -vmin))
             polys += P.region(hp)
         if polys:
             parts.append((P, polys))
@@ -314,13 +323,33 @@ class Buf:
     def __init__(self):
         self.verts, self.faces, self.uvs, self.up, self.along = [], [], [], [], []
 
-    def tri(self, pts, uvs, ups, alongs):
+    def tri(self, pts, uvs, ups, alongs, face=None):
+        """Add one polygon. `face`: the direction its front side must look (flips the winding if not)."""
+        if face is not None:
+            n = Vector((0.0, 0.0, 0.0))  # Newell normal: robust for any planar polygon
+            for i, p in enumerate(pts):
+                q = pts[(i + 1) % len(pts)]
+                n += Vector(((p[1] - q[1]) * (p[2] + q[2]), (p[2] - q[2]) * (p[0] + q[0]), (p[0] - q[0]) * (p[1] + q[1])))
+            if n.dot(face) < 0:
+                pts, uvs, ups, alongs = pts[::-1], uvs[::-1], ups[::-1], alongs[::-1]
         base = len(self.verts)
         self.verts += [tuple(p) for p in pts]
         self.faces.append(tuple(range(base, base + len(pts))))
         self.uvs += uvs
         self.up += ups
         self.along += alongs
+
+
+def merge_bufs(*bufs):
+    out = Buf()
+    for b in bufs:
+        n0 = len(out.verts)
+        out.verts += b.verts
+        out.faces += [tuple(i + n0 for i in f) for f in b.faces]
+        out.uvs += b.uvs
+        out.up += b.up
+        out.along += b.along
+    return out
 
 
 def build_surface(parts, offset, course_h=None, step_h=0.005, thickness=None):
@@ -337,7 +366,7 @@ def build_surface(parts, offset, course_h=None, step_h=0.005, thickness=None):
                     strip = clip_half(clip_half(poly, (0, 1, -v0)), (0, -1, v1))
                     if len(strip) < 3:
                         continue
-                    buf.tri([P.to3(u, v, hof(v)) for u, v in strip], [(u, v) for u, v in strip], [v for _, v in strip], [al(u) for u, _ in strip])
+                    buf.tri([P.to3(u, v, hof(v)) for u, v in strip], [(u, v) for u, v in strip], [v for _, v in strip], [al(u) for u, _ in strip], P.n)
                     for i in range(len(strip)):
                         a, b = strip[i], strip[(i + 1) % len(strip)]
                         if abs(a[1] - v0) < 1e-5 and abs(b[1] - v0) < 1e-5:
@@ -345,10 +374,10 @@ def build_surface(parts, offset, course_h=None, step_h=0.005, thickness=None):
                             lo, hi = offset - (0.004 if r == 0 else 0), offset + step_h
                             vv = v0 + 1e-4
                             pts = [P.to3(x0[0], vv, lo), P.to3(x0[0], vv, hi), P.to3(x1[0], vv, hi), P.to3(x1[0], vv, lo)]
-                            buf.tri(pts, [(x0[0], 0), (x0[0], step_h), (x1[0], step_h), (x1[0], 0)], [vv] * 4, [al(x0[0]), al(x0[0]), al(x1[0]), al(x1[0])])
+                            buf.tri(pts, [(x0[0], 0), (x0[0], step_h), (x1[0], step_h), (x1[0], 0)], [vv] * 4, [al(x0[0]), al(x0[0]), al(x1[0]), al(x1[0])], -P.b)
         else:
             for poly in polys:
-                buf.tri([P.to3(u, v, offset) for u, v in poly], [(u, v) for u, v in poly], [v for _, v in poly], [al(u) for u, _ in poly])
+                buf.tri([P.to3(u, v, offset) for u, v in poly], [(u, v) for u, v in poly], [v for _, v in poly], [al(u) for u, _ in poly], P.n)
         if thickness:
             for poly in polys:
                 for i in range(len(poly)):
@@ -357,10 +386,12 @@ def build_surface(parts, offset, course_h=None, step_h=0.005, thickness=None):
                     dx, dy = b[0] - a[0], b[1] - a[1]
                     ln = math.hypot(dx, dy) or 1
                     m = (-dy / ln * 0.02, dx / ln * 0.02)
-                    if P.contains2(mid[0] + m[0], mid[1] + m[1]) == P.contains2(mid[0] - m[0], mid[1] - m[1]):
+                    inside = P.contains2(mid[0] + m[0], mid[1] + m[1])
+                    if inside == P.contains2(mid[0] - m[0], mid[1] - m[1]):
                         continue
+                    out = -(P.h * m[0] + P.b * m[1]) if inside else (P.h * m[0] + P.b * m[1])
                     pts = [P.to3(a[0], a[1], offset - thickness), P.to3(b[0], b[1], offset - thickness), P.to3(b[0], b[1], offset), P.to3(a[0], a[1], offset)]
-                    buf.tri(pts, [(0, 0), (ln, 0), (ln, thickness), (0, thickness)], [a[1], b[1], b[1], a[1]], [al(a[0]), al(b[0]), al(b[0]), al(a[0])])
+                    buf.tri(pts, [(0, 0), (ln, 0), (ln, thickness), (0, thickness)], [a[1], b[1], b[1], a[1]], [al(a[0]), al(b[0]), al(b[0]), al(a[0])], out)
     return buf
 
 
@@ -377,21 +408,28 @@ def drip_edge_buf(segs, flange=0.05, drop=0.045):
             acc += ln
             a2, b2 = P.from3(s["A"]), P.from3(s["B"])
             inn = inward2(P, a2, b2)
-            A, B = P.to3(*a2, off), P.to3(*b2, off)
-            A1 = P.to3(a2[0] + inn[0] * flange, a2[1] + inn[1] * flange, off)
-            B1 = P.to3(b2[0] + inn[0] * flange, b2[1] + inn[1] * flange, off)
             outw = -(P.h * inn[0] + P.b * inn[1])
             outw.z = 0
             outw.normalize()
+            # the bend sits 1.5 mm out from the deck edge (in the roof plane, so the flange stays parallel to
+            # the layers): the drop then does not share the deck's edge face at the rakes
+            A = P.to3(a2[0] - inn[0] * 0.0015, a2[1] - inn[1] * 0.0015, off)
+            B = P.to3(b2[0] - inn[0] * 0.0015, b2[1] - inn[1] * 0.0015, off)
+            A1 = P.to3(a2[0] + inn[0] * flange, a2[1] + inn[1] * flange, off)
+            B1 = P.to3(b2[0] + inn[0] * flange, b2[1] + inn[1] * flange, off)
             dz = Vector((0, 0, -drop))
             A2, B2 = A + dz, B + dz
             kick = outw * 0.012 + Vector((0, 0, -0.006))
-            for q in ((A1, B1, B, A), (A, B, B2, A2), (A2, B2, B2 + kick, A2 + kick)):
-                buf.tri(list(q), [(0, 0), (ln, 0), (ln, 0.05), (0, 0.05)], [kup] * 4, [k0, k1, k1, k0])
+            # one folded sheet, front side out: flange faces up the roof, the drop faces out, the kick out and up
+            for q, face in (((A1, B1, B, A), P.n), ((A, B, B2, A2), outw), ((A2, B2, B2 + kick, A2 + kick), outw * 0.006 + Vector((0, 0, 0.012)))):
+                buf.tri(list(q), [(0, 0), (ln, 0), (ln, 0.05), (0, 0.05)], [kup] * 4, [k0, k1, k1, k0], face)
     return buf
 
 
-def cap_buf(lines, width=0.16, off=H["cap"]):
+def cap_buf(lines, width=0.16, off=H["cap"], profile=None):
+    """Strip bent over each line. `profile`: [(distance from the line, height above the rafters), ...],
+    crest first; default is a slight rise from `off - 0.004` at the edge to `off + 0.006` on the line."""
+    prof = profile or [(0.0, off + 0.006), (width, off - 0.004)]
     buf = Buf()
     total = sum((l["A"] - l["B"]).length for l in lines) or 1
     acc = 0.0
@@ -402,14 +440,22 @@ def cap_buf(lines, width=0.16, off=H["cap"]):
         ln = (A - B).length
         k0, k1 = acc / total, min(0.9999, (acc + ln) / total)
         acc += ln
-        for P in l["planes"]:
+        pl = l["planes"]
+        # both halves share one crest, the same height above each plane (otherwise a slit opens along the line)
+        bis = (pl[0].n + pl[1].n) / (1 + pl[0].n.dot(pl[1].n)) if len(pl) == 2 and pl[0].n.dot(pl[1].n) > -0.5 else None
+        for P in pl:
             a2, b2 = P.from3(A), P.from3(B)
             inn = inward2(P, a2, b2)
-            crest = P.n * 0.006
-            pA, pB = P.to3(*a2, off) + crest, P.to3(*b2, off) + crest
-            qA = P.to3(a2[0] + inn[0] * width, a2[1] + inn[1] * width, off - 0.004)
-            qB = P.to3(b2[0] + inn[0] * width, b2[1] + inn[1] * width, off - 0.004)
-            buf.tri([qA, qB, pB, pA], [(0, width), (ln, width), (ln, 0), (0, 0)], [0.0] * 4, [k0, k1, k1, k0])
+            across = P.h * inn[0] + P.b * inn[1]
+
+            def at(q, w, h, P=P, inn=inn):
+                if w == 0 and bis is not None:
+                    return P.to3(*q) + bis * h
+                return P.to3(q[0] + inn[0] * w, q[1] + inn[1] * w, h)
+            for (w0, h0), (w1, h1) in zip(prof, prof[1:]):
+                face = across * (h0 - h1) + P.n * (w1 - w0)  # up and away from the line
+                buf.tri([at(a2, w1, h1), at(b2, w1, h1), at(b2, w0, h0), at(a2, w0, h0)],
+                        [(0, w1), (ln, w1), (ln, w0), (0, w0)], [0.0] * 4, [k0, k1, k1, k0], face)
     return buf
 
 
@@ -975,12 +1021,13 @@ def build_layers(cfg):
         add("oldShingles", build_surface(full_parts(planes), H["oldShingles"], 5 * IN, 0.004),
             layer_material("RT_oldShingles", row_h=5 * IN, procedural={"exposure": 5 * IN, "palette": ["#57534c", "#4a4741", "#605b52"]}), 5 * IN, rows(5 * IN))
     add("deck", build_surface(full_parts(planes), H["deck"], thickness=H["deck"]), layer_material("RT_deck", (0.42, 0.30, 0.17), 1.2192, 0.8), 1.2192, rows(1.2192))
-    add("deckRepair", build_surface(deck_patch_parts(planes), H["deck"] + 0.0006), layer_material("RT_deckRepair", (0.62, 0.45, 0.26), 1000.0, 0.8), 1000.0, 1)
+    add("deckRepair", build_surface(deck_patch_parts(planes), H["deck"] + 0.0012), layer_material("RT_deckRepair", (0.62, 0.45, 0.26), 1000.0, 0.8), 1000.0, 1)
     add("dripEdge", drip_edge_buf(segs), layer_material("RT_dripEdge", (0.88, 0.88, 0.85), 1.0, 0.35, 0.3), 1.0, 2)
     roll, lap = 36 * IN, 3 * IN
-    ice = strip_parts(planes, segs["eave"], ice_rows * (roll - lap) + lap)
+    ice_w = ice_rows * (roll - lap) + lap
+    ice = strip_parts(planes, segs["eave"], ice_w)
     if segs["valley"] and cfg.get("valleys", True):
-        ice += strip_parts(planes, segs["valley"], roll / 2)
+        ice += strip_parts(planes, segs["valley"], roll / 2, vmin=ice_w)  # butts the eave rows, no coplanar overlap
     add("iceWater", build_surface(ice, H["iceWater"]), layer_material("RT_iceWater", (0.025, 0.028, 0.035), roll - lap, 0.85), roll - lap, ice_rows + 1)
     und_h = 44 * IN
     add("underlayment", build_surface(full_parts(planes), H["underlayment"]), layer_material("RT_underlayment", (0.26, 0.28, 0.30), und_h, 0.7), und_h, rows(und_h))
@@ -990,7 +1037,7 @@ def build_layers(cfg):
         color = hex_rgb((cfg.get("palette") or ["#40464d"])[0])
         add("covering", build_surface(full_parts(planes), H["covering"]), layer_material("RT_covering", color, 1000.0, 0.35, 0.6), 1000.0, 1)
     else:
-        starter = strip_parts(planes, segs["eave"], 7 * IN) + strip_parts(planes, segs["rake"], 7 * IN)
+        starter = strip_parts(planes, segs["eave"], 7 * IN) + strip_parts(planes, segs["rake"], 7 * IN, vmin=7 * IN)
         add("starter", build_surface(starter, H["starter"]), layer_material("RT_starter", (0.03, 0.03, 0.03), 1000.0, 0.85), 1000.0, 1)
         spacing = 39.375 * IN / (6 if nails_per >= 6 else 4)
         add("nails", nail_buf(planes, exposure, spacing, H["nails"]), layer_material("RT_nails", (0.55, 0.56, 0.58), exposure, 0.35, 0.9), exposure, rows(exposure))
@@ -1004,22 +1051,19 @@ def build_layers(cfg):
             if ln > 0.9:
                 d = (l["B"] - l["A"]).normalized()
                 vent_lines.append({"A": l["A"] + d * 0.3, "B": l["B"] - d * 0.3, "planes": l["planes"]})
-        add("ridgeVent", cap_buf(vent_lines, 0.14, H["covering"] + 0.036), layer_material("RT_ridgeVent", (0.02, 0.02, 0.022), 1000.0, 0.7), 1000.0, 1)
+        add("ridgeVent", cap_buf(vent_lines, profile=VENT_PROFILE), layer_material("RT_ridgeVent", (0.02, 0.02, 0.022), 1000.0, 0.7), 1000.0, 1)
     cap = cap_buf(segs["hip"] + ([] if has_vent else segs["ridge"]))
     if has_vent:
-        extra = cap_buf(segs["ridge"], 0.17, H["covering"] + 0.044)
-        n0 = len(cap.verts)
-        cap.verts += extra.verts
-        cap.faces += [tuple(i + n0 for i in f) for f in extra.faces]
-        cap.uvs += extra.uvs
-        cap.up += extra.up
-        cap.along += extra.along
+        cap = merge_bufs(cap, cap_buf(segs["ridge"], profile=CAP_OVER_VENT))
     add("ridgeCap", cap, layer_material("RT_ridgeCap", row_h=1000.0, procedural={"exposure": 5 * IN, "palette": cfg.get("palette") or ["#3a3d42", "#2b2d30", "#4d5157"]}), 1000.0, 1)
     if any(any(k in s.name.lower() for k in ("roof", "shingle")) for s in srcs):
         for s in srcs:
             s.hide_render = True  # a dedicated roof object: the layer stack replaces it
     else:
         log("roof found by slope: house meshes stay visible. Name the roof object 'Roof' so it can be hidden.")
+    for lid in ("oldShingles", "oldFelt"):
+        if lid in made:
+            made[lid].hide_render = True  # finished roof: torn off (the build animation brings them back)
     area = sum(p.area for p in planes)
     measure = {k: sum((s["A"] - s["B"]).length for s in v) for k, v in segs.items()}
     log(f"layers: {len(made)} on {len(planes)} planes, {area / 9.290304:.1f} squares")

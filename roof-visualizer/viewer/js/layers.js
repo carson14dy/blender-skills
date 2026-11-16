@@ -14,7 +14,7 @@ import { inToM, fmtFtIn, easeInOutCubic, hexToRgb, rgbToHex } from './util.js';
 // little separation so nothing z-fights at house scale.
 const H = {
   deck: 0.0111, oldFelt: 0.0128, oldShingles: 0.0145, dripEave: 0.0122, iceWater: 0.0134, underlayment: 0.0146,
-  dripRake: 0.0158, starter: 0.0168, nails: 0.0222, covering: 0.0190, ridgeVent: 0.0235, cap: 0.0262,
+  dripRake: 0.0158, starter: 0.0172, nails: 0.0222, covering: 0.0190, ridgeVent: 0.0235, cap: 0.0262,
 };
 
 export const LAYER_INFO = {
@@ -33,6 +33,9 @@ export const LAYER_INFO = {
 };
 
 // hidden under a finished covering (the deck edge and drip edge stay visible at the eaves)
+// shingle-over ridge vent body, and the cap draped over it onto the shingles (same as roof_core.py)
+const VENT_H = 0.032;
+const CAP_OVER_VENT = [[0, H.covering + VENT_H + 0.009], [0.142, H.covering + VENT_H - 0.0015], [0.17, H.covering + 0.006]];
 const COVERED = new Set(['oldFelt', 'oldShingles', 'deckRepair', 'iceWater', 'underlayment', 'starter', 'nails']);
 
 export const STACK_ORDER = ['oldFelt', 'oldShingles', 'deck', 'deckRepair', 'dripEdge', 'iceWater', 'underlayment', 'starter', 'nails', 'covering', 'ridgeVent', 'ridgeCap'];
@@ -172,7 +175,7 @@ export class RoofLayers {
     // repair patches: new sheets that appear during the deck repair step
     const patches = deckPatches(this.planes, Math.max(0, Math.round(this.options.deckRepairSheets)));
     const pm = this._material(TX.osb({ fresh: true, seed: 6 }));
-    const pg = buildSurface(patches, { offset: H.deck + 0.0006 });
+    const pg = buildSurface(patches, { offset: H.deck + 0.0012 }); // > 1 mm: no z-fighting with the deck
     this._rec('deckRepair', new THREE.Mesh(pg, pm), { rowH: 1e3, keyMax: 1, info: { spec: `Allowance: ${patches.length} replacement sheet${patches.length === 1 ? '' : 's'}` } });
     this.layers.get('deckRepair').count = patches.length;
   }
@@ -205,7 +208,8 @@ export class RoofLayers {
     const valleys = this.options.valleys && this.segs.valley.length;
     if (valleys) {
       // valley sheets go on after the eave rows: give them the last key row
-      const vg = buildSurface(stripParts(this.planes, this.segs.valley, roll / 2), { offset: H.iceWater + 0.0003 });
+      // they start where the eave rows end (a butt joint), so no two sheets share a plane
+      const vg = buildSurface(stripParts(this.planes, this.segs.valley, roll / 2, { vMin: rows * rowH + lap }), { offset: H.iceWater });
       vg.attributes.aUp.array.fill(rows * rowH + 1e-3);
       geoms.push(vg);
     }
@@ -250,7 +254,7 @@ export class RoofLayers {
 
     // starter strip (not used under standing seam panels)
     if (!isMetal) {
-      const starterParts = [...eaveParts(this.planes, this.segs, inToM(7)), ...stripParts(this.planes, this.segs.rake, inToM(7))];
+      const starterParts = [...eaveParts(this.planes, this.segs, inToM(7)), ...stripParts(this.planes, this.segs.rake, inToM(7), { vMin: inToM(7) })];
       const g = buildSurface(starterParts, { offset: H.starter });
       this._rec('starter', new THREE.Mesh(g, this._material(TX.starterStrip())), { rowH: 1e3, keyMax: 1 });
     }
@@ -280,7 +284,7 @@ export class RoofLayers {
     // ridge vent (ridges only) and hip & ridge caps
     const hasVent = this.options.ridgeVent !== false && this.segs.ridge.length;
     if (hasVent) {
-      const rv = ridgeVentGeometry(this.segs.ridge, { off: H.covering + 0.004 });
+      const rv = ridgeVentGeometry(this.segs.ridge, { off: H.covering, height: VENT_H }); // sides stand on the shingles: no gap under the vent
       const grp = new THREE.Group();
       const vm = this._material(null, { color: '#1d1f22', rough: 0.7 });
       grp.add(new THREE.Mesh(rv.top, vm), new THREE.Mesh(rv.skirt, this._material(null, { color: '#2a2c2f', rough: 0.9 })));
@@ -293,7 +297,7 @@ export class RoofLayers {
     const hips = this.segs.hip.length > 0, ridges = this.segs.ridge.length > 0;
     if (hips) grp.add(new THREE.Mesh(capGeometry(this.segs.hip, { off: H.cap }), capMat));
     if (ridges) {
-      const rg = capGeometry(this.segs.ridge, hasVent ? { off: H.covering + 0.004 + 0.032 + 0.004, width: 0.17 } : { off: H.cap });
+      const rg = capGeometry(this.segs.ridge, hasVent ? { profile: CAP_OVER_VENT } : { off: H.cap });
       if (hips) rg.attributes.aUp.array.fill(1);
       grp.add(new THREE.Mesh(rg, capMat));
     }
