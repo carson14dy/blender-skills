@@ -130,7 +130,7 @@ def build_roof_json(model, footprint=None, solid=None, solid_info=None, address=
         "planes": planes, "edges": edges,
         "assumptions": {"overhangM": {"value": DEFAULT_OVERHANG_M,
                                       "provenance": _prov("default", "-", None, "wall line is not in the city data; typed default 12 in. Not added to any area or length here: "
-                                                           "the city outline already is the roof edge", "assumed")}},
+                                                           "the city outline already is the roof edge. Used only for summary.areaRange.underOverhang", "assumed")}},
         "checks": dict(checks or {}, lidar=lidar, solid=dict(solid_info or {}, **{k: _r(v) if isinstance(v, float) else v for k, v in model.stats.items()})),
         "flags": flags or [],
         "attribution": [ATTRIBUTION_CITY] + ([ATTRIBUTION_LIDAR] if lidar else []),
@@ -142,7 +142,7 @@ def build_roof_json(model, footprint=None, solid=None, solid_info=None, address=
 def area_range(model):
     """How far the sloped area may be off, from the two things that set it: the outline and the pitch.
 
-    Outline: every open edge (eave or rake) may sit OUTLINE_TOLERANCE_M further in or out, which changes
+    Outline: every open edge (eave, rake or the free high edge of a single-slope plane) may sit OUTLINE_TOLERANCE_M further in or out, which changes
     the plan area by that distance times the length of those edges seen from above. Pitch: a plane's area
     changes by tan(pitch) times the pitch error. The two are combined as independent errors. This is a
     likely range from public data, not a guarantee, and it does not cover a roof that was changed or a
@@ -151,7 +151,7 @@ def area_range(model):
     plan, sloped = model.plan_area, model.sloped_area
     if plan <= 0 or sloped <= 0:
         return None
-    open_m = sum(math.hypot(e["b"][0] - e["a"][0], e["b"][1] - e["a"][1]) for e in model.edges if e["type"] in ("eave", "rake"))
+    open_m = sum(math.hypot(e["b"][0] - e["a"][0], e["b"][1] - e["a"][1]) for e in model.edges if e["type"] in ("eave", "rake", "top"))   # top: a free high edge is outline too (round 4)
     outline_pct = 100.0 * open_m * OUTLINE_TOLERANCE_M / plan
     pitch_pct = 100.0 * sum(p["areaM2"] * math.tan(math.radians(p["pitchDeg"])) * math.radians(
         PITCH_TOLERANCE_LIDAR_DEG if p.get("pitchSource") == "lidar" else PITCH_TOLERANCE_CITY_DEG) for p in model.planes) / sloped
@@ -161,8 +161,35 @@ def area_range(model):
             "lowFt2": _r(ft2 * (1 - pct / 100), 0), "highFt2": _r(ft2 * (1 + pct / 100), 0),
             "outlinePct": _r(outline_pct, 1), "pitchPct": _r(pitch_pct, 1),
             "outlineToleranceM": OUTLINE_TOLERANCE_M, "openEdgePlanM": _r(open_m, 1),
+            "underOverhang": under_overhang(model),
             "note": "likely range from the outline (known to about 4 in) and the pitch; not a guarantee, and it does not "
-                    "cover a changed roof or a roof part the model misses"}
+                    "cover a changed roof, a roof part the model misses, or the strip in underOverhang"}
+
+
+def under_overhang(model):
+    """Lower roof that lies hidden under the overhang of an upper roof, which no view from above can count.
+
+    The city planes never overlap seen from above: their plan areas add up to the footprint. On a real house
+    a roof that meets a wall runs on under the eave or rake of the roof above that wall, by the width of that
+    overhang. So along every roof-to-wall joint a strip of real roof is missing from the area, always in the
+    same direction. The width is not in any free data; the typed default (12 in, `assumed`) is used. Joints the
+    model most likely invented (`lowSide`, see the eave-under-wall flag) are left out. Review round 4: median
+    1.3% of the sloped area on 59 houses, none on a plain gable or hip, 5% on the worst. It is reported beside
+    the range and is not added to any number.
+    """
+    joint_m = strip_m2 = 0.0
+    for e in model.edges:
+        if e["type"] not in ("step_flashing", "headwall") or e.get("lowSide"):
+            continue
+        run = math.hypot(e["b"][0] - e["a"][0], e["b"][1] - e["a"][1])
+        joint_m += run
+        strip_m2 += run * DEFAULT_OVERHANG_M / max(math.cos(math.radians(model.planes[e["planes"][0]]["pitchDeg"])), 0.1)
+    sloped = model.sloped_area
+    return {"jointFt": _r(m_to_ft(joint_m), 0), "assumedOverhangIn": _r(DEFAULT_OVERHANG_M / 0.0254, 0),
+            "areaFt2": _r(m2_to_ft2(strip_m2), 0), "pct": _r(100.0 * strip_m2 / sloped if sloped > 0 else 0.0, 1),
+            "confidence": "assumed",
+            "note": "not included in any area: lower roof under the overhang of an upper roof along the roof-to-wall "
+                    "joints, if that overhang is as wide as assumed. Measure one such overhang on site"}
 
 
 def _date(ms):
@@ -281,6 +308,11 @@ def takeoff_markdown(doc):
     if ar:
         L.append("| Likely range of the sloped area | %s to %s sq ft (plus or minus %.1f%%) |"
                  % ("{:,.0f}".format(ar["lowFt2"]), "{:,.0f}".format(ar["highFt2"]), ar["plusMinusPct"]))
+        uo = ar.get("underOverhang") or {}
+        if (uo.get("areaFt2") or 0) >= 5:
+            L.append("| Not counted: roof hidden under an upper roof's overhang | up to about %s sq ft more (%.1f%%), if the overhang "
+                     "along the %.0f ft of roof-to-wall joints is %.0f in (assumed) |"
+                     % ("{:,.0f}".format(uo["areaFt2"]), uo["pct"], uo["jointFt"], uo["assumedOverhangIn"]))
     L.append("| Plan (flat) area | %s sq ft |" % "{:,.0f}".format(s["planAreaFt2"]))
     L.append("| Predominant pitch | **%s** (%.1f deg) |" % (pitch_label(s["predominantPitchDeg"]), s["predominantPitchDeg"]))
     L.append("| Roof planes | %d |" % s["planeCount"])

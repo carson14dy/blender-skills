@@ -1,6 +1,6 @@
 # Review benchmark
 
-Use these 13 buildings and 1 missing-data point for every review round, and do not change the list. Review round 2 added building 14, because no building covered a roof changed under a permit after the capture. Review round 3 added none. A round reports its change level from the difference between two runs of this benchmark.
+Use these 13 buildings and 1 missing-data point for every review round, and do not change the list. Review round 2 added building 14, because no building covered a roof changed under a permit after the capture. Review rounds 3 and 4 added none. A round reports its change level from the difference between two runs of this benchmark.
 
 Buildings are listed by city footprint id only. Addresses are kept out of this file on purpose.
 
@@ -102,6 +102,31 @@ Three houses changed, each because one large plane now takes a lidar pitch that 
 - The range on a site-check building is printed too, but it means nothing there: the numbers must not be used.
 - Both runs read the same cached city answers and the same lidar nodes. The point files were rebuilt from those nodes, because round 3 also stores the return count of each point.
 
+### Round 4 (2026-11-16)
+
+No area and no pitch changed on any building: sloped area 0.00%, every main-plane pitch 0.00 in 12. Line classes changed on three buildings, all of them site checks, because rakes on nearly flat planes had been counted as eaves and plane tops. No building changed between estimate and site check. Fewer flags are `review`, and every roof now says how much roof may be hidden under an upper roof's overhang.
+
+| Footprint | Area | Result | Line totals that changed (ft) | Likely range | Not counted under overhangs (12 in assumed) | Flags that changed |
+|---|---|---|---|---|---|---|
+| 177261 | 1,220.3 | Estimate | none | 1,173 to 1,268 (3.9%) | 0 | none |
+| 218452 | 1,540.3 | Estimate | none | 1,478 to 1,603 (4.1%) | 28 sq ft (1.8%) | `roof-step` is info |
+| 175156 | 1,101.9 | Estimate | none | 1,053 to 1,150 (4.4%) | 0 | `regularize` is info |
+| 235245 | 3,284.1 | Estimate | none | 3,176 to 3,392 (3.3%) | 30 sq ft (0.9%) | `roof-step` is info |
+| 235246 | 4,796.9 | Estimate | none | 4,687 to 4,907 (2.3%) | 0 | none |
+| 235247 | 3,190.1 | Estimate | none | 3,062 to 3,318 (4.0%) | 73 sq ft (2.3%) | `skewed-edge` is info |
+| 235248 | 3,595.9 | Estimate | none | 3,466 to 3,725 (3.6%) | 76 sq ft (2.1%) | `roof-step` is info |
+| 176864 | 3,713.4 | Estimate | none | 3,606 to 3,821 (2.9%) | 0 | `skewed-edge` is info |
+| 204065 | 1,767.4 | Site check | eave 77.6 to 59.7, rake 117.4 to 135.4, step flashing 74.7 to 99.6, headwall 72.6 to 47.7 | 1,688 to 1,847 (4.5%) | 124 sq ft (7.0%) | `skewed-edge` is info |
+| 250390 | 14,985.8 | Site check | eave 1,009.2 to 983.2, rake 80.3 to 106.3, step flashing 80.1 to 106.5, headwall 509.0 to 482.6 | 14,554 to 15,417 (2.9%) | 377 sq ft (2.5%) | none |
+| 363469 | 4,586.8 | Site check | none | 4,413 to 4,760 (3.8%) | 155 sq ft (3.4%) | `roof-step` is info |
+| 363456 | 3,685.6 | Site check | none | 3,524 to 3,847 (4.4%) | 77 sq ft (2.1%) | none |
+| 199138 | 2,308.3 | Site check | eave 166.3 to 138.0, rake 78.3 to 142.7, step flashing 9.7 to 18.2, headwall 46.1 to 37.7, plane tops 36.0 to 0 | 2,213 to 2,404 (4.1%) | 56 sq ft (2.4%) | `roof-step` dropped (it was false) |
+
+- The `lidar-pitch` info flag is gone from all ten buildings that had it.
+- The range grew by 0.1 point on four buildings because free plane tops now count as outline, and by 0.5 on the three buildings whose edges were re-classed.
+- The studio check passes on 12 of 13 buildings against `rooftec-lab` at commit `39fe9e1` (same plane count, area within 0.14%, City Hall 0.58%). It fails on 204065 as in round 1.
+- Both runs read the same cached city answers and lidar points, offline. The baseline was tag `roof-measure-v4`.
+
 ### Line totals in feet, round 1 (v1 in brackets where it changed by more than 1 ft)
 
 | Footprint | Ridge | Hip | Valley | Eave | Rake | Step flashing | Headwall | High edge |
@@ -130,3 +155,4 @@ Three houses changed, each because one large plane now takes a lidar pitch that 
 3. On buildings 1 to 8, every main plane with a precise lidar fit shows a pitch within 0.25 degree of that lidar pitch.
 4. All unit tests pass with no network.
 5. Every roof has `summary.areaRange`, and the GLB holds the same sloped area as `roof.json` within 0.01% on buildings 1 to 8.
+6. On buildings 1 to 8 the studio check passes (same plane count, area within 1%).

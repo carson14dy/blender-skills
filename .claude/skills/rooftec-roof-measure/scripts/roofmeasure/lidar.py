@@ -427,7 +427,10 @@ def _confirm_by_sibling(rows, area_m2):
     a small standard error whose pitch equals the precise pitch of another main plane of the same house
     within SIBLING_DEG was not pulled anywhere: houses are framed at one or two pitches. Review round 3:
     4 of 4 such planes on 38 houses moved to a whole-number pitch (city 0.29 in 12 away, lidar 0.09).
-    Only planes that already agree with the city within the limit are touched, so no status changes.
+    Only planes that already agree with the city within the limit are touched. "Within the limit" allows an
+    imprecise fit twice its standard error, so the lidar pitch can be up to 2 degrees from the city pitch.
+    Review round 4: from AGREE_DEG on, the plane is reported as an override, the same as a precise fit that
+    far from the city would be (2 of 11 such planes on 64 houses; one went from 16.3 to 18.1 degrees with no word).
     """
     sibs = [r for r in rows if r.get("precise") and r["status"] in ("agree", "override")
             and area_m2.get(r["plane"], 0) >= SIBLING_MIN_AREA_M2]
@@ -440,8 +443,13 @@ def _confirm_by_sibling(rows, area_m2):
         if near and PREFER_LIDAR:
             s = min(near, key=lambda q: abs(q["lidarPitchDeg"] - r["lidarPitchDeg"]))
             r["action"], r["siblingPlane"] = "use_lidar", s["plane"]
-            r["note"] = ("city and lidar agree within %.1f deg; the lidar pitch is used because plane %d has the same "
-                         "pitch within %.1f deg" % (AGREE_DEG, s["plane"], SIBLING_DEG))
+            if abs(r["pitchDiffDeg"]) > AGREE_DEG:
+                r["status"] = "override"
+                r["note"] = ("pitch differs %.1f deg; the lidar pitch is used because plane %d has the same pitch within "
+                             "%.1f deg; review" % (abs(r["pitchDiffDeg"]), s["plane"], SIBLING_DEG))
+            else:
+                r["note"] = ("city and lidar agree within %.1f deg; the lidar pitch is used because plane %d has the same "
+                             "pitch within %.1f deg" % (AGREE_DEG, s["plane"], SIBLING_DEG))
 
 
 def _registration(rows):

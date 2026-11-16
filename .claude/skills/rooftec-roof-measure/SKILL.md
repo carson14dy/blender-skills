@@ -28,7 +28,7 @@ Keep `--out` in a git-ignored folder, because the folder names and files can ide
 
 1. **Measure.** Run `measure` with `--lidar`. A first run takes 8 to 25 seconds and makes about 10 to 20 small requests; a repeat run takes under 1 second.
 2. **Read the flags before the numbers.** Each flag has a severity: `site-check` means do not use the numbers, `review` means look at that item, `info` is context. The flag list is in `references/accuracy.md`. In `roof.json`, `summary.siteCheckRequired` is `true` when any `site-check` flag is set, and the report then opens with "Status: SITE CHECK REQUIRED".
-3. **Report it as an estimate, with its range.** Quote the status line and the "likely range" line from `takeoff.md` with the numbers. The range is 2 to 5% of the area on most houses and comes mainly from the outline. Every value is `estimate` until the accuracy study passes (see the decision rules below).
+3. **Report it as an estimate, with its range.** Quote the status line and the "likely range" line from `takeoff.md` with the numbers. The range is 2 to 5% of the area on most houses and comes mainly from the outline. If the report has a "Not counted" line, quote it too: roof hidden under an upper roof's overhang is in no number (1.3% of the area on the median house, over 2% on one house in three). Every value is `estimate` until the accuracy study passes (see the decision rules below).
 4. **Hand it to the studio.** Copy `roof.glb` into `roof-visualizer/viewer/` on branch `rooftec-lab` and open `?glb=roof.glb`, or load the file in the Project tab. For Blender, import the GLB; `roof-blender` picks up the object named `Roof`.
 5. **Check the hand-off (1 minute).** Run `node scripts/studio_check.mjs --studio <path to roof-visualizer> --glb <roof.glb> --roof <roof.json>`. It runs the studio's own import code and passes when the studio finds the same plane count and the same area within 1%. It needs `npm install` in the studio folder once.
 
@@ -54,7 +54,7 @@ Today everything this skill measures is `estimate`, because the accuracy study (
 **When to send someone to verify on site.**
 
 1. Always before a signed contract: confirm one eave length and one pitch, until the study has passed and 10 jobs are logged.
-2. Whenever a flag has severity `site-check`: lidar disagrees with a plane and cannot settle it, the roof plan area does not match the footprint, the building is newer than the data, or a building permit since January 2023 says the roof may have changed.
+2. Whenever a flag has severity `site-check`: lidar disagrees with a main plane and cannot settle it, the roof plan area does not match the footprint, the building is newer than the data, or a building permit since January 2023 says the roof may have changed. About 1 house in 7 picked at random is a site check.
 3. Whenever the roof was extended or re-framed after June 2023 without a permit, which the data cannot see.
 4. For flashing details the data never shows: chimneys, pipe boots, skylights and small dormers.
 
@@ -63,10 +63,11 @@ Today everything this skill measures is `estimate`, because the accuracy study (
 1. A precise lidar fit supplies the pitch. Precise means 80% or more of the points lie on one plane and the pitch standard error is 0.25 degree or less. If the city pitch was within 1.5 degrees, nothing more happens; if it was 1.5 to 4 degrees off, the plane is flagged for review.
 2. An imprecise fit does not supply the pitch, with one exception: a sharp fit (standard error 0.25 degree or less) that misses the 80% rule and has the same pitch, within 0.5 degree, as a precise main plane of the same house. Otherwise the city pitch is kept if lidar agrees with it, and the plane needs a site check if it does not.
 3. Beyond 4 degrees, or with no single lidar plane, the plane needs a site check.
+4. One exception keeps a small plane from blocking a whole house. When the only planes lidar cannot settle are under 215 sq ft each, 4 degrees or less from the city pitch and 10% of the roof or less together, the house stays an estimate with a `review` flag that names the plane. Either pitch moves the total area by under 0.5%.
 
-The city pitch reads about 0.13 in 12 lower than lidar on average, and lidar lands on whole-number pitches, which is why lidar wins. Review round 2 confirmed this on 30 more houses and ruled out snow on the flight days. It is still indirect evidence until a roof is taped. `references/accuracy.md` has the thresholds, the evidence and the error budget.
+The city pitch reads about 0.13 in 12 lower than lidar on average, and lidar lands on whole-number pitches, which is why lidar wins. Review round 2 confirmed this on 30 more houses and ruled out snow on the flight days. Review round 4 confirmed the "same pitch as another plane" exception on 20 houses no earlier round had used. It is still indirect evidence until a roof is taped. `references/accuracy.md` has the thresholds, the evidence and the error budget.
 
-The outline matters more than the pitch. Lidar confirms the city roof outline only to about 4 in, and review round 3 found nothing free that does better. That is 2 to 5% of the area, and the tool prints it for each house as `summary.areaRange`. The one site measurement that helps most is a taped eave-to-eave width at the shingle edge.
+The outline matters more than the pitch. Lidar confirms the city roof outline only to about 4 in, and review round 3 found nothing free that does better. That is 2 to 5% of the area, and the tool prints it for each house as `summary.areaRange`. The one site measurement that helps most is a taped eave-to-eave width at the shingle edge. The second is the overhang at one roof-to-wall joint, which sizes the "Not counted" strip.
 
 ## License and attribution rules
 
@@ -81,7 +82,8 @@ The outline matters more than the pitch. Lidar confirms the city roof outline on
 - It does not build tier C (outline plus typed pitch) or tier D (drone or phone capture), and it does not run `roofer`.
 - It checks building permits only for work that changes the roof shape, and asks the city again when its cached answer is older than 30 days. Repair and remodel permits are shown as information. An addition built after June 2023 without a permit is invisible.
 - It does not measure a dormer or raised roof part the city model lacks. Lidar return counts tell such a surface (`lidar-surface`, review) from a tree over the roof (`tree-over-roof`, info), but a person must still look at a photo to size it.
-- It does not decide whether a slanted open edge is an eave or a rake. Those edges are counted as rake and raise `skewed-edge`.
+- It does not decide whether a slanted open edge is an eave or a rake. Those edges are counted as rake and raise `skewed-edge` (review from 30 ft, info from 10 ft).
+- It does not count the lower roof that runs under the overhang of an upper roof. It reports how much that would be at an assumed 12 in overhang and adds it to no number.
 - It does not clip faces that lie partly under another face. Such buildings get a `plan-area-mismatch` site check instead of a number.
 - The studio has no wall-flashing class yet, so the studio's own eave and rake totals differ from `roof.json` on houses with roof-to-wall joints. Treat `roof.json` as the reference; `patches/README.md` explains the one-line studio patch that closes most of the gap.
 
@@ -96,4 +98,4 @@ The outline matters more than the pitch. Lidar confirms the city roof outline on
 - `references/implementation-plan.md`: read to choose the next piece of work; it re-sequences plan experiments 024 to 034.
 - `references/licenses.md`: read before adding a dependency or a data source.
 
-To test the skill offline, run `python3 -m unittest discover -s tests` from the skill folder (69 tests, under 2 seconds).
+To test the skill offline, run `python3 -m unittest discover -s tests` from the skill folder (75 tests, under 2 seconds).

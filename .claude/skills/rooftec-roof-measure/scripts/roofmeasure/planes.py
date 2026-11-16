@@ -23,6 +23,7 @@ MERGE_DEG = 3.0          # roof faces closer than this in angle, and touching, a
 MERGE_OFFSET_M = 0.10
 HORIZONTAL_DEG = 3.0     # an edge flatter than this is "horizontal" (ridge, eave)
 LEVEL_PLAN_DEG = 10.0    # ... or one that runs within this angle of its plane's contour line, seen from above
+UPDIP_PLAN_DEG = 45.0    # an open edge further than this from the contour line runs up the slope: never "level"
 SEAM_SIN = 0.02          # roof-roof folds flatter than about 1 degree are not an edge
 REGULARIZE_ITERS = 40
 REGULARIZE_WARN_SHIFT_M = 0.30
@@ -455,6 +456,7 @@ def _solve_and_measure(m):
 
     tan_h = math.tan(math.radians(HORIZONTAL_DEG))
     sin_level = math.sin(math.radians(LEVEL_PLAN_DEG))
+    sin_updip = math.sin(math.radians(UPDIP_PLAN_DEG))
     atoms = []
     for (va, vb), lst in edge_faces.items():
         rf = [x for x in lst if faces[x[0]]["kind"] == "roof"]
@@ -482,6 +484,14 @@ def _solve_and_measure(m):
                 h = math.hypot(nq[0], nq[1])
                 if h > 0.02 and abs(vec[0] * nq[0] + vec[1] * nq[1]) / (run * h) <= sin_level:
                     horizontal = True
+        elif len(pl) == 1 and run > 1e-6:
+            # On a plane flatter than about 0.9 in 12 every edge rises less than HORIZONTAL_DEG, so the test
+            # above would call a rake an eave or a plane top (review round 4: 36 ft on one house). An open
+            # edge that runs more up the slope than along it is not level, whatever its rise.
+            nq = m.planes[pl[0]]["normal"]
+            h = math.hypot(nq[0], nq[1])
+            if h > 0.02 and abs(vec[0] * nq[0] + vec[1] * nq[1]) / (run * h) > sin_updip:
+                horizontal = False
         if len(pl) >= 2:
             (fa, a1, b1), (fb, a2, b2) = by_plane[pl[0]][0], by_plane[pl[1]][0]
             nA, nB = m.planes[pl[0]]["normal"], m.planes[pl[1]]["normal"]

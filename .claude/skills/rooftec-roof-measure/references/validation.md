@@ -92,6 +92,7 @@ The details are in the research note `review-round-3.md`. The range the tool pri
 `scripts/studio_check.mjs` loads `roof.glb` with the studio's own `GLTFLoader` path, `extractRoofPlanes()`, `analyzeRoof()` and `measureRoof()` from branch `rooftec-lab` (three 0.186.1), headless in Node.
 
 - On 11 of the 12 benchmark buildings the unmodified studio used the mesh named `Roof`, found the same number of planes as `roof.json`, and measured the same area within 0.15% (0.6% on City Hall). This now includes planes whose pitch came from lidar, because the GLB is re-tilted with the numbers.
+- Review round 4 ran it again on 2026-11-16 against `rooftec-lab` at commit `39fe9e1`, whose `roof-geometry.js` has changed since round 1. Result: 12 of 13 benchmark buildings pass (building 14 included), with the same plane count and the area within 0.14% (0.58% on City Hall). Three houses measured from a cold cache and three held-out houses pass too.
 - It fails on 204065, where the studio finds 8 of 9 planes. That building is `site-check`.
 - The studio's own ridge, hip and valley totals match `roof.json` on four buildings only (the three simplest roofs and City Hall). It treats any edge that slopes more than 0.6 degrees as not level, and it has no wall-flashing class. The one-line patch in `patches/` closes most of the gap; it was tested in v1 and not re-tested in review round 1.
 
@@ -99,7 +100,7 @@ The check was not run in a real browser. That takes about 5 minutes with `?glb=r
 
 ## Unit tests
 
-`python3 -m unittest discover -s tests` runs 69 tests in under 2 seconds with no network. They cover the decoder, synthetic gable, hip, lean-to and butterfly roofs with hand-computed answers, the 235245 acceptance numbers, both map conversions against PROJ reference values, the lidar plane fit, its standard error and the reconcile rule (on synthetic points and on 5,308 real lidar points), the re-tilt, the three output files, the offline cache and the command line. Eight of them are regression tests for the bugs found in review round 1, nine cover the fixes and new checks of review round 2 (points off the roof surface, permits, the site-check status, and a download that is cut off), and nine cover review round 3 (tree or dormer, a pitch confirmed by another plane, the area range, slanted edges, a plane that faces another way in lidar, the permit cache, repair permits, and two report fixes).
+`python3 -m unittest discover -s tests` runs 75 tests in under 2 seconds with no network. They cover the decoder, synthetic gable, hip, lean-to and butterfly roofs with hand-computed answers, the 235245 acceptance numbers, both map conversions against PROJ reference values, the lidar plane fit, its standard error and the reconcile rule (on synthetic points and on 5,308 real lidar points), the re-tilt, the three output files, the offline cache and the command line. Eight of them are regression tests for the bugs found in review round 1, nine cover the fixes and new checks of review round 2 (points off the roof surface, permits, the site-check status, and a download that is cut off), nine cover review round 3 (tree or dormer, a pitch confirmed by another plane, the area range, slanted edges, a plane that faces another way in lidar, the permit cache, repair permits, and two report fixes), and six cover review round 4 (rakes of a nearly flat plane, a confirmed pitch far from the city pitch, a small plane lidar cannot settle, flag severities, the strip under an overhang, and a solid with no roof faces).
 
 ## Timing and load
 
@@ -108,7 +109,8 @@ A first run with lidar took 8 seconds for house 235245 and made 21 requests: 2 t
 ## Not yet validated
 
 1. No comparison with ground truth. This is the accuracy study, step 1 in `references/implementation-plan.md`. The rule "lidar supplies the pitch" depends on it most.
-2. Only 13 benchmark buildings, and 4 of them are in one neighbourhood. The 30 extra houses of review round 2 were used for the pitch rule only; nobody looked at their line totals.
-3. The plan area. Lidar confirms the outline only to 4 in, which is 2.3 to 5.4% of the area depending on the house (see above). Whether the city line follows the shingle edge or the gutter lip is not known.
-4. The `lidar-surface` thresholds (10% of points 0.3 m off the surface, 25% at ground level) were set on 43 houses. Round 3 checked the tree calls against photos; a 0.3 m photo cannot show a dormer, so the "solid surface" calls rest on lidar alone.
-5. The reconcile thresholds were set on this benchmark and are not tuned against truth.
+2. Only 13 benchmark buildings, and 4 of them are in one neighbourhood. The 30 extra houses of review round 2 and the 20 of review round 4 were used for the pitch rules and the flag counts; nobody compared their line totals with a photo or a tape.
+3. The strip of lower roof under an upper roof's overhang (review round 4). It follows from the geometry, and its size depends on an overhang nobody has measured.
+4. The plan area. Lidar confirms the outline only to 4 in, which is 2.3 to 5.4% of the area depending on the house (see above). Whether the city line follows the shingle edge or the gutter lip is not known.
+5. The `lidar-surface` thresholds (10% of points 0.3 m off the surface, 25% at ground level) were set on 43 houses. Round 3 checked the tree calls against photos; a 0.3 m photo cannot show a dormer, so the "solid surface" calls rest on lidar alone.
+6. The reconcile thresholds were set on this benchmark and are not tuned against truth.

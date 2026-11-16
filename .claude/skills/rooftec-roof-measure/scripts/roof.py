@@ -124,6 +124,10 @@ def main(argv=None):
     if s.get("areaRange"):
         print("Likely range of the sloped area: %.0f to %.0f sq ft (plus or minus %.1f%%; the outline is known to about 4 in)"
               % (s["areaRange"]["lowFt2"], s["areaRange"]["highFt2"], s["areaRange"]["plusMinusPct"]))
+        uo = s["areaRange"].get("underOverhang") or {}
+        if (uo.get("areaFt2") or 0) >= 5:
+            print("Not counted: up to about %.0f sq ft more (%.1f%%) hidden under upper-roof overhangs along %.0f ft of roof-to-wall "
+                  "joints, if that overhang is %.0f in (assumed)" % (uo["areaFt2"], uo["pct"], uo["jointFt"], uo["assumedOverhangIn"]))
     print("Lines (ft): " + ", ".join("%s %.1f" % (t, v["lengthFt"]) for t, v in s["edgeTotals"].items() if v["count"]))
     lid = doc["checks"].get("lidar")
     if lid:

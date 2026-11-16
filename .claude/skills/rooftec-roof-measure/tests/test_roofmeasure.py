@@ -517,7 +517,7 @@ class Round3(unittest.TestCase):
         # (0.2 in 12 low) was kept because fewer than 80% of the points lie on one plane.
         def step(xy, z, south, ret, rng):
             return np.where(south & (xy[:, 0] > 8.6), z - 0.4, z), ret
-        m, chk, side = self._gable(city12=5.6, edit=step)
+        m, chk, side = self._gable(city12=5.7, edit=step)
         s, n = side["south"], side["north"]
         self.assertFalse(s["precise"])
         self.assertLessEqual(s["pitchSeDeg"], lidar.PRECISE_SE_DEG)
@@ -560,7 +560,7 @@ class Round3(unittest.TestCase):
         self.assertAlmostEqual(pipeline.skewed_edges_m(m), math.sqrt(64 + 9 + 1.5 ** 2), delta=0.01)
         _, flags, _ = pipeline.assess(m, None, {}, {"by": "files"}, None, permits=[])
         f = [x for x in flags if x["code"] == "skewed-edge"]
-        self.assertEqual([x["severity"] for x in f], ["review"])
+        self.assertEqual([x["severity"] for x in f], ["info"])      # round 4: under 30 ft it is a note, not a review item
         self.assertIn("28 ft", f[0]["message"])
         gable, _ = synthetic.gable()
         self.assertEqual(pipeline.skewed_edges_m(model_of(gable)), 0.0)   # true rakes run straight up the slope
@@ -883,6 +883,145 @@ class Lookup(unittest.TestCase):
             cityapi.pick_solid({"features": []}, fp)
         self.assertIn("tier C", str(cm.exception))
 
+class Round4(unittest.TestCase):
+    """Review round 4: edges of nearly flat planes, how loud each flag is, and a small plane lidar cannot settle."""
+
+    def _assess(self, m, lidar_rows=None, **kw):
+        lid = None
+        if lidar_rows is not None:
+            lid = {"planes": lidar_rows, "registration": None,
+                   "summary": {"planesChecked": len(lidar_rows), "siteCheck": 0, "override": 0, "pitchFromLidar": 0}}
+        _, flags, site = pipeline.assess(m, None, kw.get("solid_info") or {}, {"by": "files"}, lid, permits=[])
+        return {f["code"]: f for f in flags}, site
+
+    def test_rakes_of_a_nearly_flat_roof_stay_rakes(self):
+        # Held-out house 196729 and benchmark 199138: on a plane of 0.3 to 0.9 in 12 every edge rises less than
+        # 3 degrees, so the rakes were counted as eave on one side and as "plane top" on the other, which also
+        # raised a false roof-step flag (36 ft on 199138).
+        for pitch in (0.5, 0.85, 1.0, 2.0):
+            faces, exp = synthetic.gable(pitch12=pitch)
+            m = model_of(faces)
+            t = totals(m)
+            for key in ("ridge", "eave", "rake"):
+                self.assertAlmostEqual(t[key], exp[key], delta=0.01, msg="%s at %s in 12" % (key, pitch))
+            self.assertEqual(t["top"], 0.0)
+        shed = [[(0, 0, 3.0), (10, 0, 3.0), (10, 6, 3.3), (0, 6, 3.3)]]         # one plane at 0.6 in 12
+        t = totals(model_of(shed))
+        self.assertAlmostEqual(t["eave"], 10.0, delta=0.01)
+        self.assertAlmostEqual(t["top"], 10.0, delta=0.01)
+        self.assertAlmostEqual(t["rake"], 2 * math.hypot(6, 0.3), delta=0.01)
+        flat = [[(0, 0, 3), (10, 0, 3), (10, 6, 3), (0, 6, 3)],                 # dead flat: every edge is an eave, as before
+                [(0, 0, 0), (10, 0, 0), (10, 0, 3), (0, 0, 3)], [(10, 0, 0), (10, 6, 0), (10, 6, 3), (10, 0, 3)],
+                [(10, 6, 0), (0, 6, 0), (0, 6, 3), (10, 6, 3)], [(0, 6, 0), (0, 0, 0), (0, 0, 3), (0, 6, 3)]]
+        self.assertAlmostEqual(totals(model_of(flat))["eave"], 32.0, delta=0.01)
+
+    def test_a_confirmed_pitch_far_from_the_city_pitch_is_an_override(self):
+        # Held-out house 247949 plane 4: 16.3 degrees in the city model, 18.1 in lidar, used with status "agree"
+        # and no flag, although a precise fit that far off is reported as an override for review.
+        def step(xy, z, south, ret, rng):
+            return np.where(south & (xy[:, 0] > 8.6), z - 0.4, z), ret
+        r3 = Round3()
+        m, chk, side = r3._gable(city12=5.6, edit=step)         # 25.0 degrees against 26.6: just over the 1.5 limit
+        s = side["south"]
+        self.assertFalse(s["precise"])
+        self.assertGreater(abs(s["pitchDiffDeg"]), lidar.AGREE_DEG)
+        self.assertEqual((s["status"], s["action"], s["siblingPlane"]), ("override", "use_lidar", side["north"]["plane"]))
+        self.assertEqual(chk["summary"]["override"], 2)        # the north plane is a precise fit 1.6 degrees off: also one
+        _, flags, _ = pipeline.assess(m, None, {}, {"by": "files"}, chk, permits=[])
+        f = [x for x in flags if x["code"] == "lidar-override"]
+        self.assertEqual([x["severity"] for x in f], ["review"])
+        self.assertIn("plane %d" % s["plane"], f[0]["message"])
+        self.assertNotIn("lidar-pitch", {x["code"] for x in flags})    # fired on every house and said nothing to do
+
+    def test_small_plane_with_an_unsettled_pitch_is_review_not_site_check(self):
+        # Held-out house 252332: one 188 sq ft plane, 55 of 55 lidar points on one surface 2.3 degrees off the
+        # city pitch, standard error 0.251 against a limit of 0.25, and the whole house became "site check".
+        faces, _ = synthetic.gable(L=12, W=10, pitch12=6)
+        porch = [[(12, 2, 2.5), (15, 2, 2.5), (15, 6, 4.0), (12, 6, 4.0)]]      # 3 x 4 m lean-to: 12.8 m2 sloped
+        m = model_of(faces + porch)
+        small = min(m.planes, key=lambda p: p["areaM2"])
+        big = max(m.planes, key=lambda p: p["areaM2"])
+        self.assertLess(small["areaM2"], pipeline.SMALL_PLANE_M2)
+
+        def row(P, **kw):
+            return dict({"plane": P["id"], "status": "site_check", "action": "keep_city", "points": 55, "inliers": 55,
+                         "pitchDiffDeg": 2.3, "pitchSeDeg": 0.251}, **kw)
+        flags, site = self._assess(m, [row(small)])
+        self.assertEqual(flags["lidar-disagrees"]["severity"], "review")
+        self.assertIn("plane %d" % small["id"], flags["lidar-disagrees"]["message"])
+        self.assertNotIn("Site check required", site)
+        for bad in (row(big),                                  # a main plane
+                    row(small, pitchDiffDeg=-6.0),             # more than 4 degrees: changed or wrong
+                    row(small, inliers=20),                    # no single surface in lidar
+                    row(small, surfaceKind="ground")):         # nothing was there when lidar flew
+            flags, site = self._assess(m, [bad])
+            self.assertEqual(flags["lidar-disagrees"]["severity"], "site-check", bad)
+            self.assertIn("Site check required", site)
+        flags, _ = self._assess(m, [row(small), row(big)])
+        self.assertEqual(flags["lidar-disagrees"]["severity"], "site-check")
+
+    def test_flags_that_ask_for_nothing_are_information(self):
+        # 51 random houses had 2.3 to 3.1 review flags each; most asked the reader to do nothing.
+        faces, _ = synthetic.gable()
+        m = model_of(faces)
+        m.stats["regularizeMaxShiftM"] = 0.45                  # 1.5 ft: inside what the report says about line ends
+        flags, _ = self._assess(m, solid_info={"candidates": 2, "bboxIoU": 1.0})
+        self.assertEqual(flags["regularize"]["severity"], "info")
+        self.assertEqual(flags["solid-match"]["severity"], "review")   # no footprint area to confirm the choice
+        m.stats["regularizeMaxShiftM"] = 0.70
+        self.assertEqual(self._assess(m)[0]["regularize"]["severity"], "review")
+        fp, solid = fixture_house()
+        hm, _ = pipeline.model_from_features(fp, solid)
+        _, fl, _ = pipeline.assess(hm, fp, {"candidates": 2, "bboxIoU": 0.97}, {"by": "oid"}, None, permits=[])
+        self.assertEqual([f["severity"] for f in fl if f["code"] == "solid-match"], ["info"])
+        _, fl, _ = pipeline.assess(hm, fp, {"candidates": 2, "bboxIoU": 0.6}, {"by": "oid"}, None, permits=[])
+        self.assertEqual([f["severity"] for f in fl if f["code"] == "solid-match"], ["review"])
+        self.assertEqual([f["severity"] for f in fl if f["code"] == "roof-step"], ["info"])     # 8.5 ft of plane tops
+        butterfly, _ = synthetic.butterfly()                   # 20 m of plane tops
+        self.assertEqual(self._assess(model_of(butterfly))[0]["roof-step"]["severity"], "review")
+        # a slanted open edge of 30 ft or more is still a review item
+        roof = [[(0, 0, 3), (12, 0, 3), (12, 5, 5.5), (2, 9, 7.5), (0, 9, 7.5)]]
+        sm = model_of(roof)
+        self.assertGreater(pipeline.skewed_edges_m(sm), pipeline.SKEW_REVIEW_M)
+        self.assertEqual(self._assess(sm)[0]["skewed-edge"]["severity"], "review")
+
+    def test_roof_hidden_under_an_upper_overhang_is_reported_not_added(self):
+        # The plan areas of the city planes add up to the footprint, so the strip of lower roof under the
+        # overhang of an upper roof is in no number. 59 houses: median 1.3% of the area, 5% on the worst.
+        faces, _ = synthetic.lean_to()                           # 6 m headwall, lean-to at 1 in 3 (18.4 degrees)
+        m = model_of(faces)
+        r = export.area_range(m)
+        uo = r["underOverhang"]
+        self.assertAlmostEqual(uo["jointFt"], m_to_ft(6.0), delta=0.5)
+        self.assertAlmostEqual(uo["areaFt2"], m2_to_ft2(6.0 * 0.3048 / math.cos(math.atan(1 / 3))), delta=0.6)
+        self.assertEqual((uo["assumedOverhangIn"], uo["confidence"]), (12.0, "assumed"))
+        sloped_ft2 = m2_to_ft2(m.sloped_area)
+        self.assertAlmostEqual(r["highFt2"], sloped_ft2 * (1 + r["plusMinusPct"] / 100), delta=1.0)   # not added to the range
+        doc = export.build_roof_json(m)
+        self.assertIn("Not counted: roof hidden under an upper roof's overhang | up to about 21 sq ft", export.takeoff_markdown(doc))
+        gable, _ = synthetic.gable()
+        gdoc = export.build_roof_json(model_of(gable))
+        self.assertEqual(gdoc["summary"]["areaRange"]["underOverhang"]["areaFt2"], 0.0)
+        self.assertNotIn("Not counted", export.takeoff_markdown(gdoc))
+
+    def test_a_solid_without_roof_faces_is_a_clear_message(self):
+        fp, solid = fixture_house()
+        faces, _ = esri.decode_feature(solid)
+        walls_only = [f for f in faces if abs(planes.newell(np.asarray(f, float))[2]) < 1e-6]
+        self.assertGreater(len(walls_only), 3)
+        tmp = tempfile.mkdtemp(prefix="roofmeasure-test-")
+        try:
+            real = pipeline.model_from_features
+            pipeline.model_from_features = lambda footprint, s: (planes.build_model(walls_only), None)
+            with self.assertRaises(cityapi.LookupError_) as cm:
+                pipeline.run(cityapi.Http(offline=True), tmp, footprint=fp, solid=solid)
+            self.assertIn("no roof faces", str(cm.exception))
+        finally:
+            pipeline.model_from_features = real
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+class Lookup2(unittest.TestCase):
     def test_point_distance_to_outline(self):
         sq = [[[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]]]
         self.assertEqual(cityapi._ring_distance(sq, 5, 5), 0.0)

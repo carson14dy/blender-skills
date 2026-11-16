@@ -45,6 +45,7 @@ Questions the study should settle, because the lidar comparison raised them:
 - Are the delivered faces or the cleaned faces closer to the truth? Both sets of numbers are in `roof.json` (`sourcePitchDeg`, and `checks.solid.sourceSlopedAreaM2`).
 - Are the `eave-under-wall` and `roof-step` joints real walls, or valleys and ridges that the city model simplified? The answer decides how those lengths enter a takeoff.
 - Are the `skewed-edge` edges eaves? About one house in three has 10 ft or more of open edge that runs at a slant across its plane and is counted as rake.
+- How wide is the overhang where an upper roof ends above a lower one? The lower roof under it is in no number (review round 4). Measure it at one roof-to-wall joint on every study roof that has one; at 12 in it is 1.3% of the area on the median house and over 2% on one house in three.
 
 ## What the plan got wrong or did not know
 
