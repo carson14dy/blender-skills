@@ -60,6 +60,12 @@ Run these in PowerShell. Open a new PowerShell window after installing, so PATH 
    cd ..
    ```
    The first `git push` opens a browser window to sign in to GitHub.
+   Then install graphify. The repo's Claude hooks call it on every file read, so install it **before** opening Claude in this folder, or each read shows a hook error:
+   ```
+   uv tool install graphifyy==0.9.111
+   graphify update .
+   ```
+   The second line builds the code graph in about 5 seconds, and it is safe to re-run any time.
 4. Optional, for scripted screenshots and GPU timings of the web app (`lab/tools/snapshot.mjs`, `capture.mjs`). `--no-save` keeps it out of `package.json`.
    ```
    cd roof-visualizer

@@ -78,6 +78,9 @@ const mcp = await new Promise((res) => {
 });
 const uv = run('uvx', ['--version'], { shell: process.platform === 'win32' });
 add(uv ? true : (cloud ? null : false), 'uv (installs MCP for Blender)', uv || 'not found', 'Install uv: winget install --id=astral-sh.uv -e   (then open a new terminal)');
+const gfy = run('graphify', ['--version'], { shell: process.platform === 'win32' });
+add(gfy ? true : false, 'graphify (repo hooks call it)', gfy || 'not found', 'Run: uv tool install graphifyy==0.9.111   then: graphify update .   (the repo hooks need it on PATH)');
+add(fs.existsSync(path.join(root, 'graphify-out', 'graph.json')) ? true : null, 'graphify code graph', fs.existsSync(path.join(root, 'graphify-out', 'graph.json')) ? 'built' : 'not built (run: graphify update .)');
 add(mcp ? true : (cloud ? null : false), 'MCP for Blender on :9876', mcp ? 'listening' : 'not listening',
   'Run: uvx mcp-for-blender install-addon   then open Blender (the addon starts its server; check N panel > MCP for Blender)');
 

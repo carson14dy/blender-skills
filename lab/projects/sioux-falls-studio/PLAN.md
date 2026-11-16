@@ -39,13 +39,13 @@ Facts that shape the plan:
 | Where does it run first? | The web studio (three.js), then Blender for marketing renders | The studio already has layers, takeoff and photo materials; Blender reuses the plan JSON |
 | Which products first? | P1: shingle fields, steel panels (Pro-Rib, Pro-Snap), cedar shakes, hip & ridge, drip edge, rake trim, metal ridge caps, ridge vents. Then P2 (starter, valleys, flashing, pipe boots, vents, gutters) | P1 is what a homeowner sees; 58 assets reduce to about 9 parametric systems |
 | Build style | Systems, not one-off models: one parametric generator per system, and colors as material swaps | Matches the Menards build plan and the studio's existing generators |
-| Colors | A hex color per swatch, computed once from the swatch image. The hex values are committed; the images are not | Real colors without storing anyone's images. **Needs your OK** (open question 1) |
+| Colors | A hex color per swatch, computed once from the swatch image. The hex values are committed; the images are not | Real colors without storing anyone's images. **Approved by the user, 2026-11-16** |
 | Shingle bundles | From each product's stated coverage: 30 squares of Duration is 92 bundles at 32.8 sq ft each, not a flat 3 per square (90). Heavy designer lines differ more: GAF Grand Sequoia covers 20 sq ft, so 5 bundles a square | Coverage is printed on every bundle; a flat 3 per square under-orders |
 | Which price to show | The shelf price. The rebate is a separate line marked "mail-in, ended 11/15" | A rebate is a store credit, not a checkout price |
 | Missing price | "no price: ask the store", never $0; a list with any unpriced item shows "total incomplete" | Rooftec rule: unknown is never zero |
 | Measured or estimated | Each line says where its quantity comes from: measured from the roof, or an allowance such as waste or deck repair | Rooftec rule: only measured values reach the customer |
 | Crew view | A switch that hides every price | Rooftec rule: the crew never sees prices |
-| Which store | Both side by side, with the cheaper one per line highlighted | Both are 10 minutes apart in Sioux Falls |
+| Which store | Both side by side, with the cheaper one per line highlighted. **Confirmed by the user, 2026-11-16** | Both are 10 minutes apart in Sioux Falls |
 | Location | New projects default to Sioux Falls, SD (43.54 N) for the sun | Every job here is local |
 
 ## 3. Steps
@@ -84,8 +84,13 @@ Each step is one lab experiment with its own folder and write-up. Times are esti
 
 ## 5. Open questions (yours)
 
-1. **Swatch colors:** may a cloud session download the swatch chips (Menards and Home Depot) to compute one hex color per color? Only the hex values would be kept; the images are deleted and never committed. Without this, products show their color name with a placeholder color.
-2. **First store to polish:** both side by side (the default), or one first?
+None open. Answered 2026-11-16:
+1. **Swatch colors:** yes. Download the chips, keep only one hex color each, never commit the images.
+2. **Stores:** both side by side.
+
+**Tools for this project:**
+- `graphify` builds a code map: run `graphify update .`, then `graphify query "<question>"`. Use it before grepping.
+- The `blender-suite` skill (`.claude/skills/blender-suite/`) handles Blender work. It is also packaged as `blender-suite.skill` for claude.ai.
 
 ## 6. Not in this project
 - The Rooftec app's four tools (Inbox, Schedule, Notes, Website stats) and its server plan: that question is owed to you by the design session, not this one.

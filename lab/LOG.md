@@ -4,6 +4,29 @@ Newest first. One entry per session: date, cloud or local, what changed, results
 
 ---
 
+## 2026-11-16 · cloud (7)
+
+**Changed**
+- **blender-suite as a .skill file** for claude.ai and other machines: `python lab/tools/package_skill.py .claude/skills/blender-suite out/skills`.
+  - The file is 211 files, 479 KB. It passes skill-creator's validator and the skill's own linter.
+  - Unpacked outside the repo, it passes: smoke 0 failures, tests 71 passed, 0 failed, 2 skipped. The file was sent to the user.
+- **graphify 0.9.111 installed** (Graphify-Labs/graphify, Apache-2.0 or MIT; no telemetry; code is mapped locally with tree-sitter).
+  - `graphify install --project` added: `.claude/skills/graphify/`, `.claude/CLAUDE.md`, a "graphify" section at the end of `CLAUDE.md`, and hooks in `.claude/settings.json`. The hooks are PreToolUse on Read, Glob, Grep and Bash, and SessionStart on compact; they suggest a graph query and never block.
+  - `.graphifyignore` skips data and images. `graphify-out/` is git-ignored because it rebuilds in about 5 s.
+  - Graph: 2,471 nodes, 4,735 edges, 180 communities.
+- Hooks need graphify on PATH, or each file read shows a hook error:
+  - **PC:** `lab/NEXT.md` setup now installs it right after the clone, and `doctor.mjs` checks it.
+  - **Cloud:** the "Rooftec 1" environment now has a setup script, approved by the user. It installs graphify, EGL and the npm packages, then builds the graph. It is unproven until a fresh session starts.
+- Sioux Falls project: both answers recorded in the plan. Swatches are approved (hex colors only, no images), and both stores show side by side.
+
+**Next:** step 016, the product picker with real colors.
+
+**Needs local:**
+- Before opening Claude in the repo folder, run `uv tool install graphifyy==0.9.111`, then `graphify update .`.
+- Optionally upload `blender-suite.skill` in claude.ai (Settings > Capabilities > Skills).
+
+---
+
 ## 2026-11-16 · cloud (6)
 
 **Changed**
