@@ -17,7 +17,7 @@ import _bpyx as bx  # noqa: E402
 
 
 def _trees():
-    """Every node tree: node groups plus the trees embedded in materials, worlds, lights and scenes."""
+    """Every node tree: node groups (5.x compositor trees are node groups) plus those embedded in materials, worlds and lights."""
     for ng in bpy.data.node_groups:
         yield ng.name, ng
     for coll in (bpy.data.materials, bpy.data.worlds, bpy.data.lights):
