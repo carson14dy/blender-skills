@@ -108,6 +108,17 @@ without aligning and checking it against LiDAR or tape.
 | `out/model.blend`, `out/model.glb` | metric, georeferenced (ENU, 1 unit = 1 m) Blender scene / glTF |
 | `out/plan.png`, `out/hero.png`, `out/Photo *_overlay.png` | renders and photo overlays |
 
+## Rest of the house (presentation detail)
+
+`scripts/blender/add_details.py OUT/model.blend details.json OUT/model_detailed.blend` adds
+openings (windows, sliders, doors, garage door with section joints, egress), fascia, soffits,
+gutters, downspouts, foundation band, decks with posts/railings/balusters, stairs, porch
+ceilings, brick piers, lap-siding and shingle-course materials — all in a `Details` collection,
+so measured roof/wall geometry and every number in the report stay untouched. Place each
+opening by wall (`"M:-u"`), distance along the wall `u`, sill height and size from the photo
+measurements; mark anything placed by eye as approximate in its label. The studio export
+includes the Details collection.
+
 ## Web viewers / Roof Layer Studio
 
 `scripts/blender/export_studio_glb.py OUT/model.blend house.glb` writes a viewer-ready model:

@@ -11,8 +11,10 @@ argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:]
 blend, out = argv[0], argv[1]
 bpy.ops.wm.open_mainfile(filepath=blend)
 keep = set()
-for cname in ("Roof facets", "Walls"):
+for cname in ("Roof facets", "Walls", "Details"):   # Details = add_details.py (openings, trim, decks)
     c = bpy.data.collections.get(cname)
+    if c is None:
+        continue
     for o in c.objects:
         keep.add(o.name)
 for o in list(bpy.data.objects):
@@ -31,6 +33,8 @@ for i, o in enumerate(roofs):
     o["facet"] = o.name
     o.name = f"Roof F{i + 1}"
 for o in bpy.data.objects:
+    if o.users_collection[0].name == "Details":
+        continue   # keep their own materials
     if o.users_collection[0].name == "Roof facets":
         o.data.materials.clear(); o.data.materials.append(roof_mat)
     else:
