@@ -52,5 +52,7 @@ Ready.
   export LAB_BPY_PYTHON=$VENV/bin/python
   Blender checks:   \$LAB_BPY_PYTHON roof-blender/tests/test_roof_core.py
   Headless runs:    node roof-blender/scripts/roof-blender.mjs still --blender $SHIM --output out/roof.png --samples 16 --resolution 960x540
+  Geometry gate:    \$LAB_BPY_PYTHON $HERE/roof_qa.py
   MCP stand-in:     \$LAB_BPY_PYTHON $HERE/mock_blender_mcp.py &
+  Workbench shots (review_shots.py) also need: apt-get install -y libegl1 libegl-mesa0
 EOF

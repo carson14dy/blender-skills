@@ -43,12 +43,16 @@ node lab/tools/doctor.mjs                       # what this machine can run, and
 cd roof-visualizer && npm install && npm test   # unit tests (Node 18+)
 cd roof-visualizer && npm start                 # web app at http://127.0.0.1:8080
 $LAB_BPY_PYTHON roof-blender/tests/test_roof_core.py   # Blender core checks with pip bpy (cloud; see setup-cloud.sh)
+$LAB_BPY_PYTHON lab/tools/roof_qa.py                    # geometry gate (blender-master qa_check): z-fighting, flipped faces, floating parts; pass = "roof QA passed"
 blender -b --factory-startup --python-exit-code 1 --python roof-blender/tests/test_roof_core.py   # same, real Blender (local); pass = "all roof_core checks passed"
 node lab/tools/capture.mjs --url "http://127.0.0.1:8080/?quality=standard" --shots finished,layers,cutaway,midbuild --out lab/experiments/NNN-name/img
 node lab/tools/snapshot.mjs --url "http://127.0.0.1:8080/" --size 3840x2160 --explode --out out/roof-4k.png
+node lab/tools/closeup.mjs --url "http://127.0.0.1:8080/?quality=standard" --out out/web   # ridge-end and hip-foot close-ups
 ```
 
 Cloud only: `bash lab/tools/setup-cloud.sh` creates a Python venv with `bpy` (about 430 MB download) and prints the paths to use.
+
+Blender checks come from the **blender-master** skill (`/anthropic-skills:blender-master`, MIT). Use the skill when it is listed. Its QA scripts are also vendored in `lab/tools/vendor/blender-master/`, so `roof_qa.py` works without it. Its rule applies here too: report numbers, then look at the result. Run `roof_qa.py`, then a close-up.
 
 ## Long-running commands
 

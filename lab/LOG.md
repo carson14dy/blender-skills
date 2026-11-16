@@ -4,6 +4,33 @@ Newest first. One entry per session: date, cloud or local, what changed, results
 
 ---
 
+## 2026-11-16 · cloud (4)
+
+**Changed**
+- Added the **blender-master** skill to the lab. Its MIT-licensed `qa_check` found 9 geometry errors in the roof layers; all fixed in both apps or accepted with a reason. Details and before/after images: `lab/experiments/014-blender-master-qa/`.
+- Visible bugs fixed in the web app:
+  - half of every hip cap did not render;
+  - the ridge cap and drip edge were lit inside-out;
+  - a slit showed along hips and ridges.
+- Visible bugs fixed in Blender:
+  - old shingles stayed under the finished roof;
+  - the ridge vent and cap floated.
+- New geometry gate: `lab/tools/roof_qa.py`, with blender-master's checks vendored in `lab/tools/vendor/blender-master/`.
+- New tool: `lab/tools/closeup.mjs`, close-up screenshots of hips and ridge ends in the web app.
+
+**Results:**
+- Gate: 0 unexpected errors in 6.6 s; it fails on the old code with 4.
+- Node tests: 13/13.
+- Blender core checks pass, with 3 new ones.
+
+**Next:** local experiment 014 step (10 minutes, in `lab/NEXT.md`), then 001.
+
+**Needs local:** run `roof_qa.py` with real Blender, and look at a Cycles close-up of a hip.
+
+**Needs cloud:** none open.
+
+---
+
 ## 2026-11-15 · cloud (3)
 
 **Changed**

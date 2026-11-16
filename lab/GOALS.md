@@ -67,3 +67,4 @@ What the user wants, where it stands after the first build (experiment 000), and
 | 011 | T6 | Offline use: vendor three.js, the path tracer and the fonts; optional service worker | cloud |
 | 012 | T2/T6 | Robust roof-plane detection for drone and scan meshes (region growing or RANSAC, T-junctions) | cloud, then local with a real scan |
 | 013 | T1 | Supplier photo crop and perspective correction, course detection from the photo | cloud |
+| 014 | T2/T3 | Geometry QA with the blender-master skill: flipped caps, slits, floating vent, z-fighting. **Done**, see 014; gate: `lab/tools/roof_qa.py` | cloud, then local |
