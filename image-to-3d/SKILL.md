@@ -117,3 +117,7 @@ After completion, the user gets:
 - **429**: Rate limited — wait and retry
 - **FAILED status**: Report `task_error.message` to user
 - **Blender MCP disconnected**: Ask user to reconnect addon
+
+## Accuracy warning
+
+Generative image-to-3D output is **not metric**: scale is arbitrary and unseen sides are invented. For measurements of buildings/roofs use the `property-model-pipeline` skill. If you must measure a generated mesh, first scale/georeference it with `python3 property-model-pipeline/scripts/pm.py align --pairs pairs.json` (≥ 3 known points) and check it against a tape measurement or LiDAR.

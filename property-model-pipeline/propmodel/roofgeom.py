@@ -46,7 +46,8 @@ class Wing:
     sheathing). ``eave_height`` is the height of the wall plate line (where the
     roof plane meets the outer wall face) above site ground (z=0) — NOT the
     height of the drip edge, which is lower by overhang * pitch.
-    Pitches are rise/run (0.5 == 6/12).
+    Pitches are rise/run (0.5 == 6/12). ``pitch`` is the +v side (left of the azimuth
+    direction), ``pitch_b`` the -v side. A shed roof's low eave is on the +v side.
     """
 
     id: str
@@ -58,6 +59,7 @@ class Wing:
     width: float = 8.0
     eave_height: float = 2.8
     pitch: float = 0.5
+    pitch_b: Optional[float] = None         # -v side pitch for asymmetric / saltbox roofs (default = pitch)
     end_pitch: Optional[float] = None       # hip / mansard ends (default = pitch)
     upper_pitch: Optional[float] = None     # gambrel / mansard upper slopes
     break_inset: Optional[float] = None     # gambrel / mansard: plan distance wall -> break line
@@ -67,7 +69,7 @@ class Wing:
     shed_high_overhang: Optional[float] = None
     label: str = ""
 
-    NUMERIC = ("cx", "cy", "azimuth", "length", "width", "eave_height", "pitch", "end_pitch",
+    NUMERIC = ("cx", "cy", "azimuth", "length", "width", "eave_height", "pitch", "pitch_b", "end_pitch",
                "upper_pitch", "break_inset", "eave_overhang", "rake_overhang", "base_z",
                "shed_high_overhang")
 
@@ -133,9 +135,10 @@ class Wing:
         if t == "shed":
             # low eave on +v wall, rising toward -v
             return [self._plane((0, W / 2), (0, -1), h, s)]
-        # side planes (rise from the +v and -v walls)
+        # side planes (rise from the +v and -v walls); pitch_b makes the -v side asymmetric
+        sb = self.pitch_b if self.pitch_b is not None else s
         P.append(self._plane((0, W / 2), (0, -1), h, s))
-        P.append(self._plane((0, -W / 2), (0, 1), h, s))
+        P.append(self._plane((0, -W / 2), (0, 1), h, sb))
         if t in ("hip", "pyramid", "mansard"):
             P.append(self._plane((L / 2, 0), (-1, 0), h, se))
             P.append(self._plane((-L / 2, 0), (1, 0), h, se))

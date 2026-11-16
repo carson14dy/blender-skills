@@ -45,11 +45,11 @@ from .roofgeom import Wing, build, plane_azimuth
 HUBER_K = 2.0
 
 BOUNDS = {
-    "length": (0.5, 200), "width": (0.5, 200), "pitch": (0.0, 4.0), "end_pitch": (0.0, 4.0),
+    "length": (0.5, 200), "width": (0.5, 200), "pitch": (0.0, 4.0), "pitch_b": (0.0, 4.0), "end_pitch": (0.0, 4.0),
     "upper_pitch": (0.0, 4.0), "eave_height": (0.3, 60), "eave_overhang": (0.0, 2.0),
     "rake_overhang": (0.0, 2.0), "break_inset": (0.05, 50), "shed_high_overhang": (0.0, 2.0),
 }
-STEP = {"azimuth": 0.01, "pitch": 1e-4, "end_pitch": 1e-4, "upper_pitch": 1e-4}
+STEP = {"azimuth": 0.01, "pitch": 1e-4, "pitch_b": 1e-4, "end_pitch": 1e-4, "upper_pitch": 1e-4}
 DEFAULT_STEP = 1e-4
 
 
@@ -71,7 +71,7 @@ def parse_area(v):
 
 def kind_of(target):
     t = target.lower()
-    if t.endswith("pitch") or t.startswith("pitch@") or t.endswith("pitch_weighted") or t.endswith("pitch_max") \
+    if "pitch" in t.rsplit(".", 1)[-1] or t.startswith("pitch@") or t.endswith("pitch_weighted") or t.endswith("pitch_max") \
             or t.endswith("end_pitch") or t.endswith("upper_pitch"):
         return "slope"
     if "area" in t:
@@ -179,7 +179,7 @@ class ParamSpace:
 
 
 def _implicit(w: Wing, fld):
-    if fld == "end_pitch":
+    if fld in ("end_pitch", "pitch_b"):
         return w.pitch
     if fld == "upper_pitch":
         return w.pitch / 3.0
@@ -253,7 +253,16 @@ class Predictor:
                 pts = np.asarray(o.raw["points"], float)
                 dz = nuis.get(o.raw.get("dz_param", ""), 0.0)
                 z = _surface(wings, pts[:, :2])
-                r = np.where(np.isnan(z), 0.0, (z - (pts[:, 2] + dz)) / o.sigma)
+                r = (z - (pts[:, 2] + dz)) / o.sigma
+                out = np.isnan(z)
+                if out.any():
+                    # roof points the model does not cover: penalise by distance to the model outline
+                    # (continuous, so the model cannot shrink away from evidence for free)
+                    import shapely
+                    from shapely.ops import unary_union
+                    outline = unary_union([w.roof_outline() for w in wings])
+                    d = shapely.distance(outline, shapely.points(pts[out, :2]))
+                    r[out] = d / float(o.raw.get("outside_sigma", 0.5))
                 rows.extend(r.tolist())
                 owner.extend([k] * len(r))
                 continue
@@ -338,7 +347,7 @@ def _huber_w(r, k=HUBER_K):
     return np.where(a <= k, 1.0, k / np.maximum(a, 1e-12))
 
 
-def fit(spec: dict, observations: List[dict], max_iter=40, robust=True, verbose=False):
+def _fit_once(spec: dict, observations: List[dict], max_iter=40, robust=True, verbose=False):
     """Fit wing parameters. ``spec`` = {"wings": [...], "free": [...], "ties": [...],
     "priors": {name: {"value": v, "sigma": s}}, "nuisance": [...]}."""
     obs = prepare(observations)
@@ -477,3 +486,41 @@ def fit(spec: dict, observations: List[dict], max_iter=40, robust=True, verbose=
         "chi2": cost, "dof": dof, "variance_factor": s2,
         "iterations": len(history) - 1,
     }
+
+
+def fit(spec: dict, observations: List[dict], max_iter=40, robust=True, verbose=False,
+        snoop=True, snoop_threshold=4.0, max_excluded=5):
+    """Robust fit + data snooping (Baarda-style blunder rejection).
+
+    After each fit the scalar observation with the largest |residual| above
+    ``snoop_threshold`` sigma is excluded and the fit repeated, so one bad number (an old
+    report from before an addition, a unit slip) cannot drag the model. Excluded
+    observations stay in the residual table, flagged EXCLUDED, with the value the final
+    model predicts for them. Vector evidence (LiDAR, outlines) is never auto-excluded.
+    """
+    active = list(observations)
+    excluded = []
+    res = _fit_once(spec, active, max_iter, robust, verbose)
+    while snoop and len(excluded) < max_excluded:
+        worst, wr = None, snoop_threshold
+        for i, r in enumerate(res["residuals"]):
+            if "residual_sigma" in r and abs(r["residual_sigma"]) > wr:
+                worst, wr = i, abs(r["residual_sigma"])
+        if worst is None:
+            break
+        excluded.append(active.pop(worst))
+        if verbose:
+            print(f"excluding blunder: {excluded[-1].get('source')} -> {excluded[-1]['target']} ({wr:.1f} sigma)")
+        res = _fit_once(spec, active, max_iter, robust, verbose)
+    if excluded:
+        wings = [Wing.from_dict(w) for w in res["wings"]]
+        pred = Predictor(prepare(excluded))
+        pred._cur = None
+        for o in pred.obs:
+            p_ = pred.predict_scalar(o, wings)
+            r = (p_ - o.value) / o.sigma
+            res["residuals"].append({"target": o.target, "source": o.source, "kind": o.raw.get("kind", ""),
+                                     "n": 1, "sigma": o.sigma, "observed": o.value, "predicted": p_,
+                                     "residual_sigma": float(r), "flag": "EXCLUDED"})
+    res["excluded"] = excluded
+    return res

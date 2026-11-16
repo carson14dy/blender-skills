@@ -53,7 +53,7 @@ def test_conflicting_past_report_is_flagged():
             "source": "2009 report", "kind": "past_report"}]
     res = fusion.fit(spec, obs)
     flags = {r["source"]: r["flag"] for r in res["residuals"]}
-    assert flags["2009 report"] == "CONFLICT"
+    assert flags["2009 report"] == "EXCLUDED"
     assert flags["tape"] == "ok"
     # robust fit is not dragged far by the blunder
     assert res["measurements"]["roof.area"] == pytest.approx(true_area, rel=0.03)
@@ -64,3 +64,15 @@ def test_units_parsing():
     assert fusion.parse_value("M.pitch", "6/12") == pytest.approx(0.5)
     assert fusion.parse_value("M.length", "42' 6\"") == pytest.approx(12.954, abs=1e-6)
     assert fusion.parse_sigma("roof.area", "2%", 100.0) == pytest.approx(2.0)
+
+
+def test_snooping_excludes_blunder_and_keeps_answer():
+    truth = Wing(**TRUE)
+    true_area = build([truth]).roof_area()
+    pts = synth_lidar(truth)
+    spec = {"wings": [TRUE], "free": ["M.length", "M.width", "M.pitch", "M.eave_height"]}
+    obs = [{"target": "roof_z", "points": pts.tolist(), "sigma": 0.08, "source": "lidar"},
+           {"target": "roof.area", "value": true_area * 0.75, "sigma": "1%", "source": "old"}]
+    res = fusion.fit(spec, obs)
+    assert [o["source"] for o in res["excluded"]] == ["old"]
+    assert res["measurements"]["roof.area"] == pytest.approx(true_area, rel=0.005)
