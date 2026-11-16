@@ -41,6 +41,9 @@ node roof-blender/scripts/roof-blender.mjs export --output roof-visualizer/viewe
 | `--ice-rows` / `--no-valleys` | ice & water rows at eaves / skip valley strips | 2 / valleys on |
 | `--nails` | nails per shingle (4 standard, 6 high wind) | 4 |
 | `--category` | `shingle` or `metal` (flat panels, concealed clips, no starter) | shingle |
+| `--panel` | metal panel profile with real ribs: `proRib`, `proSnap`, `corrugated` or `flat` (cfg `panel`) | flat |
+| `--cap-width-in` | metal hip and ridge cap product width; each side gets half (cfg `cap_width_in`) | 12 |
+| `--edge "flange,face,kickOut,kickDown,hem"` | drip-edge profile in inches, from the drip-edge product (cfg `edge_profile`) | today's shape |
 | `--no-vent`, `--no-old-roof` | skip ridge vent / skip the existing roof layers | |
 | `--image`, `--width-in`, `--height-in`, `--rotation`, `--relief` | supplier photo and its real size | |
 | `--palette "#hex,#hex,..."` | procedural shingle colors instead of a photo | charcoal blend |
@@ -78,6 +81,12 @@ Plan render time before you start. A full-length build at 1080p and 64 samples i
 - The demo house uses the web viewer's 0.45 m overhang and matches its measurements: 27.4 squares on the ranch preset. The main roof is notched under the garage, so hidden roof is not counted.
 - Roofs found only by slope leave the house meshes visible; name the roof object `Roof` so it can be replaced cleanly.
 - Running `material` after `build` keeps the build animation.
+- Metal panels and edge profiles (lab experiments 019 and 020):
+  - `panel` picks a profile from `PANEL_PROFILES`, the same JSON text as the web studio's `profiles.js`. `ribbed_surface` slices each plane into planar strips between the profile's breakpoints, repeated from the plane's left end, so the ribs run up the slope and stand up at the eave.
+  - On a metal roof the hip and ridge caps take the metal cap profile, 3 mm over the rib tops; the ridge vent and the cap over it stand on the rib tops.
+  - With a profile other than `flat`, a rake trim (1.5 in. top leg, 3.5 in. face, 0.5 in. hem) is merged into the covering. Its bend sits 1/8 in. outside the drip edge's kick, and the two trims are mitered at a gable peak.
+  - `edge_profile` is `{"flange_in", "face_in", "kick_out_in", "kick_down_in", "hem_in"}`. A missing key keeps today's value; without it the drip edge is unchanged.
+  - Check a variant with `roof_qa.py -- --layers '{"category": "metal", "panel": "proRib"}'`.
 
 Results are printed as `RT_RESULT {json}` lines.
 

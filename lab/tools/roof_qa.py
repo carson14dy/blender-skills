@@ -3,6 +3,7 @@
     $LAB_BPY_PYTHON lab/tools/roof_qa.py                       (cloud, pip bpy)
     blender -b --factory-startup --python-exit-code 1 --python lab/tools/roof_qa.py      (local, real Blender)
     ... -- --blend out/house.blend --json out/qa/roof-qa.json --save out/qa/roof.blend
+    ... -- --layers '{"category": "metal", "panel": "proRib"}'      (layers cfg for roof_core, passed to `ensure`)
 
 Without --blend it builds the ranch demo house. With --blend it checks the layers already in that file
 (run roof-blender.mjs layers on a real RoofTec house first). Pass = "roof QA passed"; prints one RT_QA {json} line.
@@ -32,7 +33,7 @@ OLD_ROOF = ("oldShingles", "oldFelt")  # torn off before anything new goes on: n
 
 def args():
     a = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
-    out = {"blend": None, "json": None, "save": None, "profile": "render"}
+    out = {"blend": None, "json": None, "save": None, "profile": "render", "layers": "{}"}
     for i, k in enumerate(a):
         if k.startswith("--") and k[2:] in out and i + 1 < len(a):
             out[k[2:]] = a[i + 1]
@@ -41,12 +42,13 @@ def args():
 
 def main():
     cfg = args()
+    layers_cfg = json.loads(cfg["layers"])
     if cfg["blend"]:
         bpy.ops.wm.open_mainfile(filepath=os.path.abspath(cfg["blend"]))
         if not any(o.get("rt_layer") for o in bpy.data.objects):
-            rc.run({"cmd": "layers"})
+            rc.run({**layers_cfg, "cmd": "layers"})
     else:
-        rc.run({"cmd": "ensure", "fresh": True})
+        rc.run({**layers_cfg, "cmd": "ensure", "fresh": True})
     if cfg["save"]:
         os.makedirs(os.path.dirname(os.path.abspath(cfg["save"])), exist_ok=True)
         bpy.ops.wm.save_as_mainfile(filepath=os.path.abspath(cfg["save"]))
@@ -66,6 +68,7 @@ def main():
     summary = {
         "pass": not unexpected,
         "blender": bpy.app.version_string,
+        "cfg": layers_cfg,
         "layers": len(layers),
         "tris": sum(m.get("tris", 0) for m in res["objects"].values()),
         "errors": unexpected,
