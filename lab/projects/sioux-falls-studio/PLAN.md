@@ -2,11 +2,16 @@
 
 **Goal:** put real products from the two Sioux Falls stores on the 3D roof, in their real colors and sizes, and turn the measured roof into a priced materials list. Build it in the studio first (`roof-visualizer/`, then Blender); once it holds up, port it to the Rooftec app under that app's design rules.
 
-**Status:** plan written 2026-11-16 (cloud). Done in the same session:
+**Status:** plan written 2026-11-16 (cloud). Done since, all in the cloud on 2026-11-16:
 - step 015, data intake: 453 roof products, 337 priced (338 until step 016 dropped a 9,999,999.99 placeholder price);
-- the studio's Project tab has a Job section: Sioux Falls is the default location, and a line shows the store prices loaded.
+- the studio's Project tab has a Job section: Sioux Falls is the default location, and a line shows the store prices loaded;
+- **step 016**, the store picker with sampled colors: 363 of 363 drawn products have a hex, and no store image is stored or loaded;
+- **step 017**, the priced list for both stores, with crew view and CSV. The ranch demo matches the hand check: Menards $6,746.27, Home Depot $6,533.59, lowest per line $6,431.38, all incomplete until nails and deck sheets are typed;
+- **step 018**, project files: Save then Open is identical, and changed store prices are flagged;
+- **step 019, texture part:** Pro-Rib, Pro-Snap and corrugated textures at measured spacing (ribs 9.00 in. on centre);
+- **step 022, read-only:** tap a roof plane for its area, pitch, facing and covering.
 
-Everything else is open.
+Open: 019 geometry with 020 (cloud, then local), 021 Blender look-dev (local), 023 data gaps and price refresh (pricing session), and the port to the Rooftec app.
 
 ---
 

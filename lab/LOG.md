@@ -4,6 +4,61 @@ Newest first. One entry per session: date, cloud or local, what changed, results
 
 ---
 
+## 2026-11-16 · cloud (8)
+
+Sioux Falls studio, steps 016–018, the texture part of 019, and a read-only 022. Built in four lanes from the planner's spec: A catalog and colors, B render recipes and metal textures, C quote and project-file rules, D layers, UI, checks and write-ups.
+
+**Changed**
+- **Catalog v2 and colors** (lane A, experiment 016):
+  - 337 priced products; 363 of 363 drawn products have a sampled hex;
+  - no store image is stored, and the picker loads none.
+- **Store picker**, Materials tab (`viewer/js/supplier-ui.js`, `viewer/css/suppliers.css`):
+  - "On the roof" (Menards or Home Depot), "Choosing for" (8 slots), filters, CSS color chips and a suggested basket.
+  - The roof and the exploded-view labels follow the shown store.
+  - **The studio now opens on Menards Duration, Sierra Gray.** `?product=arch-charcoal` gives the old default.
+- **List tab** (`viewer/js/quote.js` rules):
+  - both stores per line, the "lower" tag, totals that say incomplete or "at least", the rebate kept apart, capture dates;
+  - typed prices, coverages and line amounts;
+  - crew view with no prices, and `?view=crew` locks it;
+  - a full-list dialog with both stores side by side;
+  - CSV, crew CSV, copy as text.
+- **Layers tab:** `layers.quantities()` feeds the list. `takeoff()` shows measurements only and links to the List tab. This fixes 97 → 98 bundles and ridge vent 49 → 46.75 ft.
+- **Project file** on the Project tab (`viewer/js/project-file.js` rules):
+  - New, Save, Open;
+  - a price snapshot with a "prices changed" notice and "Use current prices".
+- **Blender command** button on the Project tab, Export section.
+- **Tap the roof** (`viewer/js/tap.js`): area, pitch, facing and covering of a plane. A drag still orbits.
+- `quote.js`: on shingles, caps and starters `packCount` counts shingles per bundle, so the unit stays "bundle". A test is added.
+- New tool: `lab/tools/supplier-shots.mjs` takes screenshots at 3 widths, plus `--checks` for the section 11 rows that need the page.
+- `house.js`, `roof-geometry.js`, `render.js`, `build.js`, `labels.js` and `roof_core.py` are not touched. `app.js` has 67 glue lines, `index.html` 7.
+
+**Results**
+- `npm test`: 77 passed, 0 failed.
+- Ranch demo in the page:
+  - Menards $6,746.27, Home Depot $6,533.59, lowest per line $6,431.38, all incomplete;
+  - with nails $89 and deck $96 typed, $6,931.27 and $6,718.59, complete;
+  - Menards rebate $742.49, ended 11/15/26.
+- Section 11 page checks, all pass:
+  - no store-image requests;
+  - crew view and crew CSV contain no `$`;
+  - Save then Open is identical;
+  - a hand-edited file shows "1 price differs, 1 product is gone";
+  - Pro-Rib ribs 9.00 in. on centre;
+  - tap works with mouse and touch;
+  - no horizontal scroll or clipped text at 1440, 1280 and 390;
+  - 0 console errors.
+- Write-ups: 016 (picker part), 017, 018, 019 (texture part) and 022.
+
+**Next:** step 019 geometry with 020, in one session with the `roof_qa.py` gate (see `lab/NEXT.md`).
+
+**Needs local** (also in `lab/NEXT.md`, "Sioux Falls studio, local checks"):
+- Blender render of one store shingle per store with the studio's **Blender command**, on the GPU. Note `RT_RESULT` seconds and device.
+- Judge the sampled colors by eye against the store pages: the 10 best-selling shingles and the 27 name mismatches in 016. Corrections go in `supplier-color-overrides.json`.
+- The picker, the list and tap the roof on a real phone; the Pro-Rib close-up on a real GPU.
+- Save and Open through a real browser download, and once inside the claude.ai artifact: does `saveFile` accept `.json` and `.csv`?
+
+---
+
 ## 2026-11-16 · cloud (7)
 
 **Changed**

@@ -17,6 +17,8 @@ import * as TX from './textures.js';
 import { sunPosition, sunDirection, dayOfYear, makeSkyTexture, fitShadow, snapshot, PathTraceMode } from './render.js';
 import { pitchLabel, slugify, rgbToHex, clamp } from './util.js';
 import { LabelOverlay, drawCallouts, labelReserve, SCREEN_INSETS } from './labels.js';
+import { createStoreUI } from './supplier-ui.js';
+import { createTap } from './tap.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -197,6 +199,7 @@ function makeLayers(planes, segs) {
   layers.custom = prevCustom;
   layers.gap = Number($('lyGap').value);
   layers.labelsOn = $('lyLabels').checked;
+  stores.onLayers();
   layers.rebuildAll(S.product);
   if (S.product) layers.updateProductTransform(S.product.view || {});
   scene.add(layers.root);
@@ -310,6 +313,7 @@ async function applyProduct(p, { keepView = false } = {}) {
     return;
   }
   S.product = p;
+  stores.onRoof(p);
   layers.setProduct(p);
   layers.updateProductTransform(p.view || {});
   layers.refreshLabels();
@@ -469,7 +473,9 @@ function renderStack() {
       const sel = document.createElement('select');
       sel.setAttribute('aria-label', `${rec.info.label} product`);
       for (const o of LAYER_OPTIONS[optKey]) sel.add(new Option(o.label, o.id, false, layers.options[optKey] === o.id));
-      sel.onchange = () => setLayerOption(optKey, sel.value);
+      const storeOpt = typeof layers.options[optKey] === 'object' ? layers.options[optKey] : null; // a store product (drip edge)
+      if (storeOpt) sel.add(new Option(`Store: ${storeOpt.label}`, '__store', false, true));
+      sel.onchange = () => setLayerOption(optKey, sel.value === '__store' ? storeOpt : sel.value);
       row.append(sel);
     }
     if (rec.id === 'iceWater') {
@@ -527,7 +533,10 @@ let wasteTouched = false;
 function renderTakeoff() {
   if (!wasteTouched) $('waste').value = Math.round(layers.suggestedWaste() * 100);
   const rows = layers.takeoff({ waste: (Number($('waste').value) || 0) / 100 });
-  $('takeoff').innerHTML = rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('');
+  $('takeoff').innerHTML = rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('')
+    + '<tr class="sf-link-row"><td colspan="2"><button type="button" class="sf-linkbtn">Order quantities and prices: List tab</button></td></tr>';
+  $('takeoff').querySelector('.sf-linkbtn').onclick = () => selectTab('list');
+  stores.refresh();
 }
 
 // ---------------------------------------------------------------------------
@@ -818,7 +827,7 @@ async function loadHouseModel(fileOrUrl) {
       mesh.geometry = stripped;
       swaps.push({ mesh, original, stripped });
     }
-    S.glb = { swaps };
+    S.glb = { swaps, fileName: typeof fileOrUrl === 'string' ? fileOrUrl.split('/').pop() : fileOrUrl.name };
     $('origRow').hidden = false; $('pOrig').checked = false;
     if (layers) { scene.remove(layers.root); disposeTree(layers.root); }
     makeLayers(planes, house.segs);
@@ -1091,10 +1100,12 @@ async function boot() {
   }
   $('aiBox').hidden = !S.server?.ai;
   await loadCatalog();
-  const first = S.catalog.find((p) => p.id === params.get('product')) || S.catalog[0];
+  await stores.init(); // store catalog: picker, list, project buttons
+  const first = S.catalog.find((p) => p.id === params.get('product')) || (!params.get('product') && stores.firstProduct()) || S.catalog[0];
   S.product = first;
   await prepareProduct(first);
   buildHouse();
+  await stores.afterBuild();
   renderCatalog(); updateChips(); syncTune();
   frameView(false, true);
   await loadPlanIndex();
@@ -1111,6 +1122,56 @@ async function boot() {
 
 let readyResolve;
 const ready = new Promise((r) => { readyResolve = r; });
+
+// Store products, priced list and project files (supplier-ui.js owns S.job).
+const stores = createStoreUI({
+  S, params, catalog: supplierCatalog, layers: () => layers, toast, saveFile, selectTab, renderStack: () => renderStack(),
+  applyProduct: (p, o) => applyProduct(p, o),
+  setLayerOptions: (opts) => {
+    Object.assign(layers.options, opts);
+    for (const k of new Set(Object.keys(opts).map((k) => (k === 'capColor' ? 'capPalette' : k)))) layers.setOption(k, layers.options[k]);
+    if (S.product) layers.updateProductTransform(S.product.view || {});
+    afterLayerChange();
+  },
+  waste: () => ({ pct: Number($('waste').value) || 0, source: wasteTouched ? 'typed' : 'suggested' }),
+  setWaste: (pct) => { wasteTouched = pct != null; if (pct != null) $('waste').value = pct; renderTakeoff(); },
+  builtinProduct: (id) => S.catalog.find((p) => p.id === id) || S.catalog[0],
+  glbName: () => S.glb?.fileName ?? null,
+  projectState: () => ({
+    site: { location: $('pLoc').value === 'custom' ? null : $('pLoc').selectedOptions[0]?.textContent ?? null, lat: S.sun.lat },
+    house: S.glb ? { source: 'glb', fileName: S.glb.fileName ?? null, units: Number($('pUnits').value) || 1 } : { source: 'preset', presetId: S.presetId, pitch: S.pitch },
+    sun: { date: $('pDate').value || null, hour: S.sun.hour, facing: S.sun.facing },
+    layers: { options: { ...layers.options }, custom: layers.custom.map(({ texSet, ...c }) => c), hidden: [...layers.layers.values()].filter((r) => !r.userVisible).map((r) => r.id) },
+  }),
+  applyProjectState: (p, o) => applyProjectState(p, o),
+});
+
+// Tap a roof plane: its area, pitch, facing and covering (read-only).
+const tapper = createTap({ dom: renderer.domElement, stage, camera, scene, layers: () => layers, facing: () => S.sun.facing, invalidate,
+  covering: () => (S.product ? `${S.product.name} (${S.product.supplier || 'Built-in'})` : 'default shingles'), onChange: () => stores.openPicker('covering') });
+
+/** Open a project (or start a new one): site, sun, house and layer options here, then the store job in supplier-ui.js. */
+async function applyProjectState(p, { fresh = false } = {}) {
+  player.pause();
+  const lat = Number(p.job?.lat);
+  if (Number.isFinite(lat)) { S.sun.lat = lat; $('pLat').value = lat; $('pLoc').value = [...$('pLoc').options].some((o) => Number(o.value) === lat) ? String(lat) : 'custom'; }
+  if (p.sun?.date) { $('pDate').value = p.sun.date; S.sun.date = $('pDate').valueAsDate || S.sun.date; }
+  if (p.sun?.hour != null) { $('pHour').value = p.sun.hour; $('pHour').dispatchEvent(new Event('input')); }
+  if (p.sun?.facing != null) { S.sun.facing = Number(p.sun.facing); $('pFacing').value = String(S.sun.facing); }
+  // makeLayers copies these onto the new stack; keys not in the file keep their defaults
+  layers.options = { ...(p.layers?.options || {}) };
+  layers.custom = (p.layers?.custom || []).map((c) => ({ ...c }));
+  if (p.house?.source !== 'glb') {
+    S.presetId = HOUSE_PRESETS[p.house?.presetId] ? p.house.presetId : 'ranch-hip'; S.pitch = Number(p.house?.pitch) || 6; S.glb = null;
+    $('pHouse').value = S.presetId; $('pPitch').value = S.pitch; $('pPitchV').textContent = pitchLabel(S.pitch);
+    buildHouse();
+  } else { scene.remove(layers.root); disposeTree(layers.root); makeLayers(house.planes, house.segs); } // keeps the current house
+  layers._customSeq = layers.custom.reduce((n, c) => Math.max(n, Number(String(c.id).replace(/\D/g, '')) || 0), 0);
+  await stores.applyJob(p, { fresh });
+  for (const id of p.layers?.hidden || []) layers.setVisible(id, false);
+  renderStack(); updateSun();
+  if (p.house?.source !== 'glb') frameView(false);
+}
 
 // Automation API for Claude skills, tests and demos.
 window.roofStudio = {
@@ -1131,6 +1192,8 @@ window.roofStudio = {
     if (camTween) { controls.target.copy(camTween.t1); camera.position.copy(camTween.p1); camTween = null; }
   },
   suppliers: () => supplierCatalog(),
+  ...stores.api,
+  tapRoof: (x, y) => tapper.tapAt(x, y),
   three: { THREE, scene, camera, renderer, controls },
 };
 

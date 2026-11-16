@@ -183,6 +183,7 @@ dialog::backdrop { background: rgba(8, 12, 18, 0.55); }
   .chip.hide-sm { display: none; }
 }
 </style>
+<link rel="stylesheet" href="css/suppliers.css">
 <script type="importmap">
 {
   "imports": {
@@ -231,6 +232,7 @@ dialog::backdrop { background: rgba(8, 12, 18, 0.55); }
     <div class="tabs" role="tablist">
       <button class="tab" role="tab" aria-selected="true" data-tab="materials">Materials</button>
       <button class="tab" role="tab" aria-selected="false" data-tab="layers">Layers</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="list">List</button>
       <button class="tab" role="tab" aria-selected="false" data-tab="build">Build</button>
       <button class="tab" role="tab" aria-selected="false" data-tab="render">Render</button>
       <button class="tab" role="tab" aria-selected="false" data-tab="project">Project</button>
@@ -238,7 +240,8 @@ dialog::backdrop { background: rgba(8, 12, 18, 0.55); }
     <div class="tabpanes">
       <!-- MATERIALS -->
       <div class="pane" data-pane="materials">
-        <div class="sec">
+        <div id="storePicker" class="sf"></div>
+        <div class="sec" id="builtinSec">
           <div class="row"><input id="search" class="grow" type="text" placeholder="Search products or suppliers" aria-label="Search products"></div>
           <div class="filters" id="filters"></div>
           <div class="grid" id="catalog"></div>
@@ -293,6 +296,8 @@ dialog::backdrop { background: rgba(8, 12, 18, 0.55); }
           <p class="hint">Measured from the 3D model. Check against your own measurements before ordering.</p>
         </div>
       </div>
+
+      <div class="pane" data-pane="list" hidden><div id="quotePane" class="sf"></div></div>
 
       <!-- BUILD -->
       <div class="pane" data-pane="build" hidden>
@@ -349,6 +354,7 @@ dialog::backdrop { background: rgba(8, 12, 18, 0.55); }
 
       <!-- PROJECT -->
       <div class="pane" data-pane="project" hidden>
+        <div class="sec sf" id="projectFile"></div>
         <div class="sec">
           <h3>Job</h3>
           <div class="row"><label for="pLoc">Location</label><select id="pLoc" class="grow"><option value="43.54">Sioux Falls, SD</option><option value="custom">Somewhere else (set the latitude under Sun)</option></select></div>

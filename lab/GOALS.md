@@ -69,11 +69,11 @@ What the user wants, where it stands after the first build (experiment 000), and
 | 013 | T1 | Supplier photo crop and perspective correction, course detection from the photo | cloud |
 | 014 | T2/T3 | Geometry QA with the blender-master skill: flipped caps, slits, floating vent, z-fighting. **Done**, see 014; gate: `lab/tools/roof_qa.py` | cloud, then local |
 | 015 | T1 | Sioux Falls supplier intake: Menards #3064 and Home Depot #4301 as one studio catalog. **Done**, see 015 | cloud |
-| 016 | T1 | Product picker with real colors (Sioux Falls project; plan in `lab/projects/sioux-falls-studio/PLAN.md`) | cloud |
-| 017 | T1/T6 | Priced materials list: store units, Rooftec rules (unknown is never zero, crew view without prices), CSV | cloud |
-| 018 | T6 | Project files: new, save and open, with the price snapshot date | cloud |
-| 019 | T2 | Steel panel profiles (Pro-Rib, Pro-Snap) in the web studio and Blender | cloud, then local |
+| 016 | T1 | Product picker with real colors (Sioux Falls project; plan in `lab/projects/sioux-falls-studio/PLAN.md`). **Done**, see 016 | cloud |
+| 017 | T1/T6 | Priced materials list: store units, Rooftec rules (unknown is never zero, crew view without prices), CSV. **Done**, see 017 | cloud |
+| 018 | T6 | Project files: new, save and open, with the price snapshot date. **Done**, see 018 | cloud |
+| 019 | T2 | Steel panel profiles (Pro-Rib, Pro-Snap) in the web studio and Blender. **Texture part done** (ribs measured at 9.00 in.), see 019; geometry with 020 | cloud, then local |
 | 020 | T2 | Edge profiles (drip edge C/D, gutter apron, rake trim) from product sizes | cloud |
 | 021 | T2 | Blender look-dev and golden-hour renders of P1 products | local |
-| 022 | T3/T5 | "Tap the roof": per-plane selection, from the Rooftec Clarity design | cloud |
+| 022 | T3/T5 | "Tap the roof": per-plane selection, from the Rooftec Clarity design. **Done, read-only**, see 022; changing a product per plane is later | cloud |
 | 023 | T1 | Data gaps and price refresh: Atlas spec sheets, six Menards P1 gaps | pricing session |

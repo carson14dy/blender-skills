@@ -5,12 +5,12 @@
 | Track | T1 (supplier materials), project `lab/projects/sioux-falls-studio/` |
 | Session | cloud |
 | Date | 2026-11-16 |
-| Status | colors done; picker: see later chunks |
+| Status | done (colors, then the picker) |
 
 ## Question
 
 1. **Colors (done):** can every store product the roof draws get its real color, sampled from the store's own swatch or product photo, without storing a single store image?
-2. **Picker:** see later chunks (store picker in the Materials tab, render recipes).
+2. **Picker:** can a user pick any store product for any roof layer, from either store, and see it on the roof in that color, with no store image loaded? See "Picker" at the end.
 
 ## Method
 
@@ -172,4 +172,61 @@ node roof-visualizer/scripts/sample-supplier-colors.mjs --sheet lab/experiments/
 
 **Needs local:** compare the sampled colors by eye with the store pages, for the 10 best-selling shingles and the 27 name mismatches above. Write corrections to `roof-visualizer/scripts/data/supplier-color-overrides.json` as `"<product id>|<color name>": { "hex", "note" }` (use `"<id>|"` for an entry with no color name), then rebuild.
 
-Picker: see later chunks.
+---
+
+## Picker
+
+### Method
+
+- **Recipes** (`roof-visualizer/viewer/js/supplier-products.js`, plan section 7):
+  - `toStudioProduct()` turns a store covering into a studio product: shingle, shake or metal recipe, sampled palette, exposure and profile sizes, and `approx` notes for what is assumed.
+  - `layerOptionFor()` gives what a ridge cap, drip edge, underlayment or ice & water product changes on its layer.
+- **Store picker** (`roof-visualizer/viewer/js/supplier-ui.js`, `viewer/css/suppliers.css`), at the top of the Materials tab:
+  - **Catalog:** Stores, or Built-in and photos (the earlier grid, importer and upload, unchanged).
+  - **On the roof:** Menards or Home Depot. The roof draws that store's chosen products: the covering, the cap palette or metal cap color, the drip edge color, and the underlayment and ice & water type. The exploded-view labels and the Layers tab name each product, as in "ProEdge, Williamsburg Gray · Menards".
+  - **Choosing for:** the 8 slots, from Shingles / panels to Valley.
+  - **Filters** (one "Filters" disclosure, closed on phones): store, type (coverings only), brand, "Priced only" (on) and "In stock at Home Depot". Plus a search box.
+  - **"Chosen for …":** both stores' current choices, with a "suggested" tag until the user picks. A tap scrolls to that row.
+  - **Rows:**
+    - a CSS color chip of the sampled palette, hatched when there is no hex;
+    - line 1: short name and color;
+    - line 2: store, price with unit ("from $116.84 / 100 sq ft", "no price: ask the store"), coverage, brand and Home Depot stock.
+    - When two rows share a short name, a third line gives the store's full name. This happens with 67 Home Depot metal panels.
+    - At most 60 rows show, then "Show 60 more".
+  - **A tap on a row** chooses it for its own store. The roof updates when that store is on the roof; otherwise a toast says how to see it.
+  - **Under the chosen row:** its colors as named chips, any `approx` note, the full name and a "Store page" link.
+  - Flashing tape, closures and undercourse are left out.
+- A new job starts with the plan's suggested basket. **The studio now opens with the shown store's covering on the roof:** Menards Duration, Sierra Gray. `?product=<built-in id>` still opens a built-in product.
+
+### Result
+
+| Check | Result |
+|---|---|
+| Any slot, either store | all 8 slots list their products; picking a Home Depot product while Menards is shown leaves the roof alone, and switching to Home Depot draws it |
+| No store image requests | 0 requests to `cdn.menardc.com` or `images.thdstatic.com`, 0 `img` elements, after every slot, the list and the dialog |
+| Duration and Timberline in their sampled colors | below; Duration Sierra Gray `#7c7d7b` (palette `#818280 #929391 #6e6f6d #4c4d4b`), Timberline HDZ Charcoal `#383c3d` |
+| Layout | no horizontal scroll or clipped text at 1440, 1280 and 390 |
+| Console | 0 errors |
+
+| 1440 | 1280 | 390 |
+|---|---|---|
+| ![](img/picker-1440.jpg) | ![](img/picker-1280.jpg) | ![](img/picker-390.jpg) |
+
+The chosen row lists its colors as named chips, and a tap changes the color on the roof:
+
+![Chosen row with its colors](img/colors-1440.jpg)
+
+| Menards Duration, Sierra Gray | Home Depot Timberline HDZ, Charcoal |
+|---|---|
+| ![](img/duration-1440.jpg) | ![](img/timberline-1440.jpg) |
+
+The Pro-Rib close-up (`img/prorib-close-1440.jpg`) and its measured rib spacing are in experiment 019.
+
+### Decision
+
+**Keep.**
+- The picker draws everything from the catalog's hex and palette, so it works offline and in an artifact. It never requests a store image.
+- The default roof is now a store product. Older screenshot commands that relied on the first built-in product need `?product=arch-charcoal`.
+- **Needs local:**
+  - check the picker on a real phone (touch, bottom sheet);
+  - judge Duration and Timberline against their store pages on a real GPU.

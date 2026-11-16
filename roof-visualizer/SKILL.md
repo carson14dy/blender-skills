@@ -29,11 +29,16 @@ cd roof-visualizer && npm install && npm start
 
 `npm start` runs `scripts/serve.mjs` (Node 18+, binds to 127.0.0.1:8080) and opens the browser. `npm install` is only needed for Claude-written build plans (`@anthropic-ai/sdk`, optional). The viewer also works as static files (any web server, or the published artifact) without the supplier scanner and Claude plans.
 
-Tests: `npm test` (build player, plan files, supplier parser, SSRF guard).
+Tests: `npm test` (build player, plan files, supplier parser, SSRF guard, store catalog and colors, render recipes, priced list, project files).
 
 ## What the user can do
 
-- **Materials tab**: built-in procedural products (architectural laminate in 7 colors, 3-tab, standing seam in 4 colors, clay tile, slate, cedar shake) and imported supplier products. "Fit to roof" adjusts scale, rotation, course-line alignment, relief and tint; photos also get width in inches, brightness, contrast, saturation and seamless blending. Normal and roughness maps are generated from the photo.
+- **Materials tab, Stores** (default): the Sioux Falls store catalog (Menards #3064, Home Depot #4301; `viewer/catalog/suppliers/sioux-falls.json`).
+  - "On the roof" picks which store's products are drawn: covering, cap color, drip edge color, underlayment and ice & water type. Exploded-view labels name each product.
+  - "Choosing for" picks the slot (shingles / panels, hip & ridge cap, starter, underlayment, ice & water, drip edge, ridge vent, valley). Filters: store, type, brand, priced only, in stock at Home Depot, search.
+  - Rows show a color chip from the sampled palette (hatched when not sampled), price with unit, coverage and stock. Tap a row to choose it for its store; the chosen row lists its colors.
+  - No store image is loaded, only CSS chips, so it works offline and in an artifact. A new job starts with a suggested basket per store, tagged "suggested".
+- **Materials tab, Built-in and photos**: built-in procedural products (architectural laminate in 7 colors, 3-tab, standing seam in 4 colors, clay tile, slate, cedar shake) and imported supplier products. "Fit to roof" adjusts scale, rotation, course-line alignment, relief and tint; photos also get width in inches, brightness, contrast, saturation and seamless blending. Normal and roughness maps are generated from the photo.
 - **Add supplier product:**
   - Paste a supplier product page or pick a file, choose the swatch, name it and confirm rights. It is saved into `viewer/catalog/` and applied.
   - A photo dragged onto the 3D view is only tried for that session; nothing is saved without the rights confirmation.
@@ -41,8 +46,15 @@ Tests: `npm test` (build player, plan files, supplier parser, SSRF guard).
 - **Layers tab:**
   - Show or hide each layer, and change products per layer: deck and repair allowance, underlayment, ice & water type and rows, valleys, drip edge colour, nails per shingle, ridge vent.
   - Add custom layers (radiant barrier, insulation board, etc.).
-  - Read the material takeoff: squares, a waste allowance suggested from the hips and valleys, covering quantity by product type, LF of eaves, rakes, ridges, hips, valleys and ridge vent, drip edge pieces, ice & water and underlayment rolls, starter, cap and field nails.
+  - Read the measurements: squares, a waste allowance suggested from the hips and valleys, LF of eaves, rakes, ridges, hips, valleys and ridge vent (0.3 m off each end of each ridge), ice & water area and rows, field nails and the deck repair allowance. Order quantities and prices are on the List tab.
   - Measurements are checked against hand calculations in `tests/geometry.test.mjs`.
+- **List tab:** the priced materials list for both stores (`viewer/js/quote.js`).
+  - Each line shows the measured basis, the allowance and who sets it. Each store cell shows product, quantity in the store's unit (bundles from coverage, rolls, pieces, cartons), unit price, line total and a "lower" tag.
+  - Totals: per store and lowest per line, each "incomplete", "at least" or complete. The Menards rebate is shown apart and never subtracted. The capture dates are always shown.
+  - Unknowns show a dash with the reason and who sets it, never a zero. Type a price, a coverage, or an amount for the nails and deck repair lines.
+  - Controls: Waste %, valley metal, Crew view (one store, no prices at all; `?view=crew` locks it).
+  - Buttons: Open full list (both stores side by side), Download CSV, Download crew CSV, Copy as text.
+- **Tap the roof:** a short tap on a roof plane shows its area, pitch, facing and covering, with "Change product". A drag still orbits.
 - **Layers view** (toolbar, key E): layers float apart with a spacing slider and callout labels; press again to close them back down.
 - **Cutaway** (key C): stepped cut from the right side of the current view showing every layer at once.
 - **Before** (key B): the existing roof; press again for the new roof.
@@ -53,7 +65,9 @@ Tests: `npm test` (build player, plan files, supplier parser, SSRF guard).
   - Path tracing (three-gpu-pathtracer, MIT). It pauses while a layer is part-built or cut away, because it can only draw whole layers.
   - Snapshots at 1080p, 4K, 8K or square, rendered in tiles (no GPU size limit) with layer labels burned in.
   - The view renders only while something changes, and phones start on Standard quality.
-- **Project tab**: house presets (ranch hip + garage gable, two-story gable, cottage hip), pitch 3/12-14/12, load a house model (.glb/.gltf, units selectable), sun by latitude, date, solar time and which way the house faces, export layers as GLB for Blender.
+- **Project tab, Project file**: job name, New (asks first when there are unsaved changes), Save (`<job>.rooftec.json`: house, sun, layers, store choices, waste, typed amounts, measurements and a price snapshot; no images), Open.
+  - When the store data changed since the save, the list keeps the saved prices with "now $X" beside each changed one, and "Use current prices" switches.
+- **Project tab**: house presets (ranch hip + garage gable, two-story gable, cottage hip), pitch 3/12-14/12, load a house model (.glb/.gltf, units selectable), sun by latitude, date, solar time and which way the house faces, export layers as GLB for Blender, and "Blender command" (the `roof-blender.mjs layers` and `material --palette` lines for the product on the roof).
 
 ## Using a real house model
 
@@ -95,9 +109,13 @@ When the user asks you (Claude) to plan a job, write the plan file yourself usin
 
 ## URL parameters and automation
 
-`?house=ranch-hip|two-story|cottage&pitch=8&product=<catalog id>&plan=plans/x.json&glb=house.glb&t=0.6&explode=1&cut=1&tab=layers&quality=standard|high|ultra`
+`?house=ranch-hip|two-story|cottage&pitch=8&product=<catalog id>&plan=plans/x.json&glb=house.glb&t=0.6&explode=1&cut=1&tab=layers|list&quality=standard|high|ultra&view=crew&today=YYYY-MM-DD`
+
+Without `?product=`, the studio opens with the shown store's covering (Menards Duration, Sierra Gray); `?product=arch-charcoal` opens the first built-in product as before.
 
 `window.roofStudio` (for Playwright scripts or demos): `ready`, `state`, `setProduct(id)`, `explode(bool)`, `cutaway(bool)`, `seek(fraction)`, `play()`, `snapshot(w, h)` (returns a blob URL), `loadPlan(obj)`, `loadHouse(url)`, `pathTrace(bool)`, `settle()`.
+Store features: `suppliers()` (the store catalog), `quote()`, `project()`, `loadProject(obj)`, `pickStore(slot, productId, color)`, `showStore(storeId)`, `storeProduct(productId, color)`, `setCrewView(bool)`, `listText(crew)`, `blenderCommand()`, `tapRoof(x, y)`.
+Screenshots and in-page checks of the store features: `node lab/tools/supplier-shots.mjs --url <viewer url> --out <dir> --checks`.
 
 Example: render a 4K exploded diagram from the command line with the preinstalled Playwright:
 
@@ -153,6 +171,12 @@ roof-visualizer/
   viewer/js/house.js           demo houses
   viewer/js/render.js          sun, sky, tiled snapshots, path tracing
   viewer/js/labels.js          exploded-view callouts
+  viewer/js/supplier-products.js  store product -> studio product (render recipe), layer options (pure)
+  viewer/js/quote.js           priced list rules, crew view, CSV (pure)
+  viewer/js/project-file.js    project files: build, validate, compare price snapshots (pure)
+  viewer/js/supplier-ui.js     store picker, List tab, full-list dialog, project buttons, Blender command
+  viewer/js/tap.js             tap a roof plane
+  viewer/css/suppliers.css     styles of the store features
   viewer/catalog/              catalog.json + swatches/; suppliers/sioux-falls.json (Menards #3064, Home Depot #4301: products, units, coverage, prices; images stay links)
   viewer/plans/                build plans
 ```

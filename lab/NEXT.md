@@ -12,6 +12,11 @@ The current to-do list for both sessions. Do the first open item for your kind o
   3. Add the `RT_QA` line and one sentence on how the close-up looks to `lab/LOG.md`.
   4. For any other Blender check, use the `blender-suite` skill in `.claude/skills/blender-suite/` (it loads by itself).
 - [ ] **blender-suite on real Blender (about 10 minutes):** run the four commands under "Needs local" in the newest `lab/LOG.md` entry, and report the last line of each.
+- [ ] **Sioux Falls studio, local checks (about 30 minutes):**
+  1. Start the studio (`cd roof-visualizer && npm start`). On the Project tab, press **Blender command** with Menards Duration on the roof, then again with Home Depot Timberline HDZ ("On the roof" switch).
+  2. With Blender open (MCP for Blender addon), run `node roof-blender/scripts/roof-blender.mjs demo --preset ranch-hip --pitch 6` once. Then, for each store, run its pair of commands and `node roof-blender/scripts/roof-blender.mjs still --output out/sf-<store>.png`. Note the `RT_RESULT` seconds and device.
+  3. Compare the two renders and the studio with the store pages. Do this for the 10 best-selling shingles and the 27 name mismatches listed in experiment 016. Write corrections to `roof-visualizer/scripts/data/supplier-color-overrides.json` and rebuild the catalog (command in 016).
+  4. Open the studio on a phone: pick a product, open the List tab and the full list, and tap a roof plane. Note anything hard to tap or read.
 - [ ] **Experiment 003, a real RoofTec house:**
   1. Export one house as `.glb` into `lab/experiments/003-real-house/out/` (git-ignored). Name the roof mesh `Roof` if the export tool allows it.
   2. Load it in the viewer (Project tab > Load house model).
@@ -21,7 +26,12 @@ The current to-do list for both sessions. Do the first open item for your kind o
 
 ## Cloud session
 
-- [ ] **Sioux Falls studio, step 016 (product picker, about 3 hours):** first get the user's answer on swatch downloads (plan, open question 1). Then follow `lab/projects/sioux-falls-studio/PLAN.md` step 016, then 017 and 018.
+- [x] **Sioux Falls studio, steps 016, 017 and 018** (store picker with sampled colors, priced list, project files), plus the texture part of 019 and a read-only 022. See the experiment folders and the newest `lab/LOG.md` entry.
+- [ ] **Sioux Falls studio, step 019 geometry with 020 (about 4 hours):**
+  1. Add real Pro-Rib and Pro-Snap ribs, the metal ridge cap and rake trim, and edge profiles (drip edge C/D, gutter apron) from product sizes, in `roof-geometry.js` and `roof_core.py` (plan section 2, "later").
+  2. Run `$LAB_BPY_PYTHON lab/tools/roof_qa.py`, `$LAB_BPY_PYTHON roof-blender/tests/test_roof_core.py` and `npm test`.
+  3. Measure the rib spacing in a close-up the way `lab/tools/supplier-shots.mjs --checks` does, and write it up in 019 and a new 020.
+  4. Leave a GPU close-up for the local session.
 - [ ] After any change to `roof_core.py`, `roof-geometry.js` or the layer heights: run `$LAB_BPY_PYTHON lab/tools/roof_qa.py` and `npm test`.
 - [ ] After 001 is pushed: read the results, then pick the next experiment from `lab/GOALS.md` (likely 006, lighter GLB files for phones, or 012, sturdier roof detection for scans).
 

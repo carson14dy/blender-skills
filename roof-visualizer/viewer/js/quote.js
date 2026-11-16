@@ -124,7 +124,9 @@ function lineRules(q, job) {
 /** Store quantity for one product on one line. typedCoverage is per sold unit, in the line's unit (sq ft or ft). */
 function storeQty(rule, need, product, choice) {
   const per = product.price?.per || 'each';
-  const pack = product.packCount > 1 ? product.packCount : null;
+  // on shingles, caps and starters packCount counts shingles per bundle, not packages: never a pack
+  const perBundle = product.category === 'shingle' || ['shingleCap', 'starter'].includes(product.kind) || per === 'bundle';
+  const pack = product.packCount > 1 && !perBundle ? product.packCount : null;
   const typed = Number(choice.typedCoverage) > 0 ? Number(choice.typedCoverage) : null;
   if (rule.kind === 'covering' && per === '100 sq ft') {
     return { qty: ceilQty(need) / 100, unit: 'squares (100 sq ft)', squares: true };

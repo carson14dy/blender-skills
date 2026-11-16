@@ -68,6 +68,9 @@ const PRODUCTS = [
     name: '1.4 ft x 3.54 ft Corrugated Polycarbonate Roof Panel 20-Pack', price: { shelf: 189, per: 'each' }, coverage: { sqft: 99.1, basis: 'gross' }, packCount: 20 },
   { id: 'hd-fixture-vent-carton', store: HD, layer: 'ridgeVent', kind: 'ridgeVent',
     name: '4 ft. Ridge Vent, Sold in Carton of 10-Pieces only', price: { shelf: 148, per: 'each' }, pieceFt: 4, packCount: 10 },
+  { id: 'hd-fixture-uhdz', store: HD, layer: 'covering', category: 'shingle', kind: 'architectural', color: 'Pewter Gray', // packCount = shingles per bundle
+    name: 'Timberline UHDZ Pewter Gray Algae Resistant Laminated High Definition Shingles (33.33 sq. ft. per Bundle)',
+    price: { shelf: 54.97, per: 'bundle' }, coverage: { sqft: 33.33 }, packCount: 21 },
   { id: 'mn-fixture-sale', store: MN, layer: 'covering', category: 'shingle', kind: 'architectural',
     name: 'Sale shingle', price: { shelf: 40, per: 'bundle', saleThrough: '11/10/26' }, coverage: { sqft: 33.3 } },
 ];
@@ -401,6 +404,13 @@ test('pack counts and gross panel area', () => {
   assert.equal(vent.qty, 2);
   assert.equal(vent.unit, 'carton of 10');
   assert.equal(vent.lineTotal, 296);
+});
+
+test('packCount on a shingle counts shingles per bundle: still bundles, price per bundle', () => {
+  const j = job();
+  j.selections.covering[HD] = { productId: 'hd-fixture-uhdz', color: 'Pewter Gray', source: 'chosen' };
+  const c = line(quote(Q3, j), 'covering').cells[HD];
+  assert.deepEqual([c.qty, c.unit, c.unitPrice, c.lineTotal], [97, 'bundle', 54.97, r2(97 * 54.97)]);
 });
 
 test('typed unit price on a store product', () => {
