@@ -1,4 +1,8 @@
+# dependencies and lab outputs (renders, videos, .blend files, real house models)
 node_modules/
 out/
+lab/**/out/
 __pycache__/
 *.blend1
+# graphify code graph: rebuilt locally in seconds (graphify update .)
+graphify-out/

@@ -1,0 +1,7 @@
+# Data and generated files: not code to map
+lab/data/
+roof-visualizer/viewer/catalog/suppliers/
+lab/experiments/*/img/
+out/
+# graphify's own skill
+.claude/skills/graphify/

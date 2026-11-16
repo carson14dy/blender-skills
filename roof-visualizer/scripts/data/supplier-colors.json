@@ -1,0 +1,7247 @@
+{
+ "https://cdn.menardc.com/main/items/media/AIRVE001/ProductXLarge/046388847417_1.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#444e57",
+  "kept": 0.518,
+  "mean": "#6c767f",
+  "method": "cutout",
+  "palette": [
+   "#434d56",
+   "#2c3339",
+   "#adbac5",
+   "#74808a"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/AIRVE001/ProductXLarge/AAFV_Angled_1475032_84710.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#474745",
+  "kept": 0.255,
+  "mean": "#525252",
+  "method": "cutout",
+  "palette": [
+   "#474744",
+   "#3a3a38",
+   "#5c5d5b",
+   "#82868e"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/APPLE002/ProductLarge/1571017.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#babab9",
+  "kept": 0.464,
+  "method": "cutout",
+  "palette": [
+   "#bababa",
+   "#b4b5b2",
+   "#c4c4c2"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/APPLE002/ProductLarge/999ch-10-14_C1C0.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#c6c4b8",
+  "kept": 0.282,
+  "mean": "#bfb9a8",
+  "method": "cutout",
+  "palette": [
+   "#c6c4b8",
+   "#dfd4bb",
+   "#a8a290",
+   "#817c6b"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/APPLE002/ProductXLarge/ADE12-WH_ADE12-WH_05_DripEdge_ALUM_NA_White_ASC_GBA_IMG_HERO.jpg": {
+  "check": [],
+  "hex": "#cccbcc",
+  "kept": 0.136,
+  "method": "cutout",
+  "palette": [
+   "#d2d2d2",
+   "#cbcacb",
+   "#bebebe"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/APPLE002/ProductXLarge/GA-WH_GA-WH_05_GutterApron_ALUM_NA_White_ASC_GBA_IMG_HERO.jpg": {
+  "check": [],
+  "hex": "#cfcece",
+  "kept": 0.122,
+  "method": "cutout",
+  "palette": [
+   "#dad8d9",
+   "#c0bfbf",
+   "#cac9c9"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/ATLAS002/ProductLarge/98e8e7d9-1bff-4c25-93a2-baff765ba81a.jpg": {
+  "check": [],
+  "hex": "#3f4c4e",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#424f52",
+   "#384547",
+   "#4c5a5d",
+   "#232e2f"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/ATLAS002/ProductLarge/9d3174f7-9da2-4f21-8bc5-022bf2d9d010.jpg": {
+  "check": [],
+  "hex": "#403a2e",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#423d30",
+   "#39352b",
+   "#4c4332",
+   "#272822"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/ATLAS002/ProductLarge/BurntSienna.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#625550",
+  "kept": 0.908,
+  "method": "cutout",
+  "palette": [
+   "#5d4f4a",
+   "#6c5b53",
+   "#4f4642",
+   "#888582"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/ATLAS002/ProductLarge/Chestnut.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#6d6057",
+  "kept": 0.918,
+  "method": "cutout",
+  "palette": [
+   "#655850",
+   "#7a685c",
+   "#524a45",
+   "#8a7e77"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/ATLAS002/ProductLarge/CoolCoastalCliffsDOGHOUSE.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#626767",
+  "kept": 0.704,
+  "method": "cutout",
+  "palette": [
+   "#666b6b",
+   "#595e5e",
+   "#717777",
+   "#4c4f4e"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/ATLAS002/ProductLarge/CoolCoralCanyonDOGHOUSE.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#584d43",
+  "kept": 0.712,
+  "method": "cutout",
+  "palette": [
+   "#5d5147",
+   "#53483e",
+   "#463f38",
+   "#675a4d"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/ATLAS002/ProductLarge/CoolDriftwoodDOGHOUSE.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#54514a",
+  "kept": 0.717,
+  "method": "cutout",
+  "palette": [
+   "#58554d",
+   "#514e47",
+   "#46443f",
+   "#5f5c54"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/ATLAS002/ProductLarge/CoolMoonlightBeachDOGHOUSE.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#7b7b79",
+  "kept": 0.711,
+  "method": "cutout",
+  "palette": [
+   "#747471",
+   "#7e7f7d",
+   "#8b8c8b",
+   "#666563"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/ATLAS002/ProductLarge/CoolSandDOGHOUSE.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#79746f",
+  "kept": 0.715,
+  "method": "cutout",
+  "palette": [
+   "#7d7873",
+   "#746d68",
+   "#87837f",
+   "#64605b"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/ATLAS002/ProductLarge/CoolSurfDOGHOUSE.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#5e656e",
+  "kept": 0.717,
+  "method": "cutout",
+  "palette": [
+   "#606771",
+   "#686f78",
+   "#585f68",
+   "#4d5156"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/ATLAS002/ProductLarge/DoveGray.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#8e8f8e",
+  "kept": 0.903,
+  "method": "cutout",
+  "palette": [
+   "#9d9f9e",
+   "#929493",
+   "#828280",
+   "#666868"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/ATLAS002/ProductLarge/Granite.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#828482",
+  "kept": 0.914,
+  "method": "cutout",
+  "palette": [
+   "#878987",
+   "#767876",
+   "#979997",
+   "#636563"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/ATLAS002/ProductLarge/PinnaclePristine-PristineDesert_Enhanced.jpg": {
+  "check": [],
+  "hex": "#79644f",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#7c6650",
+   "#846c56",
+   "#6f5c4a",
+   "#58483b"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/ATLAS002/ProductLarge/PinnaclePristine-PristineGreen_Enhanced.jpg": {
+  "check": [],
+  "hex": "#414845",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#434a47",
+   "#48504d",
+   "#3c4240",
+   "#303332"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/ATLAS002/ProductLarge/PinnaclePristine-PristineHickory_Enhanced.jpg": {
+  "check": [],
+  "hex": "#483d37",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#4c4039",
+   "#423935",
+   "#352e2a"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/ATLAS002/ProductLarge/PinnaclePristine-PristineNECopperCanyon_Enhanced.jpg": {
+  "check": [],
+  "hex": "#574d3e",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#595244",
+   "#52493b",
+   "#66563e",
+   "#3b362c"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/ATLAS002/ProductLarge/PinnaclePristine-PristineNEMajesticShake_Enhanced.jpg": {
+  "check": [],
+  "hex": "#5b554a",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#5d574c",
+   "#544b41",
+   "#696357",
+   "#3c3832"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/ATLAS002/ProductLarge/PinnaclePristine-PristineNEMorningHarvest_Enhanced.jpg": {
+  "check": [],
+  "hex": "#715e45",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#756147",
+   "#685640",
+   "#816e52",
+   "#534433"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/ATLAS002/ProductLarge/PinnaclePristine-PristineNESummerStorm_Enhanced.jpg": {
+  "check": [],
+  "hex": "#646161",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#676363",
+   "#5d5859",
+   "#6f6e6e",
+   "#464444"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/ATLAS002/ProductLarge/PristineBlack.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#535554",
+  "kept": 0.914,
+  "method": "cutout",
+  "palette": [
+   "#4b4d4c",
+   "#525555",
+   "#424443",
+   "#858480"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/ATLAS002/ProductLarge/PristineDesert.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#927f6e",
+  "kept": 0.917,
+  "method": "cutout",
+  "palette": [
+   "#998471",
+   "#897565",
+   "#a39281",
+   "#706256"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/ATLAS002/ProductLarge/bbff218c-f8bf-4cf4-9343-66d6468e6a0a.jpg": {
+  "check": [],
+  "hex": "#242f31",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#253134",
+   "#1e2a2b",
+   "#2b383b",
+   "#151e1e"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/ATLAS002/ProductLarge/c6fd24f7-072f-4f7a-a145-befee3afc164.jpg": {
+  "check": [],
+  "hex": "#3e504c",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#40534f",
+   "#4a5f5a",
+   "#324341",
+   "#1a2725"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/ATLAS002/ProductLarge/ff069d28-0f5e-4fb8-b32b-005712f10356.jpg": {
+  "check": [],
+  "hex": "#414641",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#444943",
+   "#3b3f3a",
+   "#4d534b",
+   "#262f2f"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/ATLAS002/ProductXLarge/001_CastlebrookSwatches_0005_Pewter.jpg": {
+  "check": [],
+  "hex": "#515150",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#555554",
+   "#60605e",
+   "#494948",
+   "#2d2e2c"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/ATLAS002/ProductXLarge/BlackShadow-DoghouseImage.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#5a5c5d",
+  "kept": 0.909,
+  "method": "cutout",
+  "palette": [
+   "#545758",
+   "#4c5051",
+   "#5c5f60",
+   "#8a8882"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/ATLAS002/ProductXLarge/Briarwood-Majestic_Enhanced.jpg": {
+  "check": [],
+  "hex": "#44413b",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#3c3933",
+   "#545047",
+   "#494842",
+   "#322e2a"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/ATLAS002/ProductXLarge/CoolSurf.jpg": {
+  "check": [],
+  "hex": "#696e72",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#6b7176",
+   "#63686c",
+   "#777b7f",
+   "#525556"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/ATLAS002/ProductXLarge/InvisaridgeMaster.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#4e4e50",
+  "kept": 0.138,
+  "mean": "#5c5c5d",
+  "method": "cutout",
+  "palette": [
+   "#4e4e4f",
+   "#373737",
+   "#676768",
+   "#8f9090"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/ATLAS002/ProductXLarge/StormMasterShake-WeatheredWood_EnhancedDEC2023.jpg": {
+  "check": [],
+  "hex": "#5e5953",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#625d57",
+   "#57524d",
+   "#6d665f",
+   "#494440"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/ATLAS002/ProductXLarge/c6fd24f7-072f-4f7a-a145-befee3afc164.jpg": {
+  "error": "too large",
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/BESTQ001/ProductLarge/1071060P.jpg": {
+  "check": [],
+  "hex": "#f2c48f",
+  "kept": 0.138,
+  "method": "cutout",
+  "palette": [
+   "#f8ca96",
+   "#fbdaa8",
+   "#eeb67d",
+   "#e0a064"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/BESTQ001/ProductXLarge/1071054bundle.jpg": {
+  "check": [],
+  "hex": "#81553d",
+  "kept": 0.359,
+  "method": "cutout",
+  "palette": [
+   "#915f3f",
+   "#6e452d",
+   "#4b2919",
+   "#ac8268"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/BESTQ001/ProductXLarge/1071055bundle.jpg": {
+  "check": [],
+  "hex": "#936a4b",
+  "kept": 0.344,
+  "method": "cutout",
+  "palette": [
+   "#bc8c63",
+   "#795335",
+   "#5a351c",
+   "#9c7658"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/BESTQ001/ProductXLarge/1A4A0728.jpg": {
+  "check": [],
+  "hex": "#906947",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#88603f",
+   "#966f4b",
+   "#7d5537",
+   "#a8815a"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/BESTQ001/ProductXLarge/cedarshakesheavyrav.jpg": {
+  "check": [],
+  "hex": "#c8966b",
+  "kept": 0.323,
+  "method": "cutout",
+  "palette": [
+   "#bf824d",
+   "#e7bb8d",
+   "#65422c",
+   "#9fa8b8"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/DECKO001/ProductXLarge/HipRidgeVentMainImage10.2.25.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#182126",
+  "kept": 0.546,
+  "mean": "#404446",
+  "method": "cutout",
+  "palette": [
+   "#182126",
+   "#232e33",
+   "#9a9a94",
+   "#495255"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MAIBE001/ProductXLarge/1071012.jpg": {
+  "check": [],
+  "hex": "#d7c7ba",
+  "kept": 0.999,
+  "method": "full",
+  "palette": [
+   "#d0beab",
+   "#ddcfc2",
+   "#e6dcd5",
+   "#bea791"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/155-8137_britewhite1.jpg": {
+  "check": [],
+  "hex": "#d6dadd",
+  "kept": 0.324,
+  "method": "cutout",
+  "palette": [
+   "#d8dcdf",
+   "#cfd4d6"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/155-8140_britered1.jpg": {
+  "check": [],
+  "hex": "#9a494f",
+  "kept": 0.291,
+  "method": "cutout",
+  "palette": [
+   "#963f47",
+   "#9d444b",
+   "#9b4d53",
+   "#9b595e"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/155-8153_colonialred1.jpg": {
+  "check": [],
+  "hex": "#72514e",
+  "kept": 0.321,
+  "method": "cutout",
+  "palette": [
+   "#6f4b48",
+   "#755451",
+   "#795d5a"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/155-8166_burnishedslate1.jpg": {
+  "check": [],
+  "hex": "#575451",
+  "kept": 0.322,
+  "method": "cutout",
+  "palette": [
+   "#524e4b",
+   "#5b5754",
+   "#63605d"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/155-8195_brown1.jpg": {
+  "check": [],
+  "hex": "#534948",
+  "kept": 0.311,
+  "method": "cutout",
+  "palette": [
+   "#4d4341",
+   "#564d4b",
+   "#5d5553"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/155-8276_charcoal1.jpg": {
+  "check": [],
+  "hex": "#6a6c72",
+  "kept": 0.337,
+  "method": "cutout",
+  "palette": [
+   "#6a6c72",
+   "#63666b",
+   "#717278"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/155-8328_burgundy1.jpg": {
+  "check": [],
+  "hex": "#5c4c4e",
+  "kept": 0.323,
+  "method": "cutout",
+  "palette": [
+   "#584649",
+   "#5f4f51",
+   "#66595b"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/155-8344_beige1.jpg": {
+  "check": [],
+  "hex": "#99958c",
+  "kept": 0.324,
+  "method": "cutout",
+  "palette": [
+   "#9b978e",
+   "#8f8c83"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/155-8357_ashgray1.jpg": {
+  "check": [],
+  "hex": "#b6b5b4",
+  "kept": 0.302,
+  "method": "cutout",
+  "palette": [
+   "#b8b7b6",
+   "#afaead"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/155-8387_bronze1.jpg": {
+  "check": [],
+  "hex": "#71706f",
+  "kept": 0.337,
+  "method": "cutout",
+  "palette": [
+   "#71706f",
+   "#787776",
+   "#686766"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/155-9412_copper1.jpg": {
+  "check": [],
+  "hex": "#7e6552",
+  "kept": 0.314,
+  "method": "cutout",
+  "palette": [
+   "#826651",
+   "#7a604c",
+   "#7c6758",
+   "#8c7c6f"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/155-9725_P-brite-white-2.jpg": {
+  "check": [],
+  "hex": "#d6dade",
+  "kept": 0.354,
+  "method": "cutout",
+  "palette": [
+   "#d6dade"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/155-9729_P-brite-red-2.jpg": {
+  "check": [],
+  "hex": "#b6565b",
+  "kept": 0.345,
+  "method": "cutout",
+  "palette": [
+   "#b54f55",
+   "#b85a5f",
+   "#b76267"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/155-9733_P-colonial-red-2.jpg": {
+  "check": [],
+  "hex": "#87615e",
+  "kept": 0.347,
+  "method": "cutout",
+  "palette": [
+   "#835b58",
+   "#8a6461",
+   "#8d6a68"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/155-9737_Pburnishedslate2.jpg": {
+  "check": [],
+  "hex": "#625e5a",
+  "kept": 0.363,
+  "method": "cutout",
+  "palette": [
+   "#5e5955",
+   "#65605c",
+   "#6a6663"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/155-9745_P-brown-2.jpg": {
+  "check": [],
+  "hex": "#5d5250",
+  "kept": 0.362,
+  "method": "cutout",
+  "palette": [
+   "#574c4a",
+   "#645b59",
+   "#605553"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/155-9773_P-charcoal-2.jpg": {
+  "check": [],
+  "hex": "#7b7d82",
+  "kept": 0.346,
+  "method": "cutout",
+  "palette": [
+   "#7c7d83",
+   "#74767c",
+   "#838488"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/155-9785_P-black-2.jpg": {
+  "check": [],
+  "hex": "#5d5d60",
+  "kept": 0.346,
+  "method": "cutout",
+  "palette": [
+   "#545457",
+   "#68686a",
+   "#5a5a5d",
+   "#616163"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/155-9789_Pburgundy2.jpg": {
+  "check": [],
+  "hex": "#6c5a5c",
+  "kept": 0.341,
+  "method": "cutout",
+  "palette": [
+   "#675456",
+   "#6f5d5e",
+   "#746465"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/155-9797_P-beige-2.jpg": {
+  "check": [],
+  "hex": "#9c988f",
+  "kept": 0.359,
+  "method": "cutout",
+  "palette": [
+   "#9d9990",
+   "#959189"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/155-9801_P-ash-gray-2.jpg": {
+  "check": [],
+  "hex": "#b2b1b0",
+  "kept": 0.365,
+  "method": "cutout",
+  "palette": [
+   "#b3b2b1",
+   "#acaaa9"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/155-9814_P-bronze-2.jpg": {
+  "check": [],
+  "hex": "#7a7977",
+  "kept": 0.362,
+  "method": "cutout",
+  "palette": [
+   "#7c7b78",
+   "#747372"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/1571350.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#687e88",
+  "kept": 0.605,
+  "mean": "#637881",
+  "method": "cutout",
+  "palette": [
+   "#687d87",
+   "#516871",
+   "#405259",
+   "#8fa5b0"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/Charcoal-BlackProRib2023.jpg": {
+  "check": [],
+  "hex": "#3a3b3a",
+  "kept": 0.318,
+  "method": "cutout",
+  "palette": [
+   "#3a3a3a",
+   "#626262"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/Corner_GableJuly2024_AshGraycopy.jpg": {
+  "check": [],
+  "hex": "#b7b8b7",
+  "kept": 0.277,
+  "method": "cutout",
+  "palette": [
+   "#b8b9b8",
+   "#7e7e7e"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/Corner_GableJuly2024_Beigecopy.jpg": {
+  "check": [],
+  "hex": "#75766c",
+  "kept": 0.279,
+  "method": "cutout",
+  "palette": [
+   "#76766c",
+   "#676765"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/Corner_GableJuly2024_Blackcopy.jpg": {
+  "check": [],
+  "hex": "#313131",
+  "kept": 0.28,
+  "method": "cutout",
+  "palette": [
+   "#2c2c2c",
+   "#5d5d5d",
+   "#404040"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/Corner_GableJuly2024_BriteRedcopy.jpg": {
+  "check": [],
+  "hex": "#7b3438",
+  "kept": 0.281,
+  "method": "cutout",
+  "palette": [
+   "#7c2f33",
+   "#695f5f",
+   "#6c3d3f"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/Corner_GableJuly2024_BriteWhitecopy.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#c3c5c4",
+  "kept": 0.275,
+  "mean": "#c2c4c3",
+  "method": "cutout",
+  "palette": [
+   "#c3c5c4",
+   "#868787"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/Corner_GableJuly2024_Bronzecopy.jpg": {
+  "check": [],
+  "hex": "#5d5d4b",
+  "kept": 0.28,
+  "method": "cutout",
+  "palette": [
+   "#5d5c4a",
+   "#646461"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/Corner_GableJuly2024_Browncopy.jpg": {
+  "check": [],
+  "hex": "#38302a",
+  "kept": 0.281,
+  "method": "cutout",
+  "palette": [
+   "#342a23",
+   "#5e5d5c",
+   "#423d3a"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/Corner_GableJuly2024_Burgundycopy.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#361d1b",
+  "kept": 0.281,
+  "mean": "#3a2524",
+  "method": "cutout",
+  "palette": [
+   "#361d1b",
+   "#5f5c5c",
+   "#351f22",
+   "#463739"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/Corner_GableJuly2024_BurnishedSlatecopy.jpg": {
+  "check": [],
+  "hex": "#403c35",
+  "kept": 0.28,
+  "method": "cutout",
+  "palette": [
+   "#3d3830",
+   "#5f5f5e",
+   "#4b4946"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/Corner_GableJuly2024_CharcoalGraycopy.jpg": {
+  "check": [],
+  "hex": "#515a5b",
+  "kept": 0.28,
+  "method": "cutout",
+  "palette": [
+   "#4f5a5a",
+   "#5e5f5f",
+   "#676a6a"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/Corner_GableJuly2024_ColonialRedcopy.jpg": {
+  "check": [],
+  "hex": "#523032",
+  "kept": 0.281,
+  "method": "cutout",
+  "palette": [
+   "#502b2d",
+   "#625c5c"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/Corner_GableJuly2024_EmeraldGreencopy.jpg": {
+  "check": [],
+  "hex": "#293c2a",
+  "kept": 0.281,
+  "method": "cutout",
+  "palette": [
+   "#233924",
+   "#5a5e5b"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/Pro-SnapMidnightBlack.jpg": {
+  "check": [],
+  "hex": "#313336",
+  "kept": 0.671,
+  "method": "cutout",
+  "palette": [
+   "#313336"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/ProRib_EmeraldGreen_Straight_Sept2025.jpg": {
+  "check": [],
+  "hex": "#1e4123",
+  "kept": 0.233,
+  "method": "cutout",
+  "palette": [
+   "#1f4223",
+   "#183c1d",
+   "#446148"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/ResidentialRidgeCap_AshGray.jpg": {
+  "check": [],
+  "hex": "#b7b8b7",
+  "kept": 0.242,
+  "method": "cutout",
+  "palette": [
+   "#b7b8b7"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/ResidentialRidgeCap_Beige.jpg": {
+  "check": [],
+  "hex": "#75756b",
+  "kept": 0.245,
+  "method": "cutout",
+  "palette": [
+   "#75756b"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/ResidentialRidgeCap_Black.jpg": {
+  "check": [],
+  "hex": "#2d2d2d",
+  "kept": 0.246,
+  "method": "cutout",
+  "palette": [
+   "#2b2b2b",
+   "#484848"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/ResidentialRidgeCap_BriteRed.jpg": {
+  "check": [],
+  "hex": "#7c3236",
+  "kept": 0.248,
+  "method": "cutout",
+  "palette": [
+   "#7b2f33",
+   "#784648",
+   "#986265"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/ResidentialRidgeCap_BriteWhite.jpg": {
+  "check": [],
+  "hex": "#c3c5c4",
+  "kept": 0.241,
+  "method": "cutout",
+  "palette": [
+   "#c3c5c4"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/ResidentialRidgeCap_Bronze.jpg": {
+  "check": [],
+  "hex": "#5c5c4a",
+  "kept": 0.246,
+  "method": "cutout",
+  "palette": [
+   "#5c5c49",
+   "#6e6e61"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/ResidentialRidgeCap_Brown.jpg": {
+  "check": [],
+  "hex": "#342c25",
+  "kept": 0.246,
+  "method": "cutout",
+  "palette": [
+   "#332a23",
+   "#504a47",
+   "#3c3531"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/ResidentialRidgeCap_Burgundy.jpg": {
+  "check": [],
+  "hex": "#371e20",
+  "kept": 0.247,
+  "method": "cutout",
+  "palette": [
+   "#361c1e",
+   "#554547",
+   "#442f31"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/ResidentialRidgeCap_BurnishedSlate.jpg": {
+  "check": [],
+  "hex": "#3d3931",
+  "kept": 0.246,
+  "method": "cutout",
+  "palette": [
+   "#3c3830",
+   "#55524e"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/ResidentialRidgeCap_CharcoalGray.jpg": {
+  "check": [],
+  "hex": "#505a5b",
+  "kept": 0.246,
+  "method": "cutout",
+  "palette": [
+   "#4f5a5a",
+   "#666c6d"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/ResidentialRidgeCap_ColonialRed.jpg": {
+  "check": [],
+  "hex": "#522c2e",
+  "kept": 0.247,
+  "method": "cutout",
+  "palette": [
+   "#512b2d",
+   "#664c4f"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/ResidentialRidgeCap_Copper.jpg": {
+  "check": [],
+  "hex": "#79603c",
+  "kept": 0.249,
+  "method": "cutout",
+  "palette": [
+   "#785f3a",
+   "#7d6a4b",
+   "#8d7d65"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/TwilightBlackUniversalRidgeCap.jpg": {
+  "check": [],
+  "hex": "#383a42",
+  "kept": 0.422,
+  "method": "cutout",
+  "palette": [
+   "#2a2c32",
+   "#32343b",
+   "#494c56",
+   "#3d3f47"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/TwilightBlackW-Valley.jpg": {
+  "check": [],
+  "hex": "#32353c",
+  "kept": 0.381,
+  "method": "cutout",
+  "palette": [
+   "#2d3037",
+   "#35383f",
+   "#3e414a"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductLarge/WoodlandTimberValleyFlashing.jpg": {
+  "check": [],
+  "hex": "#544c40",
+  "kept": 0.496,
+  "method": "cutout",
+  "palette": [
+   "#4f473b",
+   "#564f44",
+   "#5d564a"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductXLarge/155-8182_white1.jpg": {
+  "check": [],
+  "hex": "#d2d4d5",
+  "kept": 0.309,
+  "method": "cutout",
+  "palette": [
+   "#d4d6d7",
+   "#cbcdce"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductXLarge/1559710_KNIGHTS-ARMOR_1559710-91_ALTcopy.jpg": {
+  "check": [],
+  "hex": "#6a6e70",
+  "kept": 0.475,
+  "method": "cutout",
+  "palette": [
+   "#6a6e70"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductXLarge/1571394.jpg": {
+  "check": [],
+  "hex": "#d8d8d8",
+  "kept": 0.209,
+  "method": "cutout",
+  "palette": [
+   "#d4d4d4",
+   "#dbdbdb",
+   "#e5e5e4",
+   "#c7c7c7"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductXLarge/BritewhiteHDGutterApron_July2024.jpg": {
+  "check": [],
+  "hex": "#f9f9f9",
+  "kept": 0.002,
+  "method": "all",
+  "palette": [
+   "#ffffff",
+   "#ececec",
+   "#f7f7f7"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductXLarge/BrownD-Edge.jpg": {
+  "check": [],
+  "hex": "#41342d",
+  "kept": 0.289,
+  "method": "cutout",
+  "palette": [
+   "#44362e",
+   "#352b25",
+   "#59514d"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductXLarge/Corner_GableJuly2024_CharcoalGraycopy.jpg": {
+  "check": [],
+  "hex": "#505b5b",
+  "kept": 0.28,
+  "method": "cutout",
+  "palette": [
+   "#4f5a5a",
+   "#626464"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductXLarge/Corner_Gable_LightGray.jpg": {
+  "check": [],
+  "hex": "#a3a5a6",
+  "kept": 0.277,
+  "method": "cutout",
+  "palette": [
+   "#a4a6a7",
+   "#727272",
+   "#959696"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductXLarge/DesertTanArchPanel.jpg": {
+  "check": [],
+  "hex": "#8c7c6e",
+  "kept": 0.871,
+  "method": "cutout",
+  "palette": [
+   "#938475",
+   "#837466",
+   "#766659",
+   "#a39484"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductXLarge/DoverGrayProRibprint.jpg": {
+  "check": [],
+  "hex": "#737678",
+  "kept": 0.329,
+  "method": "cutout",
+  "palette": [
+   "#737678"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductXLarge/GutterApron_White.jpg": {
+  "check": [],
+  "hex": "#9d9f9e",
+  "kept": 0.184,
+  "method": "cutout",
+  "palette": [
+   "#9c9e9d",
+   "#b4b4b4"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductXLarge/IMG_4259_Black2.jpg": {
+  "check": [],
+  "hex": "#363435",
+  "kept": 0.418,
+  "method": "cutout",
+  "palette": [
+   "#363435",
+   "#414040"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductXLarge/IMG_8349_Charcoal-Gray.jpg": {
+  "check": [],
+  "hex": "#434a4e",
+  "kept": 0.213,
+  "method": "cutout",
+  "palette": [
+   "#41494d",
+   "#686d71"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductXLarge/MidnightBlackResRake_July2024.jpg": {
+  "check": [],
+  "hex": "#1b1f20",
+  "kept": 0.309,
+  "method": "cutout",
+  "palette": [
+   "#151a1c",
+   "#4d4e4e",
+   "#2f3132"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductXLarge/ProRib_Camo_Straight.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#5f5b56",
+  "kept": 0.306,
+  "mean": "#6f6b66",
+  "method": "cutout",
+  "palette": [
+   "#5e5a55",
+   "#797570",
+   "#433f3c",
+   "#938f8b"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductXLarge/ProRib_MultiTone_WoodlandTimber2_Sept2025.jpg": {
+  "check": [],
+  "hex": "#a29891",
+  "kept": 0.552,
+  "method": "cutout",
+  "palette": [
+   "#a49b94",
+   "#9f958d",
+   "#aaa29a",
+   "#998d85"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductXLarge/ProSnap_MultiTone_MidnightBlack_Sept2025.jpg": {
+  "check": [],
+  "hex": "#6f6e70",
+  "kept": 0.578,
+  "method": "cutout",
+  "palette": [
+   "#6f6d70",
+   "#787679",
+   "#656466"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductXLarge/SmokySableProRibprint.jpg": {
+  "check": [],
+  "hex": "#736e5c",
+  "kept": 0.329,
+  "method": "cutout",
+  "palette": [
+   "#736e5c"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductXLarge/SnapRidgeMidnightBlack.jpg": {
+  "check": [],
+  "hex": "#2c2e2f",
+  "kept": 0.2,
+  "method": "cutout",
+  "palette": [
+   "#292b2c",
+   "#434445",
+   "#656667"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductXLarge/ValleyCap-MidnightBlack.jpg": {
+  "check": [],
+  "hex": "#151d25",
+  "kept": 0.418,
+  "method": "cutout",
+  "palette": [
+   "#151d25"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/MWSTE001/ProductXLarge/ValleyFlashingMidnightBlack.jpg": {
+  "check": [],
+  "hex": "#27292b",
+  "kept": 0.418,
+  "method": "cutout",
+  "palette": [
+   "#27292b"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductLarge/00047563014600.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#4f4d49",
+  "kept": 0.741,
+  "method": "cutout",
+  "palette": [
+   "#524e4a",
+   "#5d5d58",
+   "#423f3d",
+   "#2b2a28"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductLarge/DuraRidgeEvergreenMistBeauty.jpg": {
+  "check": [],
+  "hex": "#63635b",
+  "kept": 0.729,
+  "method": "cutout",
+  "palette": [
+   "#7e7d74",
+   "#454743",
+   "#66675d",
+   "#2c2c28"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductLarge/DuraRidgeGrayTweedBeauty.jpg": {
+  "check": [],
+  "hex": "#464644",
+  "kept": 0.729,
+  "method": "cutout",
+  "palette": [
+   "#3a3938",
+   "#474645",
+   "#60625f",
+   "#2a2929"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductLarge/DuraRidge_AgedCopper_Beauty.jpg": {
+  "check": [],
+  "hex": "#584f46",
+  "kept": 0.728,
+  "method": "cutout",
+  "palette": [
+   "#62574c",
+   "#4b443c",
+   "#332e2a",
+   "#827e75"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductLarge/DuraRidge_BlackSable_Beauty.jpg": {
+  "check": [],
+  "hex": "#3a3833",
+  "kept": 0.73,
+  "method": "cutout",
+  "palette": [
+   "#33312d",
+   "#3f3c35",
+   "#252522",
+   "#7f7d76"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductLarge/DuraRidge_Bourbon_Beauty.jpg": {
+  "check": [],
+  "hex": "#453f3f",
+  "kept": 0.73,
+  "method": "cutout",
+  "palette": [
+   "#4a4040",
+   "#3c373a",
+   "#2c2b2d",
+   "#7f7e76"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductLarge/DuraRidge_Brownwood_Beauty.jpg": {
+  "check": [],
+  "hex": "#4c4443",
+  "kept": 0.728,
+  "method": "cutout",
+  "palette": [
+   "#463e3f",
+   "#5c4d48",
+   "#2c2b2e",
+   "#7f7c78"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductLarge/DuraRidge_ChateauGreen_Beauty.jpg": {
+  "check": [],
+  "hex": "#3d4c49",
+  "kept": 0.728,
+  "method": "cutout",
+  "palette": [
+   "#3e534f",
+   "#354542",
+   "#252d2d",
+   "#797d78"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductLarge/DuraRidge_ColonialSlate_Beauty.jpg": {
+  "check": [],
+  "hex": "#4e4b4e",
+  "kept": 0.727,
+  "method": "cutout",
+  "palette": [
+   "#403d43",
+   "#504a4d",
+   "#727272",
+   "#2a292f"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductLarge/DuraRidge_DesertRose_Beauty_2023.jpg": {
+  "check": [],
+  "hex": "#5d4d42",
+  "kept": 0.73,
+  "method": "cutout",
+  "palette": [
+   "#55463d",
+   "#635143",
+   "#39302c",
+   "#7c6f5f"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductLarge/DuraRidge_DesertTan_Beauty.jpg": {
+  "check": [],
+  "hex": "#82694e",
+  "kept": 0.728,
+  "method": "cutout",
+  "palette": [
+   "#896b4a",
+   "#664f3b",
+   "#9d8769",
+   "#352c23"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductLarge/DuraRidge_Driftwood_Beauty.jpg": {
+  "check": [],
+  "hex": "#5c584d",
+  "kept": 0.728,
+  "method": "cutout",
+  "palette": [
+   "#635e52",
+   "#544f45",
+   "#35322b",
+   "#817d75"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductLarge/EstateGray.jpg": {
+  "check": [],
+  "hex": "#585652",
+  "kept": 0.729,
+  "method": "cutout",
+  "palette": [
+   "#605f5a",
+   "#4a4846",
+   "#323130",
+   "#787670"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductLarge/ProEdgeDesertRoseBeauty.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#523f35",
+  "kept": 0.855,
+  "method": "cutout",
+  "palette": [
+   "#574237",
+   "#453631",
+   "#644e3f",
+   "#261f1c"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductLarge/ProEdgeEvergreenMistBeauty.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#616158",
+  "kept": 0.741,
+  "method": "cutout",
+  "palette": [
+   "#454742",
+   "#7f7c72",
+   "#66665c",
+   "#282724"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductLarge/ProEdge_WilliamsburgGray_Beauty.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#343436",
+  "kept": 0.826,
+  "method": "cutout",
+  "palette": [
+   "#373738",
+   "#292a2c",
+   "#404142",
+   "#19191a"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductLarge/TruDefDurationDesertRoseSwatch.jpg": {
+  "check": [],
+  "hex": "#60493e",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#654b3e",
+   "#58443d",
+   "#705645",
+   "#4a3935"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductLarge/TruDefDuration_Designer_Bourbon_DH.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#3d393a",
+  "kept": 0.684,
+  "method": "cutout",
+  "palette": [
+   "#423d3d",
+   "#343235",
+   "#252526",
+   "#65635e"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductLarge/TruDefDuration_Driftwood_Swatch_2022.jpg": {
+  "check": [],
+  "hex": "#5c5952",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#605e55",
+   "#4f4b45",
+   "#57534c",
+   "#68665e"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductLarge/TruDefDuration_SierraGray_Swatch_2022.jpg": {
+  "check": [],
+  "hex": "#7c7d7b",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#818280",
+   "#929391",
+   "#6e6f6d",
+   "#4c4d4b"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductLarge/TruDefDuration_SlatestoneGray_Swatch_2022.jpg": {
+  "check": [],
+  "hex": "#4e5151",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#545858",
+   "#363837",
+   "#474a49",
+   "#646969"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductLarge/TruDefDuration_Teak_Swatch_2022.jpg": {
+  "check": [],
+  "hex": "#4a4039",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#4c433c",
+   "#443a33",
+   "#554a41",
+   "#322c28"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductLarge/TruDefDuration_TerraCotta_Swatch_2022.jpg": {
+  "check": [],
+  "hex": "#6c4438",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#71463b",
+   "#643f35",
+   "#814f3f",
+   "#4f352d"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductLarge/TruDef_AR_EstateGray_TD20_Swatch_091019.jpg": {
+  "check": [],
+  "hex": "#4b5049",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#4e524b",
+   "#565a52",
+   "#444943",
+   "#343a35"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductLarge/TruDef_Duration_Brownwood_Swatch_2024.jpg": {
+  "check": [],
+  "hex": "#43302b",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#47322d",
+   "#3a2b27",
+   "#523a32",
+   "#2c221f"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductLarge/TruDef_Duration_ChateauGreen_Swatch_2024.jpg": {
+  "check": [],
+  "hex": "#2f3e36",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#324139",
+   "#364c40",
+   "#2c3731",
+   "#252b27"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductLarge/TruDef_Duration_ColonialSlate_Swatch_2024.jpg": {
+  "check": [],
+  "hex": "#544e4a",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#534e4b",
+   "#413c3b",
+   "#64625d",
+   "#5b453f"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductLarge/TruDef_Duration_MidnightPlum_Swatch_2024.jpg": {
+  "check": [],
+  "hex": "#3c3b40",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#403e43",
+   "#4a484e",
+   "#323237",
+   "#23252a"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductLarge/TruDef_Duration_OnyxBlack_Swatch_2024.jpg": {
+  "check": [],
+  "hex": "#242628",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#202224",
+   "#27292c",
+   "#191b1c",
+   "#313337"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductLarge/TruDefinition_Duration_Brownwood_DH1800x1800.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#3a3229",
+  "kept": 0.739,
+  "method": "cutout",
+  "palette": [
+   "#342c24",
+   "#44392d",
+   "#201e1b",
+   "#6b675e"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductLarge/TruDefinition_Duration_ChateauGreen_DH.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#384339",
+  "kept": 0.748,
+  "method": "cutout",
+  "palette": [
+   "#3f4b40",
+   "#323d35",
+   "#252c27",
+   "#706d62"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductLarge/TruDefinition_Duration_DesertTan_DH.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#6d5b43",
+  "kept": 0.735,
+  "method": "cutout",
+  "palette": [
+   "#725e44",
+   "#7f6c50",
+   "#5d4c39",
+   "#3b342c"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductLarge/TruDefinition_Duration_Designer_AgedCopper_DH.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#47413a",
+  "kept": 0.759,
+  "method": "cutout",
+  "palette": [
+   "#3b3731",
+   "#4e473e",
+   "#282522",
+   "#605a4f"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductLarge/TruDefinition_Duration_Designer_BlackSable_DH.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#30302c",
+  "kept": 0.734,
+  "method": "cutout",
+  "palette": [
+   "#2c2b28",
+   "#363530",
+   "#242422",
+   "#605d58"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductLarge/TruDefinition_Duration_Driftwood_DH1800x1800.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#504d41",
+  "kept": 0.74,
+  "method": "cutout",
+  "palette": [
+   "#545144",
+   "#464338",
+   "#605e51",
+   "#302f29"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductLarge/TruDefinition_Duration_EstateGray_DH.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#434342",
+  "kept": 0.74,
+  "method": "cutout",
+  "palette": [
+   "#494948",
+   "#3c3d3c",
+   "#282928",
+   "#585855"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductXLarge/Duration_FLEX_EstateGray_Swatch_2022.jpg": {
+  "check": [],
+  "hex": "#505554",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#545857",
+   "#4a4f4e",
+   "#5c6160",
+   "#3d4141"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductXLarge/Oakridge_Driftwood_Swatch_2022.jpg": {
+  "check": [],
+  "hex": "#555147",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#514c42",
+   "#59554a",
+   "#625e53",
+   "#47433a"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductXLarge/RidgeVent-11in_RGB.jpg": {
+  "check": [
+   "scene",
+   "mixed"
+  ],
+  "hex": "#232222",
+  "kept": 0.512,
+  "mean": "#7e7878",
+  "method": "cutout",
+  "palette": [
+   "#222122",
+   "#b9b7b7",
+   "#594444",
+   "#8b7e80"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductXLarge/SummerHarvest_2027SCOTY_Swatch.jpg": {
+  "check": [],
+  "hex": "#645a4f",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#64584e",
+   "#726d5c",
+   "#44443f",
+   "#ee193e"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductXLarge/Supreme_Driftwood_PrintSwatch.jpg": {
+  "check": [],
+  "hex": "#66645d",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#686760",
+   "#605e57",
+   "#706f68",
+   "#55534d"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductXLarge/TruDefDurationSTORM_Driftwood_Swatch_2022.jpg": {
+  "check": [],
+  "hex": "#5c5952",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#5f5d55",
+   "#67655d",
+   "#57534c",
+   "#4f4a45"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductXLarge/TruDefinition_Duration_OnyxBlack_DH1800x1800.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#2c2c2b",
+  "kept": 0.74,
+  "method": "cutout",
+  "palette": [
+   "#262626",
+   "#2e2e2e",
+   "#191919",
+   "#6f6b62"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/OWENS002/ProductXLarge/VentSure4ftStripw_Filter.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#4a595b",
+  "kept": 0.144,
+  "mean": "#414e50",
+  "method": "cutout",
+  "palette": [
+   "#4a595b",
+   "#212a2a",
+   "#3b484a",
+   "#6c767a"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/STEEL011/ProductLarge/hipandridgebirchA.jpg": {
+  "check": [],
+  "hex": "#6c6c74",
+  "kept": 0.237,
+  "method": "cutout",
+  "palette": [
+   "#717078",
+   "#676770",
+   "#5c5f69",
+   "#807e84"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/STEEL011/ProductLarge/hipandridgecharcoalA.jpg": {
+  "check": [],
+  "hex": "#222227",
+  "kept": 0.239,
+  "method": "cutout",
+  "palette": [
+   "#1f1f24",
+   "#18181e",
+   "#27272c",
+   "#3f3f43"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/STEEL011/ProductLarge/hipandridgewalnutA.jpg": {
+  "check": [],
+  "hex": "#413a30",
+  "kept": 0.32,
+  "method": "cutout",
+  "palette": [
+   "#3d362d",
+   "#463f34",
+   "#332e26",
+   "#564e42"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/STEEL011/ProductLarge/hipnridgesteelguard.jpg": {
+  "check": [],
+  "hex": "#312b22",
+  "kept": 0.24,
+  "method": "cutout",
+  "palette": [
+   "#2e281f",
+   "#26211a",
+   "#373126",
+   "#4c463d"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/STEEL011/ProductLarge/rakechannelbirchA.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#5d645b",
+  "kept": 0.224,
+  "mean": "#6b746a",
+  "method": "cutout",
+  "palette": [
+   "#5d635a",
+   "#72796d",
+   "#8f9e92",
+   "#3b493f"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/STEEL011/ProductLarge/rakechannelwalnutA.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#4b3e31",
+  "kept": 0.225,
+  "mean": "#716552",
+  "method": "cutout",
+  "palette": [
+   "#4a3e30",
+   "#60513e",
+   "#a0957d",
+   "#7a6e56"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/STEEL011/ProductLarge/rakechannelweatheredtimberA.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#42483f",
+  "kept": 0.225,
+  "mean": "#4f5a4f",
+  "method": "cutout",
+  "palette": [
+   "#41483f",
+   "#555d50",
+   "#718477",
+   "#1f2d23"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/STEEL011/ProductLarge/sideflashingbirchA.jpg": {
+  "check": [],
+  "hex": "#5c616e",
+  "kept": 0.165,
+  "method": "cutout",
+  "palette": [
+   "#5a5f6c",
+   "#525866",
+   "#636974",
+   "#7f838b"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/STEEL011/ProductLarge/sideflashingcharcoalA.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#2f2f2f",
+  "kept": 0.166,
+  "mean": "#353535",
+  "method": "cutout",
+  "palette": [
+   "#2f2f2f",
+   "#3f3f3f",
+   "#212121",
+   "#696969"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/STEEL011/ProductLarge/sideflashingwalnutA.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#4b3436",
+  "kept": 0.167,
+  "mean": "#4c383a",
+  "method": "cutout",
+  "palette": [
+   "#4a3436",
+   "#432d2f",
+   "#514041",
+   "#786c6d"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/STEEL011/ProductLarge/valleycapbirchA.jpg": {
+  "check": [],
+  "hex": "#7c7f81",
+  "kept": 0.127,
+  "method": "cutout",
+  "palette": [
+   "#7b7f81",
+   "#73787a",
+   "#989a9b"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/STEEL011/ProductLarge/valleycapcharcoalA.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#1e1e1e",
+  "kept": 0.128,
+  "mean": "#2a2a2a",
+  "method": "cutout",
+  "palette": [
+   "#1e1e1e",
+   "#141414",
+   "#373737",
+   "#6e6e6e"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/STEEL011/ProductLarge/valleycapwalnutA.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#432f24",
+  "kept": 0.131,
+  "mean": "#493931",
+  "method": "cutout",
+  "palette": [
+   "#422f23",
+   "#33241b",
+   "#5e4e45",
+   "#8f837b"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/STEEL011/ProductLarge/valleycapweatheredtimberA.jpg": {
+  "check": [],
+  "hex": "#5c616e",
+  "kept": 0.165,
+  "method": "cutout",
+  "palette": [
+   "#5a5f6c",
+   "#525866",
+   "#636974",
+   "#7f838b"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/STEEL011/ProductLarge/valleytrayA.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#333131",
+  "kept": 0.21,
+  "mean": "#4d4e50",
+  "method": "cutout",
+  "palette": [
+   "#333031",
+   "#6a6c6f",
+   "#414143",
+   "#525255"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://cdn.menardc.com/main/items/media/STEEL011/ProductXLarge/SteelGUARDBirchpanelcmyk2024.jpg": {
+  "check": [],
+  "hex": "#747678",
+  "kept": 0.318,
+  "method": "cutout",
+  "palette": [
+   "#6b6d70",
+   "#797b7d",
+   "#8c8e90",
+   "#585a5c"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/04/04d403da-0df0-4f25-a0ef-4ba83eefe79f_35.jpg": {
+  "check": [],
+  "hex": "#49382c",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#4c3b2f",
+   "#443428",
+   "#554437",
+   "#3c2b1f"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/09/09f4d90a-0c1b-4ead-b597-5d899e63f1cc_35.jpg": {
+  "check": [],
+  "hex": "#6a584a",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#6a584a"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/0b/0b0c488b-fbb2-498f-bbfd-9ef6bbff8de4_35.jpg": {
+  "check": [],
+  "hex": "#f7f7f7",
+  "kept": 0,
+  "method": "all",
+  "palette": [
+   "#f7f7f7"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/14/1446013d-973b-4a3a-9adf-b8221d90f716_35.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#c0c0c0",
+  "kept": 0.046,
+  "method": "cutout",
+  "palette": [
+   "#bebebe",
+   "#c5c5c5"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/1e/1e882589-6c4a-44b0-9605-c1041e2dfa20_35.jpg": {
+  "check": [],
+  "hex": "#635f57",
+  "kept": 0.877,
+  "method": "cutout",
+  "palette": [
+   "#5a564e",
+   "#69665c",
+   "#4c4840",
+   "#78756e"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/23/231ce8af-022a-4998-9eef-8a0792b37454_35.jpg": {
+  "check": [],
+  "hex": "#67645c",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#67645c"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/23/2333a8ed-d642-4246-bfcd-c1a3c9319d1c_35.jpg": {
+  "check": [],
+  "hex": "#151312",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#151312"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/24/24a5a3e3-0fad-4fd4-a857-c1aa0cccaf33_35.jpg": {
+  "check": [],
+  "hex": "#f7f7f7",
+  "kept": 0,
+  "method": "all",
+  "palette": [
+   "#f7f7f7"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/25/250db968-e9c9-4d1c-a0f1-4c5068497c42_35.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#7e3427",
+  "kept": 1,
+  "mean": "#7e392d",
+  "method": "full",
+  "palette": [
+   "#7e3427",
+   "#74382e",
+   "#a2756b"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/26/26ef8d85-d074-4d9f-acdc-5c7cd04e422f_35.jpg": {
+  "check": [],
+  "hex": "#282c2d",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#222627",
+   "#2b2f30",
+   "#171b1c",
+   "#35393b"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/27/270ade00-be39-4798-a516-a3dc99752a0e_35.jpg": {
+  "check": [],
+  "hex": "#82644c",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#82644c"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/34/34f8d6f2-ccf2-4ee1-85a5-d2817535c2cc_35.jpg": {
+  "check": [],
+  "hex": "#685948",
+  "kept": 0.896,
+  "method": "cutout",
+  "palette": [
+   "#6d5d4c",
+   "#605141",
+   "#534535",
+   "#7b6b5a"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/37/37067906f0b74f45967ead1a8d3c2818_35.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#414141",
+  "kept": 0.333,
+  "mean": "#6f6f6f",
+  "method": "cutout",
+  "palette": [
+   "#404040",
+   "#585858",
+   "#7d7d7d",
+   "#a7a7a7"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/3a/3a01a94e-e01e-49ba-9406-e20a2861ed53_35.jpg": {
+  "check": [],
+  "hex": "#485350",
+  "kept": 0.894,
+  "method": "cutout",
+  "palette": [
+   "#4c5654",
+   "#414c49",
+   "#333f3c",
+   "#5b6461"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/3f/3f936ce0-8c05-4230-82ea-63155da1596d_35.jpg": {
+  "check": [],
+  "hex": "#eae9f0",
+  "kept": 0.379,
+  "method": "cutout",
+  "palette": [
+   "#eae9f0"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/48/48ef691f-c9e7-41e9-ab82-e5d3c24ee257_35.jpg": {
+  "check": [],
+  "hex": "#605d56",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#5e5b54",
+   "#84807c"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/4c/4cccd3f6-f9c3-480b-af0f-300f8d2cde03_35.jpg": {
+  "check": [],
+  "hex": "#636966",
+  "kept": 0.888,
+  "method": "cutout",
+  "palette": [
+   "#686e6b",
+   "#5b625f",
+   "#767c78",
+   "#4b524f"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/4c/4cfd6b6b-7f91-44b4-bf54-1437a0caddc9_35.jpg": {
+  "check": [],
+  "hex": "#585141",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#585141"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/51/51e34da8-22d1-4d8c-8398-5c55e97b1c1b_35.jpg": {
+  "check": [],
+  "hex": "#494e4e",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#4e5353",
+   "#3f4444",
+   "#5d6262",
+   "#2b3030"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/56/565acd25-93d3-4c51-a69f-188d5e46960e_35.jpg": {
+  "check": [],
+  "hex": "#675135",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#6c5639",
+   "#5f492c",
+   "#796346",
+   "#4f391c"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/5b/5ba02d50-e052-4a5f-a091-64e58512a8ca_35.jpg": {
+  "check": [],
+  "hex": "#1f2424",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#1f2424"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/5e/5e26589b-c548-4f51-a79a-a7adc4662909_35.jpg": {
+  "check": [],
+  "hex": "#57483c",
+  "kept": 0.951,
+  "method": "cutout",
+  "palette": [
+   "#5b4c40",
+   "#534337",
+   "#49392c",
+   "#625448"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/61/61733cb2-8e92-49f5-9056-d62ae4b051cb_35.jpg": {
+  "check": [],
+  "hex": "#253830",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#1e3128",
+   "#283b33",
+   "#31473e",
+   "#12241c"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/6a/6a934c10-7ee0-4ae4-8399-c4b03a316974_35.jpg": {
+  "check": [],
+  "hex": "#736b5f",
+  "kept": 0.908,
+  "method": "cutout",
+  "palette": [
+   "#797064",
+   "#695f53",
+   "#8c8377",
+   "#564d43"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/6e/6eb19163-7eaa-4bf1-a188-23e18b90147b_35.jpg": {
+  "check": [],
+  "hex": "#494640",
+  "kept": 0.883,
+  "method": "cutout",
+  "palette": [
+   "#413e39",
+   "#4f4c46",
+   "#36332e",
+   "#615f57"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/70/70dffffc-a5c2-4d9f-926c-4a258e5c3968_35.jpg": {
+  "check": [],
+  "hex": "#686059",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#665e57",
+   "#84807a"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/76/767185d1-c646-4d22-bf71-e83bbae97bd4_35.jpg": {
+  "check": [],
+  "hex": "#1f3f20",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#1f3f20"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/78/785a718f-566e-4557-ae46-a3c633428d36_35.jpg": {
+  "check": [],
+  "hex": "#f7f7f7",
+  "kept": 0,
+  "method": "all",
+  "palette": [
+   "#f7f7f7"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/7a/7a895526-f12a-40df-9d61-71822abb6459_35.jpg": {
+  "check": [],
+  "hex": "#bdb99b",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#bcb89a",
+   "#c2bea1"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/7f/7f384582-5254-4a81-9bc8-f3b8bf152ec1_35.jpg": {
+  "check": [],
+  "hex": "#6b5956",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#6b5956"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/80/8050c359-7fda-4bbe-91cb-698f5f544dab_35.jpg": {
+  "check": [],
+  "hex": "#959a9a",
+  "kept": 0.975,
+  "method": "full",
+  "palette": [
+   "#8e9393",
+   "#7c8181",
+   "#9fa4a4",
+   "#b5baba"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/84/84c66932-7db1-48b2-85be-684c5d99a772_35.jpg": {
+  "check": [],
+  "hex": "#4f5658",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#545b5d",
+   "#495052",
+   "#5e6466",
+   "#383f41"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/88/8808dbdc-1796-4e56-ac42-73ed184ab25e_35.jpg": {
+  "check": [],
+  "hex": "#5a4a3e",
+  "kept": 0.949,
+  "method": "cutout",
+  "palette": [
+   "#5b4d41",
+   "#544437",
+   "#645549",
+   "#4a392c"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/8e/8e9a9f84-ae50-4945-af48-f4f2a81dab87_35.jpg": {
+  "check": [],
+  "hex": "#374140",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#374140"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/8f/8fb9b147-ed80-4e6d-a904-e490b86b9fb8_35.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#7e3427",
+  "kept": 1,
+  "mean": "#7e392d",
+  "method": "full",
+  "palette": [
+   "#7e3427",
+   "#74382e",
+   "#a2756b"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/94/94b8b852-876a-4dba-a535-0be36462a750_35.jpg": {
+  "check": [],
+  "hex": "#5b5247",
+  "kept": 0.887,
+  "method": "cutout",
+  "palette": [
+   "#51483d",
+   "#63594d",
+   "#41392d",
+   "#746c61"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/99/99b0ff1d-6250-4e30-885a-6fcc843aad1f_35.jpg": {
+  "check": [],
+  "hex": "#544942",
+  "kept": 0.889,
+  "method": "cutout",
+  "palette": [
+   "#4d413b",
+   "#5a4e47",
+   "#433731",
+   "#6a5e55"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/9b/9b4bbc60-c668-4e3d-8b90-a3fb51528ae2_35.jpg": {
+  "check": [],
+  "hex": "#9b8e7a",
+  "kept": 0.999,
+  "method": "full",
+  "palette": [
+   "#9f937f",
+   "#968974",
+   "#8a7c67",
+   "#aa9d89"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/9b/9bdd6e83-4af2-4b42-a2ea-06360ec62c82_35.jpg": {
+  "check": [],
+  "hex": "#6e5c4d",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#6e5c4d"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/9d/9dcc51b01e3144a4a550eda4be577b61_35.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#505050",
+  "kept": 0.47,
+  "mean": "#6c6c6c",
+  "method": "cutout",
+  "palette": [
+   "#505050",
+   "#333333",
+   "#767676",
+   "#a2a2a2"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/a2/a28b8d64-92f0-4c23-9542-838929f89d9c_35.jpg": {
+  "check": [],
+  "hex": "#515047",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#515047"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/a3/a31438dc-46c8-45f7-85e8-3573185d1c2d_35.jpg": {
+  "check": [],
+  "hex": "#473329",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#49362c",
+   "#3d2b21",
+   "#5b4337",
+   "#2f1e15"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/a3/a3fc4fac2a8743efbd5e44add008ab4b_35.jpg": {
+  "check": [],
+  "hex": "#5d6165",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#5d6165"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/a8/a874cb72-fc66-4971-aa89-84da063954a1_35.jpg": {
+  "check": [],
+  "hex": "#493f37",
+  "kept": 0.921,
+  "method": "cutout",
+  "palette": [
+   "#433930",
+   "#393027",
+   "#4f443b",
+   "#5c5148"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/a9/a9371ca2-462f-4ce9-9eb6-bbe4bb5f9a06_35.jpg": {
+  "check": [],
+  "hex": "#5d503f",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#605341",
+   "#594c3b",
+   "#665845",
+   "#4f4231"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/b0/b00e8979-b73b-4109-b8b9-fdbb557a62bf_35.jpg": {
+  "check": [],
+  "hex": "#676059",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#655e57",
+   "#84807a"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/b1/b11d5a3f-b85b-4881-ad03-d0ad0802fcc7_35.jpg": {
+  "check": [],
+  "hex": "#61594d",
+  "kept": 0.893,
+  "method": "cutout",
+  "palette": [
+   "#595145",
+   "#665f51",
+   "#4b4337",
+   "#767061"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/b1/b152fc6829d44ccba217b3bb299fcb99_35.jpg": {
+  "check": [
+   "scene",
+   "mixed"
+  ],
+  "hex": "#767776",
+  "kept": 0.437,
+  "mean": "#848685",
+  "method": "cutout",
+  "palette": [
+   "#757776",
+   "#8b8c8a",
+   "#b6b7b7",
+   "#4f504c"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/b3/b37742d6-2d3e-4de8-b60e-439bbc61a5a7_35.jpg": {
+  "check": [],
+  "hex": "#5d5247",
+  "kept": 0.878,
+  "method": "cutout",
+  "palette": [
+   "#65594d",
+   "#54493d",
+   "#44392e",
+   "#756b60"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/b4/b457598e-201f-444d-8387-edd84f5b539e_35.jpg": {
+  "check": [],
+  "hex": "#9a3941",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#9a3941"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/b7/b7aa3530-264b-4e8d-bcf3-c80ed02a52bb_35.jpg": {
+  "check": [],
+  "hex": "#eae9f0",
+  "kept": 0.379,
+  "method": "cutout",
+  "palette": [
+   "#eae9f0"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/b9/b9fd2540-b2d0-4eea-ab1e-b74fe0a626bc_35.jpg": {
+  "check": [],
+  "hex": "#f7f7f7",
+  "kept": 0,
+  "method": "all",
+  "palette": [
+   "#f7f7f7"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/bb/bba48e12-0c66-4c4e-a4f3-e7c282092f91_35.jpg": {
+  "check": [],
+  "hex": "#414141",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#414141"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/bc/bcb14851-9edb-4cc8-8e3a-58a47134d9c6_35.jpg": {
+  "check": [],
+  "hex": "#4b423a",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#4d443d",
+   "#534a42",
+   "#463d36",
+   "#3d342c"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/c8/c8e63035-f0ba-4f1e-8fcf-fc9d94144bab_35.jpg": {
+  "check": [],
+  "hex": "#7d7a74",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#7d7a74"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/c9/c9a8e48d-0004-4aae-9e4b-d82cd4c352e6_35.jpg": {
+  "check": [],
+  "hex": "#374038",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#3b433c",
+   "#323b34",
+   "#424b43",
+   "#252d26"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/cb/cb05b855-6452-4580-bdff-068fb84e12ce_35.jpg": {
+  "check": [],
+  "hex": "#676059",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#655e57",
+   "#84807a"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/cd/cdaf6b89-7b89-4ba2-95bf-e8ee44df6c04_35.jpg": {
+  "check": [],
+  "hex": "#4e4b46",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#514f4a",
+   "#494641",
+   "#5a5752",
+   "#3e3a36"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/d0/d0ae471f-181d-4282-81e7-26adaa723fe3_35.jpg": {
+  "check": [],
+  "hex": "#c7cfd1",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#c7cfd1"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/d1/d176dc9a-ef68-4239-abec-95bb76a92c33_35.jpg": {
+  "check": [],
+  "hex": "#b29a75",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#b29a75"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/d5/d5e82144-4135-446d-abe7-21b77dd367b0_35.jpg": {
+  "check": [],
+  "hex": "#635f57",
+  "kept": 0.877,
+  "method": "cutout",
+  "palette": [
+   "#5a564e",
+   "#69665c",
+   "#4c4840",
+   "#78756e"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/ee/eee55b6d-9a46-4b9a-b98d-f1596e22379f_35.jpg": {
+  "check": [],
+  "hex": "#615d50",
+  "kept": 0.888,
+  "method": "cutout",
+  "palette": [
+   "#595548",
+   "#676456",
+   "#4b483b",
+   "#7a7467"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/f0/f0045a0c-2076-4428-b998-fa429121aba1_35.jpg": {
+  "check": [],
+  "hex": "#303a39",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#303a39"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/f1/f1551caa-2930-45e1-9fae-7cc3af31b03d_35.jpg": {
+  "check": [],
+  "hex": "#7e694f",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#826d52",
+   "#8c765b",
+   "#756047",
+   "#604c34"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/f5/f55d675a-9d11-443f-a4c3-d3cf9d7f3a1c_35.jpg": {
+  "check": [],
+  "hex": "#756451",
+  "kept": 0.885,
+  "method": "cutout",
+  "palette": [
+   "#7c6a55",
+   "#6d5b47",
+   "#5b4a36",
+   "#8a7b67"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/catalog/swatchImages/35/ff/ffd5c85adf6d409486334a87386fe77c_35.jpg": {
+  "check": [
+   "scene",
+   "mixed"
+  ],
+  "hex": "#757677",
+  "kept": 0.447,
+  "mean": "#838384",
+  "method": "cutout",
+  "palette": [
+   "#757676",
+   "#8b8c8c",
+   "#b2b3b4",
+   "#3d3b3c"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/00465bce9fac40e59d0911484d287488/svn/gray-metal-roofing-922metal-1-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#575757",
+  "kept": 0.469,
+  "mean": "#575857",
+  "method": "cutout",
+  "palette": [
+   "#575757",
+   "#717270",
+   "#161616",
+   "#3f3f3f"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/01caa177a8a042ef95d340ab9ea5aaf4/svn/gray-metal-roofing-io-359-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#7e7e7e",
+  "kept": 0.355,
+  "mean": "#606060",
+  "method": "cutout",
+  "palette": [
+   "#7d7d7d",
+   "#494a4a",
+   "#646565",
+   "#2c2c2c"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/01caa177a8a042ef95d340ab9ea5aaf4/svn/gray-metal-roofing-io-864-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#7e7e7e",
+  "kept": 0.355,
+  "mean": "#606060",
+  "method": "cutout",
+  "palette": [
+   "#7d7d7d",
+   "#494a4a",
+   "#646565",
+   "#2c2c2c"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/01caa177a8a042ef95d340ab9ea5aaf4/svn/grey-metal-roofing-hokkaidao16-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#7e7e7e",
+  "kept": 0.355,
+  "mean": "#606060",
+  "method": "cutout",
+  "palette": [
+   "#7d7d7d",
+   "#494a4a",
+   "#646565",
+   "#2c2c2c"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/01caa177a8a042ef95d340ab9ea5aaf4/svn/grey-metal-roofing-hokkaidao17-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#7e7e7e",
+  "kept": 0.355,
+  "mean": "#606060",
+  "method": "cutout",
+  "palette": [
+   "#7d7d7d",
+   "#494a4a",
+   "#646565",
+   "#2c2c2c"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/03ca6432a5324f1d96b12000fa172bac/svn/gray-metal-roofing-54122fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#5b5d5c",
+  "kept": 0.377,
+  "mean": "#545555",
+  "method": "cutout",
+  "palette": [
+   "#5b5c5c",
+   "#454646",
+   "#252626",
+   "#7d7e7e"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/03eaf5e3796c4a27b4c3c21f9add5713/svn/gray-metal-roofing-46522fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#80807f",
+  "kept": 0.523,
+  "mean": "#868686",
+  "method": "cutout",
+  "palette": [
+   "#80807f",
+   "#8f8f8e",
+   "#4b4b4b",
+   "#b5b5b4"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/043f2b8e-055d-48a7-9cc0-220c098035e9/svn/fabral-drip-edge-flashing-4875255889-64_1000.jpg": {
+  "check": [],
+  "hex": "#828786",
+  "kept": 0.086,
+  "method": "cutout",
+  "palette": [
+   "#7f8483",
+   "#898c8b",
+   "#a0a1a1"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/0660a95506bd41098cc1bbc8d36eaad3/svn/black-metal-roofing-53922fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#343434",
+  "kept": 0.519,
+  "mean": "#5c554e",
+  "method": "cutout",
+  "palette": [
+   "#323232",
+   "#161616",
+   "#4e4d4c",
+   "#c9baa5"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/06aac35f-c202-4ac4-8202-f2a99b9a2c91/svn/green-atlas-roof-shingles-618f003-64_1000.jpg": {
+  "check": [],
+  "hex": "#3d4946",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#404e49",
+   "#394541",
+   "#2f3836"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/07dae8af-0c39-4c92-8caa-c2593defed15/svn/castlewood-gray-gaf-roof-shingles-0688153-64_1000.jpg": {
+  "check": [],
+  "hex": "#494845",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#4b4a47",
+   "#565550",
+   "#3f3e3b",
+   "#252422"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/088e781e-bf67-4e1d-971f-b6d38ff4ebb7/svn/biscayne-iko-roof-shingles-4973149-64_1000.jpg": {
+  "check": [],
+  "hex": "#706e67",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#676662",
+   "#75726c",
+   "#847f75",
+   "#5a5956"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/08de47f16ad8496a8ca89994cc98705a/svn/black-metal-roofing-54922fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#1b1b1b",
+  "kept": 0.693,
+  "mean": "#635657",
+  "method": "cutout",
+  "palette": [
+   "#181819",
+   "#50535a",
+   "#79797c",
+   "#e3732c"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/0ad25099-aad8-4b49-bbe1-8c6a9759f35a/svn/black-gaf-ridge-vents-2018000-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#4d4544",
+  "kept": 0.152,
+  "mean": "#847b78",
+  "method": "cutout",
+  "palette": [
+   "#4d4543",
+   "#b0a7a3",
+   "#887f7b",
+   "#6a615e"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/0b7d322f-076b-4207-882f-58b129fe3932/svn/gibraltar-building-products-roll-flashing-a959-10-20-64_1000.jpg": {
+  "check": [
+   "scene",
+   "mixed"
+  ],
+  "hex": "#b4bebc",
+  "kept": 0.252,
+  "mean": "#97a2a1",
+  "method": "cutout",
+  "palette": [
+   "#b4bfbd",
+   "#9aa7a6",
+   "#798685",
+   "#414a49"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/0ba4d90d-c078-4070-84e2-3070a80db4af/svn/green-metal-roofing-sp-mr-8800-029-64_1000.jpg": {
+  "check": [],
+  "hex": "#4a675f",
+  "kept": 0.324,
+  "method": "cutout",
+  "palette": [
+   "#416355",
+   "#4d6b63",
+   "#375745",
+   "#5f7677"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/0bbcfe4e-5cbd-41d5-b46d-f8c265016670/svn/drip-edge-flashing-5721900120-64_1000.jpg": {
+  "check": [],
+  "hex": "#dadada",
+  "kept": 0.346,
+  "method": "cutout",
+  "palette": [
+   "#dadada",
+   "#d1d1d1",
+   "#e2e2e2"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/0c0274118f494385a080e71cada36f1a/svn/gray-metal-roofing-56422fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#272625",
+  "kept": 0.509,
+  "mean": "#867358",
+  "method": "cutout",
+  "palette": [
+   "#252524",
+   "#535250",
+   "#eebe50",
+   "#77756f"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/0e25ac7fdc924745b375202d128e12ef/svn/black-metal-roofing-57122fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#282727",
+  "kept": 0.502,
+  "mean": "#867258",
+  "method": "cutout",
+  "palette": [
+   "#262525",
+   "#5b5b59",
+   "#f2ba39",
+   "#a4a298"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/1044f3d7-8be1-473d-88fb-3fd0a7f227f6/svn/glacier-iko-roof-shingles-4973150-64_1000.jpg": {
+  "check": [],
+  "hex": "#34322d",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#34322c",
+   "#2a2924",
+   "#3c3b35"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/137aedb1-22d7-4e9b-81d9-3fd01c345eb7/svn/amerimax-home-products-roll-flashing-70414-64_1000.jpg": {
+  "check": [
+   "scene",
+   "mixed"
+  ],
+  "hex": "#968f83",
+  "kept": 0.362,
+  "mean": "#a59f97",
+  "method": "cutout",
+  "palette": [
+   "#968f83",
+   "#c0bebb",
+   "#a9a69e",
+   "#846e60"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/163131b4-04af-4283-a37f-b3d255376735/svn/black-gaf-ridge-vents-2056000cu-64_1000.jpg": {
+  "check": [
+   "scene",
+   "mixed"
+  ],
+  "hex": "#4b4b4d",
+  "kept": 0.267,
+  "mean": "#545457",
+  "method": "cutout",
+  "palette": [
+   "#4a494c",
+   "#626266",
+   "#303032",
+   "#8d8d8e"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/1645b146-68cf-4a00-bd92-88730c6c138e/svn/hickory-gaf-roof-shingles-0489395-64_1000.jpg": {
+  "check": [],
+  "hex": "#58453a",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#58473d",
+   "#6f5445",
+   "#453932",
+   "#271f1b"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/18b1fb3d-261c-47b0-9a28-1be8620f5061/svn/oatey-drip-edge-flashing-11874-64_1000.jpg": {
+  "check": [],
+  "hex": "#655e59",
+  "kept": 0.342,
+  "method": "cutout",
+  "palette": [
+   "#6b645d",
+   "#5f5754",
+   "#746e67",
+   "#3e3b3a"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/18f9ee08-d96a-4ce5-907c-87e6db2e3af2/svn/black-ez-gunner-ridge-vents-1924-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#61656d",
+  "kept": 0.218,
+  "mean": "#5b5f67",
+  "method": "cutout",
+  "palette": [
+   "#60656d",
+   "#4e5258",
+   "#383c42",
+   "#787d87"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/19bbe5b6-bdb0-4c5d-a9ff-387f9ea7d5c5/svn/golden-amber-gaf-roof-shingles-0860347-64_1000.jpg": {
+  "check": [],
+  "hex": "#7f674f",
+  "kept": 0.898,
+  "method": "cutout",
+  "palette": [
+   "#836a52",
+   "#725c45",
+   "#9a7f65",
+   "#52402d"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/1a7eb104-1240-489f-99ae-817ffddbc517/svn/pewter-gray-gaf-roof-shingles-0585552-64_1000.jpg": {
+  "check": [],
+  "hex": "#444b4f",
+  "kept": 0.833,
+  "method": "cutout",
+  "palette": [
+   "#474f53",
+   "#565e63",
+   "#343b3f",
+   "#171e22"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/1d63ec204be947a2a739f8c98c89f8a4/svn/gray-closure-vent-ridge-vents-cv3-classic-50each-case-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#595149",
+  "kept": 0.131,
+  "mean": "#695f56",
+  "method": "cutout",
+  "palette": [
+   "#585049",
+   "#6f655c",
+   "#3c3632",
+   "#978877"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/1de106db-62c0-428d-8aec-0d9021c07a11/svn/english-gray-gaf-roof-shingles-0711280-64_1000.jpg": {
+  "check": [],
+  "hex": "#3d403f",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#3f4341",
+   "#4a4e4c",
+   "#313432",
+   "#191a19"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/1e663541-6c01-4896-bfee-9681d7baa8db/svn/mission-brown-gaf-roof-shingles-0489477-64_1000.jpg": {
+  "check": [],
+  "hex": "#695f56",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#6c6258",
+   "#5a5149",
+   "#807469",
+   "#342e29"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/1f04a1e2-6975-455a-ae8a-e7b63a9669d5/svn/oyster-atlas-roof-shingles-618h036-64_1000.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#949694",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#979896",
+   "#9fa09e",
+   "#8c8e8c",
+   "#7a7d7a"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/220e58f8-0667-49d3-86a9-c8b171bf7901/svn/shakewood-sandalwood-gaf-roof-shingles-0892737-64_1000.jpg": {
+  "check": [],
+  "hex": "#614832",
+  "kept": 0.889,
+  "method": "cutout",
+  "palette": [
+   "#58402b",
+   "#684e37",
+   "#45311f",
+   "#7e6046"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/235901b6e28147f9ab73f0a823cb39b0/svn/gray-metal-roofing-io-869-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#404141",
+  "kept": 0.434,
+  "mean": "#515151",
+  "method": "cutout",
+  "palette": [
+   "#404040",
+   "#5a5a5b",
+   "#2d2e2e",
+   "#7c7c7d"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/235901b6e28147f9ab73f0a823cb39b0/svn/grey-metal-roofing-hokkaidao14-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#404141",
+  "kept": 0.434,
+  "mean": "#515151",
+  "method": "cutout",
+  "palette": [
+   "#404040",
+   "#5a5a5b",
+   "#2d2e2e",
+   "#7c7c7d"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/2450434634e64ab9888ae95f2cdf57bc/svn/gray-metal-roofing-io-866-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#4c4c4c",
+  "kept": 0.414,
+  "mean": "#626262",
+  "method": "cutout",
+  "palette": [
+   "#4b4b4c",
+   "#888888",
+   "#2e2e2e",
+   "#676868"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/2450434634e64ab9888ae95f2cdf57bc/svn/grey-metal-roofing-hokkaidao19-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#4c4c4c",
+  "kept": 0.414,
+  "mean": "#626262",
+  "method": "cutout",
+  "palette": [
+   "#4b4b4c",
+   "#888888",
+   "#2e2e2e",
+   "#676868"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/25335501-af1b-4e56-99f5-2802927c6995/svn/weathered-gray-gaf-roof-shingles-0202880-64_1000.jpg": {
+  "check": [],
+  "hex": "#5d584f",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#605a51",
+   "#575249",
+   "#68635a",
+   "#4a483f"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/25bdb8cd-f0fb-4497-8c48-821d65dddb5d/svn/amerimax-home-products-roll-flashing-68008-64_1000.jpg": {
+  "check": [
+   "scene",
+   "mixed"
+  ],
+  "hex": "#9fa9ad",
+  "kept": 0.369,
+  "mean": "#9ea3a5",
+  "method": "cutout",
+  "palette": [
+   "#9ea9ad",
+   "#bfc2c4",
+   "#8b9193",
+   "#727475"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/25f17f37-fc27-4003-853c-9330981f41b1/svn/tan-atlas-roof-shingles-618h035-64_1000.jpg": {
+  "check": [],
+  "hex": "#a48e7f",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#a79181",
+   "#b09c8d",
+   "#9c8575",
+   "#806e63"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/2627b37e-18ad-42c9-8c0f-618f04f01876/svn/amerimax-drip-edge-flashing-5509919120-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#88766e",
+  "kept": 0.419,
+  "mean": "#806f68",
+  "method": "cutout",
+  "palette": [
+   "#88766e",
+   "#978780",
+   "#45322d",
+   "#6a544c"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/2644fa5d2d5d40628ee28c47fd6b3346/svn/black-metal-roofing-55222fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#3a3a3a",
+  "kept": 0.556,
+  "mean": "#454646",
+  "method": "cutout",
+  "palette": [
+   "#393939",
+   "#484949",
+   "#797b7b",
+   "#1c1c1c"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/26dfe03d532c4acf9577207ce6dcbefb/svn/black-metal-roofing-53622fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#171617",
+  "kept": 0.608,
+  "mean": "#5c554e",
+  "method": "cutout",
+  "palette": [
+   "#161616",
+   "#2e2d2e",
+   "#444344",
+   "#c6b7a1"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/27ef6d0c-73bc-4dc7-aeac-85dd43cb7c19/svn/metal-roofing-4916010882-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#2e3d3a",
+  "kept": 0.155,
+  "mean": "#2c3936",
+  "method": "cutout",
+  "palette": [
+   "#2e3d3a",
+   "#283733",
+   "#0a100e",
+   "#555b59"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/27f8214e-4914-4e55-8edc-1109578ed748/svn/birchwood-gaf-roof-shingles-0860097-64_1000.jpg": {
+  "check": [],
+  "hex": "#8c857b",
+  "kept": 0.867,
+  "method": "cutout",
+  "palette": [
+   "#928b80",
+   "#a9a196",
+   "#7a736a",
+   "#59534b"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/281e0940-18fe-4af1-8d46-f22bd1217c19/svn/national-blue-iko-roof-shingles-discontinued-no-qoh-64_1000.jpg": {
+  "check": [],
+  "hex": "#2e434a",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#2a3e42",
+   "#32464d",
+   "#223537",
+   "#39525f"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/285bc682684245a6ae00b918e24cacf3/svn/gray-metal-roofing-56322fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#676b6d",
+  "kept": 0.519,
+  "mean": "#8a7963",
+  "method": "cutout",
+  "palette": [
+   "#64696b",
+   "#313334",
+   "#f3ae13",
+   "#cfc5a7"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/2916123a-a749-4e36-81f0-6149ba3c6455/svn/atlantic-blue-iko-roof-shingles-4973195-64_1000.jpg": {
+  "check": [],
+  "hex": "#354750",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#384a54",
+   "#32424a",
+   "#293740",
+   "#3f5560"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/2ae751a30dd14dc19fd2c1d2e3a43d27/svn/gray-metal-roofing-46622fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#838282",
+  "kept": 0.524,
+  "mean": "#8a8989",
+  "method": "cutout",
+  "palette": [
+   "#828282",
+   "#949493",
+   "#4c4c4c",
+   "#b7b6b6"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/2b646c75-2119-454d-ba46-4ffcfe226ecf/svn/white-metal-roofing-0410115169-64_1000.jpg": {
+  "check": [],
+  "hex": "#dbd9e6",
+  "kept": 0.302,
+  "method": "cutout",
+  "palette": [
+   "#d8d6e3",
+   "#dedde9",
+   "#e5e3ef",
+   "#d0cedb"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/2cd44462-db27-4250-a187-648cac57a8cf/svn/charcoal-gaf-roof-shingles-0601180-64_1000.jpg": {
+  "check": [],
+  "hex": "#434549",
+  "kept": 0.917,
+  "method": "cutout",
+  "palette": [
+   "#45474c",
+   "#4f5055",
+   "#3b3c41",
+   "#1a1b1f"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/2cf0b557eddc4dd289eb7206296f3957/svn/gray-metal-roofing-io-865-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#2b2b2b",
+  "kept": 0.393,
+  "mean": "#535454",
+  "method": "cutout",
+  "palette": [
+   "#2a2b2b",
+   "#5b5b5c",
+   "#424343",
+   "#828282"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/2cf0b557eddc4dd289eb7206296f3957/svn/grey-metal-roofing-hokkaidao13-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#2b2b2b",
+  "kept": 0.393,
+  "mean": "#535454",
+  "method": "cutout",
+  "palette": [
+   "#2a2b2b",
+   "#5b5b5c",
+   "#424343",
+   "#828282"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/2de6df0c-67cc-45b4-8019-ba3304c20936/svn/amerimax-home-products-drip-edge-flashing-5507535120-64_1000.jpg": {
+  "check": [],
+  "hex": "#2c2c2e",
+  "kept": 0.244,
+  "method": "cutout",
+  "palette": [
+   "#1c1d1e",
+   "#323334",
+   "#3d3d3f",
+   "#2a2a2b"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/2ded72a7-8575-4320-9b0b-dfc83cb13929/svn/barkwood-gaf-roof-shingles-0489070-64_1000.jpg": {
+  "check": [],
+  "hex": "#595044",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#5c5246",
+   "#6d6153",
+   "#463e36",
+   "#1f1c18"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/3118f82bb5ff4d0dae239bea3ec4bb55/svn/gray-laybus-roof-shingles-pf10j0mp1-64_1000.jpg": {
+  "check": [],
+  "hex": "#646663",
+  "kept": 0.401,
+  "method": "cutout",
+  "palette": [
+   "#666966",
+   "#6c706c",
+   "#5e605d",
+   "#524f4c"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/31a41adc-cead-47ed-ade9-8ed2d995ecc9/svn/gray-clihome-metal-roofing-cl-fopc385452-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#5e5f5e",
+  "kept": 0.564,
+  "mean": "#5e615c",
+  "method": "cutout",
+  "palette": [
+   "#5e5f5e",
+   "#555554",
+   "#6e6f6e",
+   "#559022"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/340b88a3-22d1-437f-84ec-20dd8fc25332/svn/gibraltar-building-products-drip-edge-flashing-cad12-rbr-64_1000.jpg": {
+  "check": [
+   "scene",
+   "mixed"
+  ],
+  "hex": "#3d3032",
+  "kept": 0.311,
+  "mean": "#7b7774",
+  "method": "cutout",
+  "palette": [
+   "#3d3031",
+   "#babab3",
+   "#5d5557",
+   "#88837f"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/34ec6795-daa4-4fe5-92b2-9b5c9645961a/svn/white-metal-roofing-0410117169-64_1000.jpg": {
+  "check": [],
+  "hex": "#dbd9e6",
+  "kept": 0.302,
+  "method": "cutout",
+  "palette": [
+   "#d8d6e3",
+   "#dedcea",
+   "#e5e3ef",
+   "#cfcddb"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/350333f1-db8c-48e0-92cb-44db2308792d/svn/dark-gray-python-ridge-vents-py-3475-20n-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#2c2d2f",
+  "kept": 0.229,
+  "mean": "#525253",
+  "method": "cutout",
+  "palette": [
+   "#2b2d2f",
+   "#3f3f41",
+   "#797778",
+   "#5a595b"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/35489aaa-9bc5-47e5-8262-03261b44c1a3/svn/amerimax-home-products-drip-edge-flashing-5701419120-64_1000.jpg": {
+  "check": [],
+  "hex": "#72615d",
+  "kept": 0.297,
+  "method": "cutout",
+  "palette": [
+   "#685753",
+   "#6e5d59",
+   "#82716d",
+   "#776662"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/361c635588ba4bc7aeba4ccbf2819812/svn/black-metal-roofing-46322fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#3c3c3c",
+  "kept": 0.512,
+  "mean": "#4a4a4b",
+  "method": "cutout",
+  "palette": [
+   "#3b3b3b",
+   "#5a5b5c",
+   "#979898",
+   "#1c1c1c"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/36c4984d4746494891cd206d9d86be4c/svn/gray-metal-roofing-54022fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#909599",
+  "kept": 0.691,
+  "mean": "#7b7478",
+  "method": "cutout",
+  "palette": [
+   "#8f9498",
+   "#383c42",
+   "#616876",
+   "#e67630"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/37a093ac-c74b-41c7-9e78-97fa6d407d02/svn/black-ridge-vents-rh20-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#363539",
+  "kept": 0.411,
+  "mean": "#49484c",
+  "method": "cutout",
+  "palette": [
+   "#353438",
+   "#222024",
+   "#6b6a6e",
+   "#4f4e52"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/38f1e83f4ab947d6bca13d770bacc5ad/svn/silver-metal-roofing-47122fsa05-64_1000.jpg": {
+  "check": [
+   "scene",
+   "mixed"
+  ],
+  "hex": "#9c9e9f",
+  "kept": 0.33,
+  "mean": "#969899",
+  "method": "cutout",
+  "palette": [
+   "#9c9f9f",
+   "#bcbebf",
+   "#828485",
+   "#5e5f5f"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/392a534f-8c7a-48f6-a081-34e356c9f766/svn/ejoy-roll-flashing-gsr-20x50-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#878eb2",
+  "kept": 0.108,
+  "mean": "#7f86a7",
+  "method": "cutout",
+  "palette": [
+   "#878eb1",
+   "#9aa1c4",
+   "#6e7695",
+   "#39415c"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/399606ad-b643-4065-a85b-d9e3bb720818/svn/midnight-mesa-gaf-roof-shingles-0892252-64_1000.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#9e5964",
+  "kept": 0.206,
+  "method": "cutout",
+  "palette": [
+   "#ab8891",
+   "#8c1d2e",
+   "#ad2537",
+   "#222e53"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/39e4ffd675ce457d8bb18cdc5ee85160/svn/gray-metal-roofing-io-861-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#333333",
+  "kept": 0.42,
+  "mean": "#515151",
+  "method": "cutout",
+  "palette": [
+   "#333333",
+   "#5c5d5d",
+   "#454545",
+   "#818282"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/39e4ffd675ce457d8bb18cdc5ee85160/svn/grey-metal-roofing-hokkaidao12-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#333333",
+  "kept": 0.42,
+  "mean": "#515151",
+  "method": "cutout",
+  "palette": [
+   "#333333",
+   "#5c5d5d",
+   "#454545",
+   "#818282"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/3a159ddd-8592-43a8-8ba9-8c6fc857bde8/svn/n-a-gaf-roof-shingles-95restlhdz200hd-64_1000.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#646260",
+  "kept": 0.461,
+  "method": "cutout",
+  "palette": [
+   "#332e29",
+   "#4e4943",
+   "#919495",
+   "#706c67"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/3ace2a88-aa68-4fee-9b1a-7ffa4c477e52/svn/harvard-slate-iko-roof-shingles-4220033-64_1000.jpg": {
+  "check": [],
+  "hex": "#3d3731",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#413b35",
+   "#39322e",
+   "#2c2824"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/3ad502cf1169421fbacc51de1a7fedf2/svn/black-metal-roofing-54822fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#19191a",
+  "kept": 0.669,
+  "mean": "#635657",
+  "method": "cutout",
+  "palette": [
+   "#171818",
+   "#666a71",
+   "#494949",
+   "#b78261"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/3c2925f0-8d7f-4f95-a096-25a663340d93/svn/charcoal-gaf-roof-shingles-0201180-64_1000.jpg": {
+  "check": [],
+  "hex": "#3c4245",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#3f4548",
+   "#373d40",
+   "#2d3337",
+   "#474e50"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/3c564cce-1760-43d4-820b-9dbbe48d4b7d/svn/amerimax-drip-edge-flashing-5521919120-64_1000.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#c6c7c3",
+  "kept": 0.339,
+  "method": "cutout",
+  "palette": [
+   "#c8c8c4",
+   "#bfbfbb"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/3cde87b2a3144badba19c4acae7bd80a/svn/gray-metal-roofing-56822fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#666b6e",
+  "kept": 0.513,
+  "mean": "#8a7a65",
+  "method": "cutout",
+  "palette": [
+   "#64696d",
+   "#313333",
+   "#eeac17",
+   "#dad2b9"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/3eaa7dfb-fea1-4ad4-ba0a-4bb8ffe8b51b/svn/amerimax-drip-edge-flashing-37154-64_1000.jpg": {
+  "check": [],
+  "hex": "#e0e0e0",
+  "kept": 0.153,
+  "method": "cutout",
+  "palette": [
+   "#e0e0e0",
+   "#e9e9eb",
+   "#cfcfce"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/3f6cb773-b129-4a83-a10f-a4433cda958a/svn/gibraltar-building-products-roll-flashing-17439-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#718089",
+  "kept": 0.133,
+  "mean": "#86929a",
+  "method": "cutout",
+  "palette": [
+   "#6f7f88",
+   "#455861",
+   "#95a0a8",
+   "#bec6d0"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/4049d4ee-2023-41c8-8061-e9e2bd84b86c/svn/vintage-green-iko-roof-shingles-4220062-64_1000.jpg": {
+  "check": [],
+  "hex": "#686e6a",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#6c726e",
+   "#616662",
+   "#787e7a",
+   "#454945"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/42400f186e7f468d919c862eaefeecd8/svn/black-metal-roofing-45922fsa05-64_1000.jpg": {
+  "check": [],
+  "hex": "#3f3f3f",
+  "kept": 0.595,
+  "method": "cutout",
+  "palette": [
+   "#404040",
+   "#3a3a3a"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/426232e2dae24719a7101f5111944a08/svn/emac-drip-edge-flashing-nvgt146-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#6f4c3b",
+  "kept": 0.204,
+  "mean": "#77594b",
+  "method": "cutout",
+  "palette": [
+   "#6e4c3a",
+   "#654230",
+   "#8c7264",
+   "#baa69d"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/43405a41-ecf5-45d0-a836-cd60354440c9/svn/black-shadow-atlas-roof-shingles-618f002-64_1000.jpg": {
+  "check": [],
+  "hex": "#454647",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#47484a",
+   "#404143",
+   "#4d4e50",
+   "#353637"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/43b227739ea0439bb4ea6e4da1ab7529/svn/silver-metal-roofing-47322fsa05-64_1000.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#aeaeae",
+  "kept": 0.371,
+  "method": "cutout",
+  "palette": [
+   "#bebebd",
+   "#b3b3b2",
+   "#a2a2a2",
+   "#878888"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/43c2407a-f7e0-4d79-82dd-9f1eae255eaa/svn/harvard-slate-iko-roof-shingles-4991059-64_1000.jpg": {
+  "check": [],
+  "hex": "#515451",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#555855",
+   "#484b48",
+   "#3a3d3a",
+   "#696e6a"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/44baa632-9ed0-4064-81c7-602288074fb0/svn/brown-clihome-metal-roofing-cl-fopc386933-64_1000.jpg": {
+  "check": [],
+  "hex": "#615543",
+  "kept": 0.568,
+  "method": "cutout",
+  "palette": [
+   "#655945",
+   "#534334",
+   "#5b4c3d",
+   "#6d6358"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/45ec2f322cc4459b80e31267a16fb5c7/svn/gray-metal-roofing-57022fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#62676a",
+  "kept": 0.498,
+  "mean": "#897863",
+  "method": "cutout",
+  "palette": [
+   "#5f6467",
+   "#303232",
+   "#f3bd3f",
+   "#98988f"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/46e7e20c-9cf3-49b5-8cf6-bf756191134e/svn/hearthstone-atlas-roof-shingles-618f000-64_1000.jpg": {
+  "check": [],
+  "hex": "#616463",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#636766",
+   "#6c706e",
+   "#555959",
+   "#3c403f"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/46f04f1c-07b3-4a40-aa33-dde73d3c2c8a/svn/black-air-vent-ridge-vents-vvpn-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#4b4846",
+  "kept": 0.265,
+  "mean": "#53504f",
+  "method": "cutout",
+  "palette": [
+   "#4b4846",
+   "#3c3937",
+   "#5e5b5a",
+   "#858283"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/4729090a-fd51-47e2-b2ff-96f869acd790/svn/ejoy-roll-flashing-gsr-12x25-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#a6b2d1",
+  "kept": 0.151,
+  "mean": "#919dbb",
+  "method": "cutout",
+  "palette": [
+   "#a6b2d1",
+   "#939ebe",
+   "#7783a2",
+   "#2c384b"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/47856befcf9c4dd89d02ebbea6bd5682/svn/gray-metal-roofing-io-867-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#444545",
+  "kept": 0.282,
+  "mean": "#535353",
+  "method": "cutout",
+  "palette": [
+   "#434444",
+   "#5c5d5d",
+   "#313232",
+   "#7f7f80"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/47856befcf9c4dd89d02ebbea6bd5682/svn/grey-metal-roofing-hokkaidao15-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#444545",
+  "kept": 0.282,
+  "mean": "#535353",
+  "method": "cutout",
+  "palette": [
+   "#434444",
+   "#5c5d5d",
+   "#313232",
+   "#7f7f80"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/47c642d7-cd91-4e6b-8cb8-607610a8e647/svn/weathered-wood-atlas-roof-shingles-618f001-64_1000.jpg": {
+  "check": [],
+  "hex": "#615a55",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#645c57",
+   "#5c544f",
+   "#6c645e",
+   "#4b4a49"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/4836acbf-69f1-487b-91d3-2c7564cec85e/svn/drip-edge-flashing-st-re-1000-195-64_1000.jpg": {
+  "check": [],
+  "hex": "#dddae3",
+  "kept": 0.077,
+  "method": "cutout",
+  "palette": [
+   "#dedbe4",
+   "#d8d5de"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/48b75706-7a23-4225-90b5-d960f2f1c6d5/svn/weathered-wood-gaf-roof-shingles-0487900-64_1000.jpg": {
+  "check": [],
+  "hex": "#6e6a5c",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#706c5e",
+   "#827e6c",
+   "#5a574d",
+   "#2d2c25"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/49f18bd7ae1b478494a5532e848a9305/svn/black-laybus-metal-roofing-bj70e2sg0-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#292828",
+  "kept": 0.619,
+  "mean": "#867258",
+  "method": "cutout",
+  "palette": [
+   "#272726",
+   "#52514f",
+   "#75736f",
+   "#ecbc4d"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/4bf56a8b-7cb8-40f8-82f0-3be209affeb9/svn/fabral-drip-edge-flashing-4875255882-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#363636",
+  "kept": 0.087,
+  "mean": "#414141",
+  "method": "cutout",
+  "palette": [
+   "#363636",
+   "#5a5a5a",
+   "#898989"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/4c228b23076645d0a2b900970667e6f9/svn/black-metal-roofing-55622fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#454545",
+  "kept": 0.495,
+  "mean": "#3f3f3f",
+  "method": "cutout",
+  "palette": [
+   "#444444",
+   "#363636",
+   "#212121",
+   "#7b7b7b"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/4cea69cf5bef4b31ab711bb9b4563b7b/svn/gray-metal-roofing-49122fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#252529",
+  "kept": 0.629,
+  "mean": "#676261",
+  "method": "cutout",
+  "palette": [
+   "#242428",
+   "#6f727a",
+   "#44454a",
+   "#d4bc9d"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/4d050c619d7441e1afd149706f3ab21b/svn/gray-metal-roofing-56622fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#676b6e",
+  "kept": 0.507,
+  "mean": "#897963",
+  "method": "cutout",
+  "palette": [
+   "#656a6c",
+   "#323334",
+   "#efad17",
+   "#d9d2b6"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/4da0c7a59bdc4b668e98e6e1de4f3b4c/svn/gray-metal-roofing-56122fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#313132",
+  "kept": 0.474,
+  "mean": "#887761",
+  "method": "cutout",
+  "palette": [
+   "#2f3031",
+   "#707476",
+   "#53585b",
+   "#efbd49"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/4e0a868d-0433-454d-874a-c81553132265/svn/metal-roofing-4834115889-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#656565",
+  "kept": 0.121,
+  "mean": "#929292",
+  "method": "cutout",
+  "palette": [
+   "#646464",
+   "#b9b9b9",
+   "#9a9a9a",
+   "#7d7d7d"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/4ea7695e-b6fc-40e9-a208-2727de047c1d/svn/amerimax-home-products-drip-edge-flashing-5601400120-64_1000.jpg": {
+  "check": [
+   "scene",
+   "mixed"
+  ],
+  "hex": "#c5c7c8",
+  "kept": 0.397,
+  "mean": "#abadaf",
+  "method": "cutout",
+  "palette": [
+   "#c5c7c8",
+   "#91969a",
+   "#6d6e6d",
+   "#b2b5b7"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/4f36101f-8e7e-4809-bdd5-aca4a0535f1f/svn/white-gibraltar-building-products-metal-roofing-987609-64_1000.jpg": {
+  "check": [],
+  "hex": "#eae8e7",
+  "kept": 0.224,
+  "method": "cutout",
+  "palette": [
+   "#ebeae9",
+   "#e3e2e0"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/4f36101f-8e7e-4809-bdd5-aca4a0535f1f/svn/white-gibraltar-building-products-metal-roofing-987610-64_1000.jpg": {
+  "check": [],
+  "hex": "#eae8e7",
+  "kept": 0.224,
+  "method": "cutout",
+  "palette": [
+   "#ebeae9",
+   "#e3e2e0"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/4f36101f-8e7e-4809-bdd5-aca4a0535f1f/svn/white-gibraltar-building-products-metal-roofing-987611-64_1000.jpg": {
+  "check": [],
+  "hex": "#eae8e7",
+  "kept": 0.224,
+  "method": "cutout",
+  "palette": [
+   "#ebeae9",
+   "#e3e2e0"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/4f36101f-8e7e-4809-bdd5-aca4a0535f1f/svn/white-gibraltar-building-products-metal-roofing-987613-64_1000.jpg": {
+  "check": [],
+  "hex": "#eae8e7",
+  "kept": 0.224,
+  "method": "cutout",
+  "palette": [
+   "#ebeae9",
+   "#e3e2e0"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/511588d2-95cb-4c64-be88-46f7d953a30d/svn/amerimax-home-products-drip-edge-flashing-5505400120-64_1000.jpg": {
+  "check": [],
+  "hex": "#d6d6d6",
+  "kept": 0.287,
+  "method": "cutout",
+  "palette": [
+   "#cbcbcb",
+   "#dadada",
+   "#d2d2d2",
+   "#e3e3e3"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/511974bf-394d-4a72-94ef-9214dfcf27f7/svn/weathered-stone-iko-roof-shingles-1930129-64_1000.jpg": {
+  "check": [],
+  "hex": "#48413a",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#4b443d",
+   "#3f3834",
+   "#584f45",
+   "#332e2b"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/539b89bb59b54741a9256d3eb7efe387/svn/gray-metal-roofing-22fsa05-1004-64_1000.jpg": {
+  "check": [],
+  "hex": "#959997",
+  "kept": 0.55,
+  "method": "cutout",
+  "palette": [
+   "#979b99",
+   "#8e9290"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/53e42c8c-3b7c-46a7-9011-0c8310bf5f3b/svn/glacier-iko-roof-shingles-4991150-64_1000.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#6e6c68",
+  "kept": 0.627,
+  "method": "cutout",
+  "palette": [
+   "#5e5b53",
+   "#837a71",
+   "#4b4941",
+   "#98a5ae"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/53e42c8c-3b7c-46a7-9011-0c8310bf5f3b/svn/iko-roof-shingles-4991056-64_1000.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#6e6c68",
+  "kept": 0.627,
+  "method": "cutout",
+  "palette": [
+   "#5e5b53",
+   "#837a71",
+   "#4b4941",
+   "#98a5ae"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/53e42c8c-3b7c-46a7-9011-0c8310bf5f3b/svn/shadow-slate-iko-roof-shingles-4991144-64_1000.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#6e6c68",
+  "kept": 0.627,
+  "method": "cutout",
+  "palette": [
+   "#5e5b53",
+   "#837a71",
+   "#4b4941",
+   "#98a5ae"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/5510709a-3279-42f7-be87-4a2efc6d2677/svn/gibraltar-building-products-drip-edge-flashing-987615-64_1000.jpg": {
+  "check": [],
+  "hex": "#cbc8b3",
+  "kept": 0.25,
+  "method": "cutout",
+  "palette": [
+   "#cfceb7",
+   "#c5beaa",
+   "#d8d6c4",
+   "#c9c6b3"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/5571d7f5-c7fe-44b4-b02a-7176b83cb3e0/svn/gibraltar-building-products-roll-flashing-17419-64_1000.jpg": {
+  "check": [
+   "scene",
+   "mixed"
+  ],
+  "hex": "#b5c0bd",
+  "kept": 0.297,
+  "mean": "#98a3a1",
+  "method": "cutout",
+  "palette": [
+   "#b6c0bd",
+   "#9caaa9",
+   "#778383",
+   "#3d4645"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/57e4da1e-a76d-4af5-bcfa-31f725a1e4c7/svn/black-gaf-ridge-vents-2027000-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#565859",
+  "kept": 0.43,
+  "mean": "#535557",
+  "method": "cutout",
+  "palette": [
+   "#565859",
+   "#45484a",
+   "#6b6c6e",
+   "#282b2f"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/5954b15a-0020-455a-96d8-4e49bd5a81be/svn/gibraltar-building-products-roll-flashing-961-10-14-64_1000.jpg": {
+  "check": [
+   "scene",
+   "mixed"
+  ],
+  "hex": "#bdbfbc",
+  "kept": 0.276,
+  "mean": "#9ea09d",
+  "method": "cutout",
+  "palette": [
+   "#bdbfbd",
+   "#a5a6a3",
+   "#818380",
+   "#4f5451"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/5954b15a-0020-455a-96d8-4e49bd5a81be/svn/gibraltar-building-products-roll-flashing-999-10-10-64_1000.jpg": {
+  "check": [
+   "scene",
+   "mixed"
+  ],
+  "hex": "#bdbfbc",
+  "kept": 0.276,
+  "mean": "#9ea09d",
+  "method": "cutout",
+  "palette": [
+   "#bdbfbd",
+   "#a5a6a3",
+   "#818380",
+   "#4f5451"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/5954b15a-0020-455a-96d8-4e49bd5a81be/svn/gibraltar-building-products-roll-flashing-999-10-14-64_1000.jpg": {
+  "check": [
+   "scene",
+   "mixed"
+  ],
+  "hex": "#bdbfbc",
+  "kept": 0.276,
+  "mean": "#9ea09d",
+  "method": "cutout",
+  "palette": [
+   "#bdbfbd",
+   "#a5a6a3",
+   "#818380",
+   "#4f5451"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/5954b15a-0020-455a-96d8-4e49bd5a81be/svn/gibraltar-building-products-roll-flashing-a999-10-12-64_1000.jpg": {
+  "check": [
+   "scene",
+   "mixed"
+  ],
+  "hex": "#bdbfbc",
+  "kept": 0.276,
+  "mean": "#9ea09d",
+  "method": "cutout",
+  "palette": [
+   "#bdbfbd",
+   "#a5a6a3",
+   "#818380",
+   "#4f5451"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/5954b15a-0020-455a-96d8-4e49bd5a81be/svn/gibraltar-building-products-roll-flashing-a999-50-12-64_1000.jpg": {
+  "check": [
+   "scene",
+   "mixed"
+  ],
+  "hex": "#bdbfbc",
+  "kept": 0.276,
+  "mean": "#9ea09d",
+  "method": "cutout",
+  "palette": [
+   "#bdbfbd",
+   "#a5a6a3",
+   "#818380",
+   "#4f5451"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/5a9fe2a2-f926-43d4-b371-e41be6370505/svn/weathered-wood-gaf-roof-shingles-0582900-64_1000.jpg": {
+  "check": [],
+  "hex": "#393528",
+  "kept": 0.833,
+  "method": "cutout",
+  "palette": [
+   "#3e392b",
+   "#2d291e",
+   "#4d4839",
+   "#16140e"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/5abbde36-e201-4ba9-adf1-627830053448/svn/black-top-shield-ridge-vents-toptspro4swn-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#444444",
+  "kept": 0.492,
+  "mean": "#4b4b4a",
+  "method": "cutout",
+  "palette": [
+   "#444444",
+   "#525251",
+   "#1b1b1a",
+   "#696866"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/5c28a9e8f9c0400c95e1b22ff059eec8/svn/gray-metal-roofing-46922fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#80807f",
+  "kept": 0.499,
+  "mean": "#8a8a8a",
+  "method": "cutout",
+  "palette": [
+   "#808180",
+   "#8f9090",
+   "#aaacad",
+   "#666665"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/5d5d8fa1-f1cd-4de1-bfdd-ef80bea225ad/svn/mill-gibraltar-building-products-metal-roofing-13513-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#858b91",
+  "kept": 0.121,
+  "mean": "#7e8389",
+  "method": "cutout",
+  "palette": [
+   "#858b91",
+   "#9ea4ab",
+   "#6a6e74",
+   "#4a4e52"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/5e3fd261-d41b-43d7-b2eb-56d8c31d30b8/svn/pearl-atlas-roof-shingles-618h013-64_1000.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#9d9a97",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#a19f9b",
+   "#969490",
+   "#858481"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/5e8a4a83193c41cfa3458f63fca674a6/svn/reddish-brown-metal-roofing-22fsa05-1002-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#5a1810",
+  "kept": 0.241,
+  "mean": "#5f1d16",
+  "method": "cutout",
+  "palette": [
+   "#5a1810",
+   "#6c1e15",
+   "#562723",
+   "#77514d"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/600b1bfaac8a474c92fb44773b1d44cc/svn/gray-metal-roofing-55422fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#70747e",
+  "kept": 0.492,
+  "mean": "#676b73",
+  "method": "cutout",
+  "palette": [
+   "#6f747d",
+   "#43464b",
+   "#585b62",
+   "#85898f"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/601150fd-a0ff-4bc6-a3c0-014594a618a3/svn/riviera-red-iko-roof-shingles-4220133-64_1000.jpg": {
+  "check": [],
+  "hex": "#7a6e60",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#7e7163",
+   "#867a6c",
+   "#746859",
+   "#605547"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/608f3a7d-138b-41d7-b7af-ed0899ad82c3/svn/copper-canyon-gaf-roof-shingles-0860196-64_1000.jpg": {
+  "check": [],
+  "hex": "#715c47",
+  "kept": 0.896,
+  "method": "cutout",
+  "palette": [
+   "#67533f",
+   "#77614b",
+   "#8a735b",
+   "#4c3927"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/618258a9fd89446f8a9a44c9ca34618d/svn/black-metal-roofing-49322fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#343433",
+  "kept": 0.653,
+  "mean": "#534f4b",
+  "method": "cutout",
+  "palette": [
+   "#333232",
+   "#171717",
+   "#484847",
+   "#bfb6a6"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/61f2d4f1-1d5a-4da0-84e3-2d8ab5ce25a7/svn/gibraltar-building-products-roll-flashing-17403-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#5d6c75",
+  "kept": 0.128,
+  "mean": "#909aa3",
+  "method": "cutout",
+  "palette": [
+   "#5c6b74",
+   "#7b8992",
+   "#a0aab2",
+   "#c4cbd7"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/6326f1285c724e59b90f6869c64db556/svn/gray-metal-roofing-46722fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#a0a09f",
+  "kept": 0.464,
+  "mean": "#9d9e9d",
+  "method": "cutout",
+  "palette": [
+   "#a0a19f",
+   "#929290",
+   "#afb1b4",
+   "#5b5b5b"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/672b7b05-6217-4c54-b573-98992b7e872a/svn/drip-edge-flashing-5622000120-64_1000.jpg": {
+  "check": [],
+  "hex": "#c1c6c6",
+  "kept": 0.364,
+  "method": "cutout",
+  "palette": [
+   "#c6cccc",
+   "#c1c6c6",
+   "#b7bbbb",
+   "#949998"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/673a23b1316f4e70b528a75ca4960858/svn/gray-metal-roofing-57322fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#5f636a",
+  "kept": 0.703,
+  "mean": "#6c7578",
+  "method": "cutout",
+  "palette": [
+   "#5e6269",
+   "#4e5259",
+   "#76797e",
+   "#a4bfbb"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/68b2942a-f4a4-46fd-ba00-e93ec8c5efed/svn/black-air-vent-ridge-vents-evi-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#737375",
+  "kept": 0.075,
+  "mean": "#79797b",
+  "method": "cutout",
+  "palette": [
+   "#737275",
+   "#818183",
+   "#636366",
+   "#a0a0a2"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/68e84320f99345d79a33c3331bbf2deb/svn/gray-metal-roofing-53822fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#252529",
+  "kept": 0.521,
+  "mean": "#6c6867",
+  "method": "cutout",
+  "palette": [
+   "#242428",
+   "#6e727a",
+   "#424449",
+   "#cbbda7"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/698d7cc9-73c7-44a5-8857-ea8ec64e558e/svn/antique-slate-gaf-roof-shingles-0847014-64_1000.jpg": {
+  "check": [],
+  "hex": "#655e52",
+  "kept": 0.857,
+  "method": "cutout",
+  "palette": [
+   "#6a6356",
+   "#797165",
+   "#595348",
+   "#403b31"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/6af3624e-a15c-4805-a517-e6f0887db481/svn/amerimax-home-products-roll-flashing-68006-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#c3c1bd",
+  "kept": 0.399,
+  "mean": "#b6aca6",
+  "method": "cutout",
+  "palette": [
+   "#c3c1be",
+   "#b6b1ab",
+   "#9f664a",
+   "#978b83"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/6c5d12a8-6213-4d8b-a0ad-e91a4e8d225a/svn/heather-atlas-roof-shingles-618f005-64_1000.jpg": {
+  "check": [],
+  "hex": "#5c4d43",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#5e4f45",
+   "#584940",
+   "#675548",
+   "#4a403a"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/6d0ca975-1ea2-4e40-a658-a032691bd07a/svn/biscayne-iko-roof-shingles-4991149-64_1000.jpg": {
+  "check": [],
+  "hex": "#706e67",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#676662",
+   "#76736c",
+   "#847f75",
+   "#5a5956"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/6d38d4b7-fb9f-436c-befe-9f5ec5ae96a1/svn/weathered-shadow-atlas-roof-shingles-618m015-64_1000.jpg": {
+  "check": [],
+  "hex": "#686059",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#6c645d",
+   "#615953",
+   "#796e65",
+   "#444341"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/6e2441bc-d12d-45e4-aa16-78cc973b2f5f/svn/amerimax-home-products-drip-edge-flashing-5500400120-64_1000.jpg": {
+  "check": [],
+  "hex": "#dcdcdc",
+  "kept": 0.208,
+  "method": "cutout",
+  "palette": [
+   "#e0e0e0",
+   "#d9d9d9",
+   "#cecece",
+   "#e7e7e7"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/6eb19163-7eaa-4bf1-a188-23e18b90147b/svn/charcoal-as-gaf-roof-shingles-0855180-64_1000.jpg": {
+  "check": [],
+  "hex": "#4a4741",
+  "kept": 0.864,
+  "method": "cutout",
+  "palette": [
+   "#413e38",
+   "#514e48",
+   "#322f2a",
+   "#66625b"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/6eb19163-7eaa-4bf1-a188-23e18b90147b/svn/charcoal-gaf-roof-shingles-0850180-64_1000.jpg": {
+  "check": [],
+  "hex": "#4a4741",
+  "kept": 0.864,
+  "method": "cutout",
+  "palette": [
+   "#413e38",
+   "#514e48",
+   "#322f2a",
+   "#66625b"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/70c159b8-6779-4b78-9520-6697789e8ee9/svn/roll-flashing-70508-64_1000.jpg": {
+  "check": [
+   "scene",
+   "mixed"
+  ],
+  "hex": "#c4c0bc",
+  "kept": 0.47,
+  "mean": "#b29a94",
+  "method": "cutout",
+  "palette": [
+   "#c4c0bc",
+   "#b5553a",
+   "#76746f",
+   "#a4948d"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/70f3408f-43d7-4c12-bf34-6de768c4d6bb/svn/sunset-atlas-roof-shingles-618h014-64_1000.jpg": {
+  "check": [],
+  "hex": "#68453f",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#6a4640",
+   "#704842",
+   "#63423c",
+   "#523d39"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/71349092-fbd1-478f-a70e-3c9fed490587/svn/black-owens-corning-ridge-vents-vs4n-64_1000.jpg": {
+  "check": [
+   "scene",
+   "mixed"
+  ],
+  "hex": "#746a67",
+  "kept": 0.127,
+  "mean": "#997c79",
+  "method": "cutout",
+  "palette": [
+   "#716866",
+   "#c3aba7",
+   "#464545",
+   "#de5855"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/729ef14d-ee90-485d-880b-038e0cc7db7a/svn/amerimax-home-products-roll-flashing-68314-64_1000.jpg": {
+  "check": [
+   "scene",
+   "mixed"
+  ],
+  "hex": "#bfb9b9",
+  "kept": 0.246,
+  "mean": "#9a8e8c",
+  "method": "cutout",
+  "palette": [
+   "#beb9b8",
+   "#595958",
+   "#918a88",
+   "#a05546"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/72d8262f-7c6c-4a6d-a9d7-a4bcd5d623d4/svn/iko-roof-shingles-4970200-64_1000.jpg": {
+  "check": [],
+  "hex": "#8b817e",
+  "kept": 0.788,
+  "method": "cutout",
+  "palette": [
+   "#908581",
+   "#877a76",
+   "#98928f",
+   "#76716e"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/756c4da3-88fe-4b1d-8d34-ff9b4ffedaed/svn/slate-gaf-roof-shingles-0487750-64_1000.jpg": {
+  "check": [],
+  "hex": "#606862",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#636b65",
+   "#737d76",
+   "#4e554f",
+   "#262b27"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/760f158b-65b2-496a-8830-02dbd8350338/svn/cornerstone-iko-roof-shingles-4973056-64_1000.jpg": {
+  "check": [],
+  "hex": "#6d655f",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#5f5752",
+   "#726b63",
+   "#6a625b",
+   "#7a746c"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/77ebb7a1-8407-4907-b1e8-8494a2eae16b/svn/golden-harvest-gaf-roof-shingles-0845354-64_1000.jpg": {
+  "check": [],
+  "hex": "#746759",
+  "kept": 0.868,
+  "method": "cutout",
+  "palette": [
+   "#786c5d",
+   "#6b5e4f",
+   "#867968",
+   "#51483c"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/786224e1-4410-44f9-9042-6d775a78421b/svn/weathered-wood-gaf-roof-shingles-0448900-64_1000.jpg": {
+  "check": [],
+  "hex": "#6f6b5e",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#706d60",
+   "#837f6d",
+   "#5b584f",
+   "#2e2d27"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/78c2e576-566f-4d5d-986b-29275cca2f53/svn/charcoal-gaf-roof-shingles-0692180-64_1000.jpg": {
+  "check": [],
+  "hex": "#313334",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#313234",
+   "#383b3c",
+   "#292a2c"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/79bb4f2c73ea4d3db560999a1c27d258/svn/gray-metal-roofing-57222fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#60646b",
+  "kept": 0.673,
+  "mean": "#6c7578",
+  "method": "cutout",
+  "palette": [
+   "#5f636a",
+   "#4e5259",
+   "#797d80",
+   "#a5c0bc"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/7a37198e-fd6e-411a-87c3-5ec528455734/svn/black-ez-gunner-ridge-vents-1920-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#61656d",
+  "kept": 0.218,
+  "mean": "#5b5f67",
+  "method": "cutout",
+  "palette": [
+   "#60656d",
+   "#4e5258",
+   "#383c42",
+   "#787d87"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/7a410d50d64c4d4dae3b545d5c08f55d/svn/black-metal-roofing-49022fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#343434",
+  "kept": 0.653,
+  "mean": "#534f4b",
+  "method": "cutout",
+  "palette": [
+   "#333333",
+   "#171717",
+   "#494948",
+   "#c0b7a7"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/7a8319ac-4dc6-4e4d-8c87-ad048c86dc70/svn/gibraltar-building-products-roll-flashing-961-10-20-64_1000.jpg": {
+  "check": [
+   "scene",
+   "mixed"
+  ],
+  "hex": "#bdc2bf",
+  "kept": 0.246,
+  "mean": "#9ba19d",
+  "method": "cutout",
+  "palette": [
+   "#bdc2bf",
+   "#a5aba8",
+   "#818882",
+   "#454b46"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/7aa154959f36489889e6da362f1fb24f/svn/black-metal-roofing-54422fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#272625",
+  "kept": 0.584,
+  "mean": "#867258",
+  "method": "cutout",
+  "palette": [
+   "#252424",
+   "#545352",
+   "#eebd4b",
+   "#7c7a76"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/7bf0ae8b-58a6-4317-b95b-edaef747cf2d/svn/shakewood-gaf-roof-shingles-0850737-64_1000.jpg": {
+  "check": [],
+  "hex": "#7b6955",
+  "kept": 0.866,
+  "method": "cutout",
+  "palette": [
+   "#806d59",
+   "#6d5c49",
+   "#94816c",
+   "#544536"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/7db04740-8f8f-46f9-baea-bd538dc10f15/svn/black-gibraltar-building-products-metal-roofing-987646-64_1000.jpg": {
+  "check": [],
+  "hex": "#181c1f",
+  "kept": 0.477,
+  "method": "cutout",
+  "palette": [
+   "#191d21",
+   "#12171a",
+   "#090b0c",
+   "#282d30"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/7db04740-8f8f-46f9-baea-bd538dc10f15/svn/black-metal-roofing-987648-64_1000.jpg": {
+  "check": [],
+  "hex": "#181c1f",
+  "kept": 0.477,
+  "method": "cutout",
+  "palette": [
+   "#191d21",
+   "#12171a",
+   "#090b0c",
+   "#282d30"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/7dcb5335-c3ba-4425-bc70-1a6ae9b24a99/svn/amerimax-home-products-drip-edge-flashing-5715535120-64_1000.jpg": {
+  "check": [],
+  "hex": "#494949",
+  "kept": 0.349,
+  "method": "cutout",
+  "palette": [
+   "#434343",
+   "#3c3c3c",
+   "#4e4e4e",
+   "#5f5f5f"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/7e5e2799-7252-453b-a1b8-d0f477551430/svn/slate-gibraltar-building-products-metal-roofing-987635-64_1000.jpg": {
+  "check": [],
+  "hex": "#665f56",
+  "kept": 0.479,
+  "method": "cutout",
+  "palette": [
+   "#655e55",
+   "#6b645b"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/7e5e2799-7252-453b-a1b8-d0f477551430/svn/slate-gibraltar-building-products-metal-roofing-987636-64_1000.jpg": {
+  "check": [],
+  "hex": "#665f56",
+  "kept": 0.479,
+  "method": "cutout",
+  "palette": [
+   "#655e55",
+   "#6b645b"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/7f4f3fc9-a96e-4d23-9411-478e63318e75/svn/black-air-vent-ridge-vents-vvr20-64_1000.jpg": {
+  "check": [],
+  "hex": "#363737",
+  "kept": 0.264,
+  "method": "cutout",
+  "palette": [
+   "#4b4d4d",
+   "#181918",
+   "#272827",
+   "#373837"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/7f73b920-2f59-4950-921a-a0fff9348407/svn/barkwood-sg-roof-shingles-0850070-64_1000.jpg": {
+  "check": [],
+  "hex": "#5e554a",
+  "kept": 0.863,
+  "method": "cutout",
+  "palette": [
+   "#50483e",
+   "#63594d",
+   "#786e61",
+   "#3c352d"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/80fb744b-9b1b-4e06-916f-227e5d7fe9ec/svn/emerald-green-iko-roof-shingles-4973196-64_1000.jpg": {
+  "check": [],
+  "hex": "#3f443e",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#3b3e39",
+   "#414640",
+   "#495048",
+   "#313230"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/83b40a26f9184b2ca677b438e819a2ef/svn/black-metal-roofing-56722fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#272625",
+  "kept": 0.509,
+  "mean": "#867358",
+  "method": "cutout",
+  "palette": [
+   "#252524",
+   "#535350",
+   "#ecbd4e",
+   "#787773"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/8488c7d3-ba31-4b6f-ac95-c54122dd4135/svn/amerimax-home-products-drip-edge-flashing-5522400120-64_1000.jpg": {
+  "check": [],
+  "hex": "#d1d2cf",
+  "kept": 0.47,
+  "method": "cutout",
+  "palette": [
+   "#cfd0ce",
+   "#dcddd9",
+   "#c9cac4"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/8616935a7c3d43cdb19f537bde4ec9b0/svn/black-metal-roofing-47522fsa05-64_1000.jpg": {
+  "check": [
+   "scene",
+   "mixed"
+  ],
+  "hex": "#37373d",
+  "kept": 0.385,
+  "mean": "#605f62",
+  "method": "cutout",
+  "palette": [
+   "#36373c",
+   "#4d4e56",
+   "#6f6f6f",
+   "#a09f9d"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/8664ff16-3c80-4e92-a534-caeae7d07c2e/svn/amerimax-home-products-drip-edge-flashing-t0401-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#e8e8e8",
+  "kept": 0.04,
+  "mean": "#cecece",
+  "method": "cutout",
+  "palette": [
+   "#e8e8e8",
+   "#a9a9a9",
+   "#bfbfbf",
+   "#d6d6d6"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/8808dbdc-1796-4e56-ac42-73ed184ab25e/svn/barkwood-gaf-roof-shingles-0603070-64_1000.jpg": {
+  "check": [],
+  "hex": "#645448",
+  "kept": 0.896,
+  "method": "cutout",
+  "palette": [
+   "#67564a",
+   "#736254",
+   "#5a493f",
+   "#40342d"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/88c01419-a593-444d-bb83-a1ddd2803332/svn/green-metal-roofing-0410115176-64_1000.jpg": {
+  "check": [],
+  "hex": "#4a675f",
+  "kept": 0.324,
+  "method": "cutout",
+  "palette": [
+   "#426355",
+   "#4d6b63",
+   "#5e7676",
+   "#375745"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/88e4969b-5bda-45ec-bd2d-058a15814dee/svn/beachwood-iko-roof-shingles-4220013-64_1000.jpg": {
+  "check": [],
+  "hex": "#756d5d",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#78705f",
+   "#807969",
+   "#6f6755",
+   "#5c5444"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/88e4969b-5bda-45ec-bd2d-058a15814dee/svn/dual-black-iko-roof-shingles-4220013-64_1000.jpg": {
+  "check": [],
+  "hex": "#716958",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#746c5b",
+   "#6b6351",
+   "#7c7664",
+   "#584f3f"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/8aaddf76-d45a-4ca0-ab40-a4bbd51b6a41/svn/brownstone-iko-roof-shingles-4973165-64_1000.jpg": {
+  "check": [],
+  "hex": "#4f4539",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#564a3d",
+   "#39362f",
+   "#4a4237",
+   "#655747"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/8c37b69b-4c3d-409c-9157-01a8041d8f7e/svn/drip-edge-flashing-5401800120-64_1000.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#b0b9be",
+  "kept": 0.324,
+  "method": "cutout",
+  "palette": [
+   "#aab4ba",
+   "#bdc5ca",
+   "#b4bcc2",
+   "#a1aab0"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/8d063559-6f71-45c9-90ee-6af4beb94a19/svn/patriot-slate-iko-roof-shingles-4220143-64_1000.jpg": {
+  "check": [],
+  "hex": "#9ea8a7",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#9faaa8",
+   "#a6b0af",
+   "#97a1a0",
+   "#808b89"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/8ddf8441a195487281103366dfacfaaf/svn/gray-closure-vent-ridge-vents-cv1-classic-4pack-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#4d4842",
+  "kept": 0.127,
+  "mean": "#706c66",
+  "method": "cutout",
+  "palette": [
+   "#4c4842",
+   "#5f5850",
+   "#b6b3ae",
+   "#85817b"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/8e30eb43-1cbd-41bd-a7c2-fef4719fb716/svn/amerimax-drip-edge-flashing-5551200120-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#b5b6b5",
+  "kept": 0.301,
+  "mean": "#abaeac",
+  "method": "cutout",
+  "palette": [
+   "#b5b6b5",
+   "#a1a4a2",
+   "#8a918f",
+   "#cbcecb"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/8fc2bee2-05af-4b09-bcda-6fd6dc966c55/svn/dusky-gray-gaf-roof-shingles-0654253-64_1000.jpg": {
+  "check": [],
+  "hex": "#403b37",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#443e3a",
+   "#3b3633",
+   "#2f2b29"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/909a05b3-2e2e-4d51-9b01-37355cba0800/svn/black-air-vent-ridge-vents-shfvbln-64_1000.jpg": {
+  "check": [],
+  "hex": "#7d7e7e",
+  "kept": 0.255,
+  "method": "cutout",
+  "palette": [
+   "#767677",
+   "#929392",
+   "#848585",
+   "#666667"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/90fbb218-1364-4e12-85b3-58359bb215b8/svn/gray-thanaddo-metal-roofing-t15grp232240-64_1000.jpg": {
+  "check": [],
+  "hex": "#6f7172",
+  "kept": 0.468,
+  "method": "cutout",
+  "palette": [
+   "#6f7172",
+   "#646667",
+   "#76787a"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/91a1aa8aee36498ca2e365a771af74c4/svn/black-metal-roofing-54522fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#343434",
+  "kept": 0.759,
+  "mean": "#535555",
+  "method": "cutout",
+  "palette": [
+   "#343434",
+   "#272828",
+   "#434444",
+   "#999d9d"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/9289cbde-ae84-420d-81b6-8a0c0fb8104d/svn/shakewood-gaf-roof-shingles-0489737-64_1000.jpg": {
+  "check": [],
+  "hex": "#876f53",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#8c7254",
+   "#9f8564",
+   "#725b43",
+   "#403324"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/9290aefb07564ce19c61ac4ad8c23983/svn/black-metal-roofing-56522fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#262625",
+  "kept": 0.501,
+  "mean": "#867258",
+  "method": "cutout",
+  "palette": [
+   "#252424",
+   "#545352",
+   "#ebbb4c",
+   "#7a7975"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/92f97accfdab4ac2a37749f5a3d5e58f/svn/gray-metal-roofing-io-863-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#454545",
+  "kept": 0.267,
+  "mean": "#545455",
+  "method": "cutout",
+  "palette": [
+   "#444444",
+   "#5e5e5e",
+   "#313131",
+   "#818181"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/9335616d9b314bc8b9585b43288108ab/svn/gray-metal-roofing-53722fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#71727c",
+  "kept": 0.519,
+  "mean": "#6c6868",
+  "method": "cutout",
+  "palette": [
+   "#70717b",
+   "#242428",
+   "#434349",
+   "#cabca7"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/94d505e6-8c0a-41c0-b86c-63a16ca17fde/svn/iko-roof-shingles-4450080-64_1000.jpg": {
+  "check": [],
+  "hex": "#777678",
+  "kept": 0.953,
+  "method": "cutout",
+  "palette": [
+   "#78787b",
+   "#8d8d8f",
+   "#585451",
+   "#6c6967"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/97488933-3aa8-47db-b4d4-a1fbf959dabd/svn/shadow-brown-iko-roof-shingles-4970198-64_1000.jpg": {
+  "check": [],
+  "hex": "#4f453e",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#423932",
+   "#322e2a",
+   "#9c897d",
+   "#574b42"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/988a66c4-37f4-4415-8ed6-5fc9e508de0f/svn/hunter-green-gaf-roof-shingles-0487723-64_1000.jpg": {
+  "check": [],
+  "hex": "#324035",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#344237",
+   "#28332a",
+   "#3f5042",
+   "#151c16"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/99b0ed2b-61e0-4b71-92b6-411fdd243f3d/svn/dark-gray-python-ridge-vents-py-3410-20n-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#313234",
+  "kept": 0.338,
+  "mean": "#6a6e60",
+  "method": "cutout",
+  "palette": [
+   "#303133",
+   "#4e4c4f",
+   "#716f70",
+   "#b4c38a"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/99b0ed2b-61e0-4b71-92b6-411fdd243f3d/svn/dark-gray-python-ridge-vents-py-3410-50n-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#313234",
+  "kept": 0.338,
+  "mean": "#6a6e60",
+  "method": "cutout",
+  "palette": [
+   "#303133",
+   "#4e4c4f",
+   "#716f70",
+   "#b4c38a"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/9a1c6a6c-adb8-46ff-8595-7283768a0725/svn/amerimax-home-products-roll-flashing-68010-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#c3c1bd",
+  "kept": 0.399,
+  "mean": "#b6aca6",
+  "method": "cutout",
+  "palette": [
+   "#c3c1bd",
+   "#b6b1ab",
+   "#a0664a",
+   "#968b83"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/9a1c6a6c-adb8-46ff-8595-7283768a0725/svn/amerimax-home-products-roll-flashing-68220-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#c3c1bd",
+  "kept": 0.399,
+  "mean": "#b6aca6",
+  "method": "cutout",
+  "palette": [
+   "#c3c1bd",
+   "#b6b1ab",
+   "#a0664a",
+   "#968b83"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/9a1c6a6c-adb8-46ff-8595-7283768a0725/svn/amerimax-home-products-roll-flashing-68308-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#c3c1bd",
+  "kept": 0.399,
+  "mean": "#b6aca6",
+  "method": "cutout",
+  "palette": [
+   "#c3c1bd",
+   "#b6b1ab",
+   "#a0664a",
+   "#968b83"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/9a1c6a6c-adb8-46ff-8595-7283768a0725/svn/amerimax-roll-flashing-70012-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#c3c1bd",
+  "kept": 0.399,
+  "mean": "#b6aca6",
+  "method": "cutout",
+  "palette": [
+   "#c3c1bd",
+   "#b6b1ab",
+   "#a0664a",
+   "#968b83"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/9a1c6a6c-adb8-46ff-8595-7283768a0725/svn/amerimax-roll-flashing-70424-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#c3c1bd",
+  "kept": 0.399,
+  "mean": "#b6aca6",
+  "method": "cutout",
+  "palette": [
+   "#c3c1bd",
+   "#b6b1ab",
+   "#a0664a",
+   "#968b83"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/9a7c161c-2f90-4cbf-8d35-9593a5789180/svn/grey-gibraltar-building-products-metal-roofing-987627-64_1000.jpg": {
+  "check": [],
+  "hex": "#878989",
+  "kept": 0.479,
+  "method": "cutout",
+  "palette": [
+   "#787979",
+   "#8f9292",
+   "#838484",
+   "#a1a5a5"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/9a7c161c-2f90-4cbf-8d35-9593a5789180/svn/grey-gibraltar-building-products-metal-roofing-987631-64_1000.jpg": {
+  "check": [],
+  "hex": "#878989",
+  "kept": 0.479,
+  "method": "cutout",
+  "palette": [
+   "#787979",
+   "#8f9292",
+   "#838484",
+   "#a1a5a5"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/9a89f704-90b3-402d-947b-da018e3176b9/svn/monaco-red-iko-roof-shingles-4973197-64_1000.jpg": {
+  "check": [],
+  "hex": "#58362e",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#5b382f",
+   "#4f332b",
+   "#653d34",
+   "#3e2722"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/9ca58add938d4ddc841de3f8be45e87e/svn/gray-metal-roofing-46822fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#80807f",
+  "kept": 0.502,
+  "mean": "#8b8c8c",
+  "method": "cutout",
+  "palette": [
+   "#808180",
+   "#8f9091",
+   "#acaeaf",
+   "#656463"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/9f07787374ea4f42b080b95a14d14772/svn/brown-metal-roofing-io-358-64_1000.jpg": {
+  "check": [],
+  "hex": "#615143",
+  "kept": 0.568,
+  "method": "cutout",
+  "palette": [
+   "#665546",
+   "#534234",
+   "#685b50",
+   "#5b4b3d"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/9f09cc8eb15a4afcb6cff9ab4426c88a/svn/gray-metal-roofing-57522fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#60646b",
+  "kept": 0.683,
+  "mean": "#6c7579",
+  "method": "cutout",
+  "palette": [
+   "#5f636a",
+   "#4e5259",
+   "#797d80",
+   "#a7c1bd"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/9f465e599c574ef495913ad92ef32196/svn/silver-metal-roofing-49422fsa05-64_1000.jpg": {
+  "check": [],
+  "hex": "#dcdfe5",
+  "kept": 0.345,
+  "method": "cutout",
+  "palette": [
+   "#e1e4ea",
+   "#d6d9df",
+   "#c4c7cd"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/9f600044a0d541e9b858a7dafe255dd8/svn/emac-drip-edge-flashing-nvsp156-64_1000.jpg": {
+  "check": [
+   "scene",
+   "mixed"
+  ],
+  "hex": "#b4b4b4",
+  "kept": 0.248,
+  "mean": "#aba8a8",
+  "method": "cutout",
+  "palette": [
+   "#b4b4b4",
+   "#a09d9d",
+   "#858180",
+   "#c9c0c0"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/9f6b8baa-601d-4b03-9485-10a8d3899a8d/svn/amerimax-home-products-roll-flashing-70010-64_1000.jpg": {
+  "check": [
+   "scene",
+   "mixed"
+  ],
+  "hex": "#a1acb0",
+  "kept": 0.383,
+  "mean": "#9ca3a6",
+  "method": "cutout",
+  "palette": [
+   "#a0acb0",
+   "#8c979a",
+   "#747879",
+   "#bfc3c4"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/a0ccc79f-4765-4642-bcc8-6c59eec5db7d/svn/granite-black-iko-roof-shingles-4973081-64_1000.jpg": {
+  "check": [],
+  "hex": "#333838",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#363a3b",
+   "#303435",
+   "#282d2d",
+   "#3e4243"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/a18d06e6-2525-4749-86b6-644d09ac3b5b/svn/metal-roofing-4834115875-64_1000.jpg": {
+  "check": [],
+  "hex": "#4a675f",
+  "kept": 0.325,
+  "method": "cutout",
+  "palette": [
+   "#426356",
+   "#4e6c64",
+   "#365846",
+   "#607777"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/a1a5ebec-5250-446b-91b1-c46cf4522e9f/svn/earthtone-cedar-iko-roof-shingles-4220034-64_1000.jpg": {
+  "check": [],
+  "hex": "#433e35",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#3f3a32",
+   "#454137",
+   "#4b473d",
+   "#36312a"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/a207f75a-dd78-4b27-bda5-16d69c134c67/svn/castle-grey-iko-roof-shingles-4973086-64_1000.jpg": {
+  "check": [],
+  "hex": "#646c69",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#585f5d",
+   "#68706c",
+   "#7c8580",
+   "#414946"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/a2fa5462-b7e0-454b-accd-1748e28e44fa/svn/black-owens-corning-ridge-vents-1441550-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#434549",
+  "kept": 0.24,
+  "mean": "#50545a",
+  "method": "cutout",
+  "palette": [
+   "#434548",
+   "#585c64",
+   "#292c30",
+   "#7e848d"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/a3f40eb8-7ded-4c9a-96f5-48a51dcbab91/svn/charcoal-gaf-roof-shingles-0582180-64_1000.jpg": {
+  "check": [],
+  "hex": "#22282b",
+  "kept": 0.833,
+  "method": "cutout",
+  "palette": [
+   "#252a2e",
+   "#1a2023",
+   "#2e3437",
+   "#0c1011"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/a4aa5a27-ca01-4bcb-b832-f8cdf6d90691/svn/gibraltar-building-products-roll-flashing-a999tbbl-50-14-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#807c74",
+  "kept": 0.277,
+  "mean": "#595650",
+  "method": "cutout",
+  "palette": [
+   "#7f7b74",
+   "#0f0f0b",
+   "#32302a",
+   "#59554e"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/a736eb16-52b6-4a9f-9d19-bea6f10bfdef/svn/drip-edge-flashing-4875255875-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#3a6c58",
+  "kept": 0.085,
+  "mean": "#4b7464",
+  "method": "cutout",
+  "palette": [
+   "#3a6c58",
+   "#416f5f",
+   "#638176",
+   "#90a69d"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/a8800d60-381c-4cda-ad35-197e6d43526a/svn/amerimax-home-products-drip-edge-flashing-5511600120-64_1000.jpg": {
+  "check": [],
+  "hex": "#d9d9d9",
+  "kept": 0.321,
+  "method": "cutout",
+  "palette": [
+   "#dddddd",
+   "#d5d5d5",
+   "#cccccc",
+   "#e6e6e6"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/a981641f-7540-4d15-b8b0-5ecbcebc27e8/svn/castle-grey-iko-roof-shingles-4970086-64_1000.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#646364",
+  "kept": 0.147,
+  "method": "cutout",
+  "palette": [
+   "#575657",
+   "#676666",
+   "#444445",
+   "#918e8e"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/a9a29231-f2df-47c1-adad-1a2f9672578b/svn/gibraltar-building-products-roll-flashing-rv625a-64_1000.jpg": {
+  "check": [
+   "scene",
+   "mixed"
+  ],
+  "hex": "#bbbcba",
+  "kept": 0.317,
+  "mean": "#9a9b98",
+  "method": "cutout",
+  "palette": [
+   "#bbbcba",
+   "#7b7c77",
+   "#a0a29e",
+   "#494944"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/abde7e9ccd6c426c8f12a8bf33df0c44/svn/black-metal-roofing-56222fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#272625",
+  "kept": 0.509,
+  "mean": "#867358",
+  "method": "cutout",
+  "palette": [
+   "#252524",
+   "#52514f",
+   "#76746e",
+   "#eebf50"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/adff15fd065341b8a4fdb2167262aa7a/svn/gray-closure-vent-ridge-vents-cv1-classic-48each-case-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#4d4842",
+  "kept": 0.127,
+  "mean": "#706c66",
+  "method": "cutout",
+  "palette": [
+   "#4c4842",
+   "#5f5850",
+   "#b6b3ae",
+   "#85817b"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/b37742d6-2d3e-4de8-b60e-439bbc61a5a7/svn/hickory-ar-gaf-roof-shingles-0850395-64_1000.jpg": {
+  "check": [],
+  "hex": "#61554b",
+  "kept": 0.857,
+  "method": "cutout",
+  "palette": [
+   "#695b50",
+   "#54493f",
+   "#3e362f",
+   "#7c6f64"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/b6296385-ce0c-4ebe-b85a-9cb45bfb97a4/svn/shadow-brown-iko-roof-shingles-4973198-64_1000.jpg": {
+  "check": [],
+  "hex": "#584c43",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#5d5045",
+   "#4d433e",
+   "#67584c",
+   "#3f3732"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/b6302c7071e941d89132e1f1eb46dc2c/svn/gray-metal-roofing-io-870-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#4b4b4b",
+  "kept": 0.406,
+  "mean": "#606161",
+  "method": "cutout",
+  "palette": [
+   "#4a4b4b",
+   "#676868",
+   "#2d2d2d",
+   "#888888"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/b6302c7071e941d89132e1f1eb46dc2c/svn/grey-metal-roofing-hokkaidao20-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#4b4b4b",
+  "kept": 0.406,
+  "mean": "#606161",
+  "method": "cutout",
+  "palette": [
+   "#4a4b4b",
+   "#676868",
+   "#2d2d2d",
+   "#888888"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/b8d53c730cb24c61a22215dc08fa6233/svn/lsfa-roll-flashing-hd-wd1-64_1000.jpg": {
+  "check": [
+   "scene",
+   "mixed"
+  ],
+  "hex": "#c1c5c9",
+  "kept": 0.681,
+  "mean": "#a8acae",
+  "method": "cutout",
+  "palette": [
+   "#c1c5c9",
+   "#969a9b",
+   "#aaaeb1",
+   "#797c7d"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/bc68c640-5d13-4815-a606-9d7f84fa95e1/svn/gray-metal-roofing-4736008000-64_1000.jpg": {
+  "check": [
+   "scene",
+   "mixed"
+  ],
+  "hex": "#c8c9dc",
+  "kept": 0.456,
+  "mean": "#c2c3d6",
+  "method": "cutout",
+  "palette": [
+   "#c8c9dc",
+   "#dadbee",
+   "#b3b4c6",
+   "#9596a8"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/bcd875c3-6af3-4404-b79e-c6e13aa2964d/svn/amerimax-home-products-drip-edge-flashing-5670400120-64_1000.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#c7c8c4",
+  "kept": 0.374,
+  "method": "cutout",
+  "palette": [
+   "#c9cac6",
+   "#c2c3be",
+   "#b2b3b0"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/be261cff-e499-40c0-886b-daaaa39c5fcf/svn/charcoal-gaf-roof-shingles-0489180-64_1000.jpg": {
+  "check": [],
+  "hex": "#383c3d",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#3b3f41",
+   "#2a2e2f",
+   "#4b5051",
+   "#101213"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/becfca667cb04c7a885075d3f138dcb1/svn/black-metal-roofing-55522fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#454545",
+  "kept": 0.5,
+  "mean": "#3e3e3e",
+  "method": "cutout",
+  "palette": [
+   "#444444",
+   "#383838",
+   "#222222",
+   "#737373"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/c231bb43-07de-4e7c-968e-9de0e929db2b/svn/black-gaf-roof-shingles-456123-64_1000.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#965f52",
+  "kept": 0.744,
+  "method": "cutout",
+  "palette": [
+   "#464545",
+   "#ee671e",
+   "#606060",
+   "#958f8e"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/c6079ef8-b151-4430-a3b4-db2302f4cd45/svn/red-gibraltar-building-products-metal-roofing-987618-64_1000.jpg": {
+  "check": [],
+  "hex": "#7c3426",
+  "kept": 0.56,
+  "method": "cutout",
+  "palette": [
+   "#7b3425",
+   "#833729",
+   "#733f38"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/c6079ef8-b151-4430-a3b4-db2302f4cd45/svn/red-gibraltar-building-products-metal-roofing-987620-64_1000.jpg": {
+  "check": [],
+  "hex": "#7c3426",
+  "kept": 0.56,
+  "method": "cutout",
+  "palette": [
+   "#7b3425",
+   "#833729",
+   "#733f38"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/c6079ef8-b151-4430-a3b4-db2302f4cd45/svn/red-gibraltar-building-products-metal-roofing-987622-64_1000.jpg": {
+  "check": [],
+  "hex": "#7c3426",
+  "kept": 0.56,
+  "method": "cutout",
+  "palette": [
+   "#7b3425",
+   "#833729",
+   "#733f38"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/c623bd9d-9199-4cef-be7d-777683eef9a4/svn/black-shadow-atlas-roof-shingles-618h002-64_1000.jpg": {
+  "check": [],
+  "hex": "#454647",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#47484a",
+   "#404143",
+   "#4d4e50",
+   "#353637"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/c66d2625-9263-4158-b726-97ebe9c0a22d/svn/pewter-atlas-roof-shingles-618f022-64_1000.jpg": {
+  "check": [],
+  "hex": "#5c5c5d",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#5f5e60",
+   "#676668",
+   "#555556",
+   "#414243"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/c8625378-4e01-407c-bafd-6952b53ca546/svn/slate-gibraltar-building-products-metal-roofing-987637-64_1000.jpg": {
+  "check": [],
+  "hex": "#655e56",
+  "kept": 0.555,
+  "method": "cutout",
+  "palette": [
+   "#655e56"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/c8625378-4e01-407c-bafd-6952b53ca546/svn/slate-gibraltar-building-products-metal-roofing-987638-64_1000.jpg": {
+  "check": [],
+  "hex": "#655e56",
+  "kept": 0.555,
+  "method": "cutout",
+  "palette": [
+   "#655e56"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/c8f09260-36f3-4311-b142-a9e8fc65d495/svn/metal-roofing-4914013889-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#868686",
+  "kept": 0.128,
+  "mean": "#7e7e7e",
+  "method": "cutout",
+  "palette": [
+   "#868686",
+   "#a6a6a6",
+   "#474747",
+   "#656565"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/cae62676-25f7-488c-bead-a1942f524b51/svn/weathered-wood-gaf-roof-shingles-0850900-64_1000.jpg": {
+  "check": [],
+  "hex": "#645c51",
+  "kept": 0.864,
+  "method": "cutout",
+  "palette": [
+   "#6a6155",
+   "#575045",
+   "#7f7669",
+   "#423c33"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/cebcfc9c-d176-4366-8741-e83ec8a08d0e/svn/metal-roofing-4912200851-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#53595e",
+  "kept": 0.176,
+  "mean": "#6d7377",
+  "method": "cutout",
+  "palette": [
+   "#53585d",
+   "#7a8085",
+   "#35393c",
+   "#a2a9ae"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/d009051a-2694-4dc8-8d0f-634c2d44faa0/svn/metal-roofing-4834115851-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#3f3f3f",
+  "kept": 0.122,
+  "mean": "#5c5c5c",
+  "method": "cutout",
+  "palette": [
+   "#3f3f3f",
+   "#505050",
+   "#656565",
+   "#808080"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/d31ba914-dba6-4a7a-956c-32b1181c63f4/svn/weathered-wood-gaf-roof-shingles-0601900-64_1000.jpg": {
+  "check": [],
+  "hex": "#5a5249",
+  "kept": 0.896,
+  "method": "cutout",
+  "palette": [
+   "#5c554b",
+   "#665f55",
+   "#504940",
+   "#302c27"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/d5e82144-4135-446d-abe7-21b77dd367b0/svn/pewter-gray-gaf-roof-shingles-0850552-64_1000.jpg": {
+  "check": [],
+  "hex": "#68635d",
+  "kept": 0.857,
+  "method": "cutout",
+  "palette": [
+   "#5d5952",
+   "#6e6962",
+   "#7e7a72",
+   "#48443e"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/d6a493187409426ba223b8b1e450570d/svn/gray-metal-roofing-55122fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#878987",
+  "kept": 0.541,
+  "mean": "#808180",
+  "method": "cutout",
+  "palette": [
+   "#878887",
+   "#747574",
+   "#515252",
+   "#9d9e9d"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/d8fef555-2139-4cef-bdec-8ed10f7edb26/svn/roll-flashing-70520-64_1000.jpg": {
+  "check": [
+   "scene",
+   "mixed"
+  ],
+  "hex": "#968f83",
+  "kept": 0.362,
+  "mean": "#a59f97",
+  "method": "cutout",
+  "palette": [
+   "#968f83",
+   "#c0bebb",
+   "#a9a69e",
+   "#846e60"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/da7e8cfe-e604-41c8-80f9-6600a3df78c6/svn/gaf-roof-shingles-64_1000.jpg": {
+  "check": [],
+  "hex": "#453e40",
+  "kept": 0.265,
+  "method": "cutout",
+  "palette": [
+   "#303435",
+   "#1e2122",
+   "#44494b",
+   "#8f636b"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/dca11d5c-abd1-430f-877b-fadc09cf8724/svn/fabral-drip-edge-flashing-4875255851-64_1000.jpg": {
+  "check": [],
+  "hex": "#63686a",
+  "kept": 0.086,
+  "method": "cutout",
+  "palette": [
+   "#5d6365",
+   "#777a7a",
+   "#959898"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/ddb0000e-662e-41c9-a385-310dfb2c0ad7/svn/amerimax-home-products-drip-edge-flashing-5509900120-64_1000.jpg": {
+  "check": [],
+  "hex": "#d6d6d6",
+  "kept": 0.297,
+  "method": "cutout",
+  "palette": [
+   "#cbcbcb",
+   "#d2d2d2",
+   "#dadada",
+   "#e2e2e2"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/ddd5f4d7-5972-44f1-b6cf-5a9fd82939b7/svn/dual-brown-iko-roof-shingles-4220021-64_1000.jpg": {
+  "check": [],
+  "hex": "#50463a",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#53483c",
+   "#494136",
+   "#5c4e40",
+   "#3e382f"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/ddfc504657274b268b18bda79a0331a8/svn/black-metal-roofing-54322fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#454545",
+  "kept": 0.545,
+  "mean": "#3e3e3e",
+  "method": "cutout",
+  "palette": [
+   "#454545",
+   "#373737",
+   "#202020",
+   "#7b7b7b"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/dfc5574137fa4aa09f8c953c7c4759c4/svn/black-metal-roofing-56922fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#252524",
+  "kept": 0.475,
+  "mean": "#867358",
+  "method": "cutout",
+  "palette": [
+   "#242423",
+   "#6f6f6c",
+   "#e9bb50",
+   "#4f4e4d"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/e04ae60d6c4643549dce21b6ad75c18b/svn/black-metal-roofing-54222fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#434342",
+  "kept": 0.553,
+  "mean": "#535453",
+  "method": "cutout",
+  "palette": [
+   "#424342",
+   "#555655",
+   "#292929",
+   "#919393"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/e14fb793-ec34-489a-9b23-b3a6618ece7e/svn/weatherwood-iko-roof-shingles-4220002-64_1000.jpg": {
+  "check": [],
+  "hex": "#393e3c",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#3d4341",
+   "#353a38",
+   "#2d3231"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/e25215abeae147418a86d06411bacca7/svn/metal-maocao-hoom-metal-roofing-y-p405981-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#404141",
+  "kept": 0.434,
+  "mean": "#515151",
+  "method": "cutout",
+  "palette": [
+   "#404040",
+   "#5a5a5a",
+   "#2d2e2e",
+   "#7c7c7d"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/e2ba9779a0a74998be88f3c27a46ea0e/svn/gray-metal-roofing-io-868-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#7d7d7d",
+  "kept": 0.358,
+  "mean": "#5d5e5e",
+  "method": "cutout",
+  "palette": [
+   "#7c7c7c",
+   "#474848",
+   "#626363",
+   "#2b2b2b"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/e2ba9779a0a74998be88f3c27a46ea0e/svn/grey-metal-roofing-hokkaidao18-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#7d7d7d",
+  "kept": 0.358,
+  "mean": "#5d5e5e",
+  "method": "cutout",
+  "palette": [
+   "#7c7c7c",
+   "#474848",
+   "#626363",
+   "#2b2b2b"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/e326a484-3d43-4b2c-ab6a-7047fd490342/svn/gibraltar-building-products-drip-edge-flashing-ade12-wh-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#d6d9d5",
+  "kept": 0.142,
+  "mean": "#d1d2cd",
+  "method": "cutout",
+  "palette": [
+   "#d7d9d5",
+   "#e5e5e2",
+   "#adada5",
+   "#c7c7c0"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/e546815eec9644b98a45583bb3b6409a/svn/black-laybus-metal-roofing-mv43z4wp5-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#20201e",
+  "kept": 0.583,
+  "mean": "#454643",
+  "method": "cutout",
+  "palette": [
+   "#1f201e",
+   "#636460",
+   "#4b4c48",
+   "#333331"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/e546815eec9644b98a45583bb3b6409a/svn/black-laybus-metal-roofing-wy73r7pj2-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#20201e",
+  "kept": 0.583,
+  "mean": "#454643",
+  "method": "cutout",
+  "palette": [
+   "#1f201e",
+   "#636460",
+   "#4b4c48",
+   "#333331"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/e54d0fa2-3450-4003-a18f-f31726cb8d5a/svn/green-gibraltar-building-products-metal-roofing-987655-64_1000.jpg": {
+  "check": [],
+  "hex": "#214222",
+  "kept": 0.481,
+  "method": "cutout",
+  "palette": [
+   "#204021",
+   "#284d28"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/e54d0fa2-3450-4003-a18f-f31726cb8d5a/svn/green-gibraltar-building-products-metal-roofing-987657-64_1000.jpg": {
+  "check": [],
+  "hex": "#214222",
+  "kept": 0.481,
+  "method": "cutout",
+  "palette": [
+   "#204021",
+   "#284d28"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/e54d0fa2-3450-4003-a18f-f31726cb8d5a/svn/green-gibraltar-building-products-metal-roofing-987659-64_1000.jpg": {
+  "check": [],
+  "hex": "#214222",
+  "kept": 0.481,
+  "method": "cutout",
+  "palette": [
+   "#204021",
+   "#284d28"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/e61c5e06-d682-486d-a8ed-3d8788b4fa73/svn/mesa-brown-gaf-roof-shingles-0650473-64_1000.jpg": {
+  "check": [],
+  "hex": "#604f46",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#625147",
+   "#5a4b42",
+   "#6b574c",
+   "#50433b"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/e6c67ca2-8514-4deb-80e9-22055869e93b/svn/mill-gibraltar-building-products-metal-roofing-cr12g-u-64_1000.jpg": {
+  "check": [
+   "scene",
+   "mixed"
+  ],
+  "hex": "#93979f",
+  "kept": 0.472,
+  "mean": "#8a8e96",
+  "method": "cutout",
+  "palette": [
+   "#92979e",
+   "#757b83",
+   "#59606b",
+   "#b4b8be"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/e6c67ca2-8514-4deb-80e9-22055869e93b/svn/mill-gibraltar-building-products-metal-roofing-cr8g-u-64_1000.jpg": {
+  "check": [
+   "scene",
+   "mixed"
+  ],
+  "hex": "#93979f",
+  "kept": 0.472,
+  "mean": "#8a8e96",
+  "method": "cutout",
+  "palette": [
+   "#92979e",
+   "#757b83",
+   "#59606b",
+   "#b4b8be"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/e6d5696f85b34cc4bd31b3543aebd9a7/svn/gray-metal-roofing-56022fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#6f737d",
+  "kept": 0.499,
+  "mean": "#666a73",
+  "method": "cutout",
+  "palette": [
+   "#6f737d",
+   "#43464b",
+   "#585b62",
+   "#7d8289"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/e8ae085ff75d41f7972f1bc19bccda87/svn/grey-maocao-hoom-metal-roofing-y-p405936-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#333433",
+  "kept": 0.42,
+  "mean": "#515151",
+  "method": "cutout",
+  "palette": [
+   "#333333",
+   "#5d5d5d",
+   "#464646",
+   "#828283"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/e8ae085ff75d41f7972f1bc19bccda87/svn/grey-maocao-hoom-metal-roofing-y-p405959-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#333433",
+  "kept": 0.42,
+  "mean": "#515151",
+  "method": "cutout",
+  "palette": [
+   "#333333",
+   "#5d5d5d",
+   "#464646",
+   "#828283"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/e8f17e78-efbf-459f-b8da-65e371f6d031/svn/aged-redwood-iko-roof-shingles-4220068-64_1000.jpg": {
+  "check": [],
+  "hex": "#323a38",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#2d3534",
+   "#353d3b",
+   "#3e4644",
+   "#232a29"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/ea98e28d-b35d-45c1-81fa-440befa85269/svn/pewter-grey-gaf-roof-shingles-0448552-64_1000.jpg": {
+  "check": [],
+  "hex": "#4f5452",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#535956",
+   "#454a48",
+   "#626866",
+   "#2d302e"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/ec669945-743b-4528-9e29-a0ece8cd1559/svn/oatey-drip-edge-flashing-11854-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#4f4f4f",
+  "kept": 0.493,
+  "mean": "#6c6c6c",
+  "method": "cutout",
+  "palette": [
+   "#4e4e4e",
+   "#747474",
+   "#a5a5a5",
+   "#141414"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/ec72462300824cbdb39a3e4d8faaa81e/svn/red-laybus-roof-shingles-nr13u8wg2-64_1000.jpg": {
+  "check": [],
+  "hex": "#755254",
+  "kept": 0.401,
+  "method": "cutout",
+  "palette": [
+   "#774e4d",
+   "#805351",
+   "#6d4848",
+   "#696370"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/ecdb0218-8b79-4984-9867-6c9f595eae32/svn/iko-roof-shingles-4973201-64_1000.jpg": {
+  "check": [],
+  "hex": "#7a7770",
+  "kept": 0.875,
+  "method": "cutout",
+  "palette": [
+   "#625d53",
+   "#817d73",
+   "#9b968b",
+   "#2e5568"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/ed429a9f-3d04-4e16-912e-d9347c62e93f/svn/metal-roofing-4834115882-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#292929",
+  "kept": 0.123,
+  "mean": "#434343",
+  "method": "cutout",
+  "palette": [
+   "#282828",
+   "#383838",
+   "#4e4e4e",
+   "#6c6c6c"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/ed580065-b627-4e3f-be3e-f191758f852e/svn/driftwood-iko-roof-shingles-4220059-64_1000.jpg": {
+  "check": [],
+  "hex": "#565a57",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#5b5e5b",
+   "#4e514e",
+   "#404340",
+   "#6f7470"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/ef04f44196cd40a9894a9375d2dda125/svn/gray-metal-roofing-49222fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#252529",
+  "kept": 0.627,
+  "mean": "#666160",
+  "method": "cutout",
+  "palette": [
+   "#242428",
+   "#70727b",
+   "#47484e",
+   "#d7bd9a"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/f1340896-2fc4-4725-9b44-ce8f6d00b778/svn/pewter-gray-gaf-roof-shingles-0487552-64_1000.jpg": {
+  "check": [],
+  "hex": "#595e60",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#5d6264",
+   "#6e7477",
+   "#494d4f",
+   "#292b2d"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/f274a995-ddf4-4afb-a243-169e919daabe/svn/amerimax-drip-edge-flashing-5504535120-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#8d7a75",
+  "kept": 0.327,
+  "mean": "#85746f",
+  "method": "cutout",
+  "palette": [
+   "#8d7b75",
+   "#a0908b",
+   "#42302b",
+   "#6e5954"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/f274a995-ddf4-4afb-a243-169e919daabe/svn/amerimax-home-products-drip-edge-flashing-5504519120-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#8d7a75",
+  "kept": 0.327,
+  "mean": "#85746f",
+  "method": "cutout",
+  "palette": [
+   "#8d7b75",
+   "#a0908b",
+   "#42302b",
+   "#6e5954"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/f27d9457-0225-4645-bfc2-0563679ee4bd/svn/greystone-iko-roof-shingles-1930111-64_1000.jpg": {
+  "check": [
+   "scene"
+  ],
+  "hex": "#726f6f",
+  "kept": 0.145,
+  "method": "cutout",
+  "palette": [
+   "#6d665e",
+   "#7d7a75",
+   "#525452",
+   "#8e90ae"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/f32cedff9c6d41feb3ce112ba78b7f78/svn/gray-metal-roofing-55822fsa05-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#6e737c",
+  "kept": 0.508,
+  "mean": "#666a73",
+  "method": "cutout",
+  "palette": [
+   "#6e737c",
+   "#41454a",
+   "#575a60",
+   "#7d8189"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/f3905122-7421-4333-9790-3c8165ebd900/svn/oatey-drip-edge-flashing-11898-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#43555e",
+  "kept": 0.523,
+  "mean": "#3d4e57",
+  "method": "cutout",
+  "palette": [
+   "#43555e",
+   "#394b54",
+   "#21313a",
+   "#61727c"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/f3da958b-28ae-41a3-9d78-e7aa692be928/svn/slate-gaf-roof-shingles-0850750-64_1000.jpg": {
+  "check": [],
+  "hex": "#645f53",
+  "kept": 0.863,
+  "method": "cutout",
+  "palette": [
+   "#5a554a",
+   "#6c665a",
+   "#474339",
+   "#7e776a"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/f7a01cb4-4c9d-4b5a-8caa-6d1d54dbc65d/svn/gibraltar-building-products-drip-edge-flashing-987614-64_1000.jpg": {
+  "check": [],
+  "hex": "#d1cbbe",
+  "kept": 0.444,
+  "method": "cutout",
+  "palette": [
+   "#cfc9bb",
+   "#d9d4ca"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/f89885b7-0531-464c-acdd-327c434a17e8/svn/charcoal-grey-iko-roof-shingles-4991068-64_1000.jpg": {
+  "check": [],
+  "hex": "#313a38",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#2c3433",
+   "#343d3b",
+   "#3d4644",
+   "#232a29"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/fd44977d-1312-4ca9-b1ea-591ee45fbbb9/svn/amerimax-home-products-drip-edge-flashing-5504100120-64_1000.jpg": {
+  "check": [],
+  "hex": "#d1d2ce",
+  "kept": 0.369,
+  "method": "cutout",
+  "palette": [
+   "#d3d4d0",
+   "#cdcec8",
+   "#dcddd9",
+   "#c3c4c0"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/fe02bf35-2ee5-4bcd-847c-741d6acd0b28/svn/atlantic-blue-iko-roof-shingles-4991195-64_1000.jpg": {
+  "check": [],
+  "hex": "#364750",
+  "kept": 1,
+  "method": "full",
+  "palette": [
+   "#394a54",
+   "#32424b",
+   "#293740",
+   "#405560"
+  ],
+  "sampled": "2026-11-16"
+ },
+ "https://images.thdstatic.com/productImages/ffd5c85adf6d409486334a87386fe77c/svn/galvanized-maocao-hoom-metal-roofing-y-p431242-64_1000.jpg": {
+  "check": [
+   "mixed"
+  ],
+  "hex": "#858987",
+  "kept": 0.39,
+  "mean": "#7e8180",
+  "method": "cutout",
+  "palette": [
+   "#858987",
+   "#6d6f6f",
+   "#3b3938",
+   "#aeb1ae"
+  ],
+  "sampled": "2026-11-16"
+ }
+}
