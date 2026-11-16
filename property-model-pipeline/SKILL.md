@@ -113,7 +113,10 @@ without aligning and checking it against LiDAR or tape.
 `scripts/blender/export_studio_glb.py OUT/model.blend house.glb` writes a viewer-ready model:
 roof facets named `Roof F1…` (so plane finders pick them up), walls joined as siding, no labels,
 ground, trees or cameras. Where a host cannot serve `.glb` (e.g. Claude artifacts), convert it to
-embedded glTF JSON (base64 buffer, saved as `.gltf.json`) — three.js `GLTFLoader` reads both.
+embedded glTF JSON (base64 buffer, saved as `.gltf.json`). Do NOT let the page `fetch()` that
+`data:` buffer — sandboxed hosts' Content-Security-Policy blocks it and the load silently fails.
+Decode the base64 in the page, repack a GLB `ArrayBuffer` and call `GLTFLoader.parseAsync`. Test
+web deliveries under a restrictive CSP, not on a bare local server.
 Automatic edge classification in viewers can double-count where one roof runs under another's
 overhang; ship the report's verified edge lengths alongside the model for takeoffs.
 
