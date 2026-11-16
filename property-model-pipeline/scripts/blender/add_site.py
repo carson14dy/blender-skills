@@ -9,7 +9,9 @@ rock-bed overlays, curb lines, subject parcel, point features). yard.json (model
 {
   "items": [ {"kind": "ac_unit", "xy": [x,y], "size": [w,d,h], "rotation": 0},
              {"kind": "fire_pit", "xy": [x,y], "radius": 0.55},
-             {"kind": "egress_well", "xy": [x,y], "width": 1.6, "depth": 0.9, "facing": [0,-1]},
+             {"kind": "egress_well", "xy": [x,y] (wall line, centre), "width": 1.8, "depth": 0.9, "facing": [0,-1],
+              "corner": 0.25, "rim_z": z or "rim": 0.10 above grade, "floor_z": z or "pit": 0.6 below grade},
+             # cut the pit out of the ground with build_site.py --cutouts (well_outline() gives the polygon)
              {"kind": "meter", "xy": [x,y], "z": 1.0},
              {"kind": "box", "name": "...", "xy": [x,y], "size": [w,d,h], "z": 0.0, "material": "concrete", "color": [r,g,b]} ],
   "materials": {"rock_bed": [[r,g,b],[r,g,b]], "lawn": [...], "street": [...], "concrete": [...]},   # two-tone overrides
@@ -110,6 +112,23 @@ def cylinder(name, xy, r, z0, z1, c, m, seg=24, ring_inner=None):
         n = (k + 1) % seg
         f += [[o0 + k, o0 + n, o1 + n, o1 + k], [i0 + n, i0 + k, i1 + k, i1 + n], [o1 + k, o1 + n, i1 + n, i1 + k]]
     return mesh(name, v, f, c, m)
+
+
+def well_outline(it, inset=0.0, arc=6):
+    """Box window well against a wall, in plan: from the wall out `depth`, `width` wide, rounded front
+    corners. `inset` > 0 gives the inner face, < 0 an outline just outside. Also used for the cut-out."""
+    x, y = it["xy"]
+    w, d = it.get("width", 1.8), it.get("depth", 0.9)
+    fx, fy = it.get("facing", [0, -1])
+    rx, ry = -fy, fx
+    hw, dd = w / 2 - inset, d - inset
+    r = max(min(it.get("corner", 0.25), w / 2, d) - inset, 0.02)
+    loc = [(-hw, 0.0), (-hw, dd - r)]
+    loc += [(-hw + r - r * math.cos(math.pi / 2 * s / arc), dd - r + r * math.sin(math.pi / 2 * s / arc)) for s in range(1, arc)]
+    loc += [(-hw + r, dd), (hw - r, dd)]
+    loc += [(hw - r + r * math.sin(math.pi / 2 * s / arc), dd - r + r * math.cos(math.pi / 2 * s / arc)) for s in range(1, arc)]
+    loc += [(hw, dd - r), (hw, 0.0)]
+    return [(x + rx * a + fx * b, y + ry * a + fy * b) for a, b in loc]
 
 
 class Ground:
@@ -239,19 +258,27 @@ def main():
             cylinder("fire pit (stone)", (x, y), r, z - 0.05, z + 0.33, c, M["stone"], ring_inner=r - 0.2)
             cylinder("fire pit (ash)", (x, y), r - 0.2, z - 0.05, z + 0.05, c, mat("Ash", (0.08, 0.08, 0.08)))
         elif k == "egress_well":
-            w, d = it.get("width", 1.6), it.get("depth", 0.9)
-            fx, fy = it.get("facing", [0, -1])
-            seg = 12
-            verts, faces = [], []
-            for s in range(seg + 1):
-                t = math.pi * s / seg
-                ox = -fy * math.cos(t) * w / 2 + fx * math.sin(t) * d
-                oy = fx * math.cos(t) * w / 2 + fy * math.sin(t) * d
-                gz = G.z(x + ox, y + oy, z)
-                verts += [(x + ox, y + oy, gz - 0.6), (x + ox, y + oy, gz + 0.1)]
-            for s in range(seg):
-                faces.append([2 * s, 2 * s + 2, 2 * s + 3, 2 * s + 1])
-            mesh("egress window well", verts, faces, c, M["metal"])
+            pts = well_outline(it)
+            inner = well_outline(it, inset=it.get("thickness", 0.04))
+            gz = max(G.z(px_, py_, z) for px_, py_ in well_outline(it, inset=-0.15)[1:-1])   # grade just outside
+            ztop = it.get("rim_z", gz + it.get("rim", 0.10))
+            zbot = it.get("floor_z", gz - it.get("pit", 0.6))
+            plastic = mat("Window well (white plastic)", tuple(it.get("color", (0.80, 0.80, 0.77))), 0.45)
+            n = len(pts)
+            verts = [(px_, py_, zz) for px_, py_ in pts for zz in (zbot - 0.03, ztop)] + [(px_, py_, zz) for px_, py_ in inner for zz in (zbot - 0.03, ztop)]
+            faces = []
+            for s_ in range(n - 1):
+                o0, o1, i0, i1 = 2 * s_, 2 * s_ + 2, 2 * n + 2 * s_, 2 * n + 2 * s_ + 2
+                faces += [[o0, o1, o1 + 1, o0 + 1], [i1, i0, i0 + 1, i1 + 1], [o0 + 1, o1 + 1, i1 + 1, i0 + 1]]
+            faces += [[0, 1, 2 * n + 1, 2 * n], [2 * n - 2, 4 * n - 2, 4 * n - 1, 2 * n - 1]]   # wall ends
+            mesh("egress window well", verts, faces, c, plastic)
+            # gravel floor down in the pit (build_site.py --cutouts removed the ground here)
+            mesh("egress well floor (gravel)", [(px_, py_, zbot) for px_, py_ in inner], [list(range(len(inner)))], c, M["rock_bed"])
+            # foundation face behind the well, from the floor up under the window
+            fnd = bpy.data.materials.get("Foundation") or M["concrete"]
+            (ax, ay), (bx, by) = inner[0], inner[-1]
+            mesh("egress well back (foundation)", [(ax, ay, zbot), (bx, by, zbot), (bx, by, it.get("back_top", gz - 0.28)), (ax, ay, it.get("back_top", gz - 0.28))],
+                 [[0, 1, 2, 3]], c, fnd)
         elif k == "meter":
             zz = it.get("z", 1.0)
             box("utility meter", (x - 0.15, y - 0.08, z + zz), (x + 0.15, y + 0.08, z + zz + 0.35), c, M["metal"])

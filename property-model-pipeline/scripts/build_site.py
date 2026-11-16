@@ -16,6 +16,8 @@ city_features.json (model frame, metres) — as written by the job's GIS step:
    "parcels":    [{"geoms": [[outer]], "props": {"ADDRESS": ...}}],
    "hydrants":   [{"geoms": [[x,y]]}]}
 Extra keys in the project's details.json-style file can add rock beds (--beds beds.json).
+--cutouts cuts pits (window wells) out of the ground and every surface; the grid cells they touch are
+dropped and the draped overlays around them close the hole exactly at the polygon edge.
 """
 import argparse
 import json
@@ -53,6 +55,8 @@ def main():
     ap.add_argument("--bed-width", type=float, default=0.9, help="rock bed band around the walls (m)")
     ap.add_argument("--beds", help="json list of extra bed polygons [[x,y],...] (e.g. under decks)")
     ap.add_argument("--paving", help="json list of extra concrete polygons [[x,y],...] (aprons, stoops the GIS misses)")
+    ap.add_argument("--cutouts", help="json list of polygons [[x,y],...] cut out of the ground and every surface "
+                                      "(window-well pits, stair wells); add_site.py builds what goes in the hole")
     ap.add_argument("--address", help="parcel ADDRESS to outline as the subject lot")
     ap.add_argument("--subject-only", action="store_true",
                     help="drop private paving (driveways, patios, walks) that does not touch the subject parcel "
@@ -120,6 +124,18 @@ def main():
     if a.beds:
         beds = unary_union([beds] + [Polygon(p).buffer(0) for p in json.load(open(a.beds))])
     beds = beds.difference(concrete).difference(street)
+    cut = unary_union([Polygon(p).buffer(0) for p in json.load(open(a.cutouts))]) if a.cutouts else Polygon()
+    if not cut.is_empty:
+        street, concrete, beds = street.difference(cut), concrete.difference(cut), beds.difference(cut)
+        # LiDAR returns from inside an existing pit drag the ground down around it: level the grid near each
+        # cut-out to the median grade of a ring 0.6-1.5 m outside it
+        # (full levelling within 0.6 m, blending back to the LiDAR surface by 1.5 m so no cell is left with a step)
+        for pc in getattr(cut, "geoms", [cut]):
+            dist = shapely.distance(pc, shapely.points(X.ravel(), Y.ravel())).reshape(X.shape)
+            ring = (dist > 1.5) & (dist < 2.5) & ~shapely.contains_xy(house, X, Y)
+            if ring.sum() >= 4:
+                w = np.clip((1.5 - dist) / 0.9, 0.0, 1.0)
+                Z = w * float(np.median(Z[ring])) + (1 - w) * Z
 
     # face centres
     cx = (X[:-1, :-1] + X[1:, 1:]) / 2
@@ -138,6 +154,9 @@ def main():
             k = j * (nx - 1) + i
             if cls[k] == 4:
                 continue
+            if not cut.is_empty and cut.intersects(Polygon([(X[j, i], Y[j, i]), (X[j, i + 1], Y[j, i + 1]),
+                                                            (X[j + 1, i + 1], Y[j + 1, i + 1]), (X[j + 1, i], Y[j + 1, i])])):
+                continue   # the hole is closed by the overlays around it and by what add_site.py puts in it
             a0 = j * nx + i
             faces.append([a0, a0 + 1, a0 + nx + 1, a0 + nx])
             fcls.append(0)   # lawn everywhere; paving and beds are crisp draped overlays
@@ -201,7 +220,7 @@ def main():
     # landscape edging: bed boundary that faces lawn (not the house, paving or the street)
     edging = []
     if a.edging > 0 and not beds.is_empty:
-        hard = unary_union([house.buffer(0.05), concrete.buffer(0.05), street.buffer(0.05)])
+        hard = unary_union([house.buffer(0.05), concrete.buffer(0.05), street.buffer(0.05)] + ([cut.buffer(0.05)] if not cut.is_empty else []))
         edge = beds.difference(house).boundary.difference(hard.buffer(0.1)).intersection(window.buffer(-0.5))
         for ln in (list(edge.geoms) if hasattr(edge, "geoms") else [edge]):
             if ln.is_empty or ln.length < a.edging:
@@ -220,6 +239,7 @@ def main():
            "grid": {"x0": float(xs[0]), "y0": float(ys[0]), "nx": int(nx), "ny": int(ny), "cell": c,
                     "z": np.round(Z, 4).ravel().tolist()},
            "overlays": overlays, "curbs": curbs, "edging": edging, "parcel": parcel, "points": points,
+           "cutouts": [[[round(x, 3), round(y, 3)] for x, y in g_.exterior.coords] for g_ in getattr(cut, "geoms", [cut]) if not g_.is_empty],
            "stats": {"ground_points": int(len(g)), "z_min": float(np.nanmin(Z)), "z_max": float(np.nanmax(Z)),
                      "street_m2": street.area, "concrete_m2": concrete.area, "bed_m2": beds.area}}
     json.dump(out, open(a.out, "w"))

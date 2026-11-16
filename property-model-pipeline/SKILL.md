@@ -128,7 +128,14 @@ sidewalk lines buffered by their width), curb lines, the subject parcel and poin
 (hydrants). `scripts/blender/add_site.py detailed.blend site_scene.json yard.json out.blend`
 adds it in Blender (collection `Site`; yard items: AC unit, fire pit, egress well, meters) and
 GROUNDS the house: walls and foundation extend 0.3 m below the terrain under them, deck posts,
-stair stringers, downspouts, piers and stoops land on it. No vegetation is generated. City
+stair stringers, downspouts, piers and stoops land on it. No vegetation is generated.
+Window wells: give the yard item the well's width, projection, rim and floor heights, and pass
+the same outline to `build_site.py --cutouts` so the pit is really cut out of the ground (a well
+drawn on unbroken ground buries a below-grade egress window). LiDAR returns from inside an
+existing well drag the surface down around it; the cut-out levels the grade there.
+Trace bed edges and small fittings on solved photo cameras (ground plane or wall plane), not by
+eye: add one or two near-field anchors (a wall corner at grade, a feature located on the ortho)
+when all match points are on the building, or near-ground projections drift by a metre. City
 features come in the city's datum — apply the per-source shift the fit estimated.
 `export_studio_glb.py ... --with-site` includes the site; procedural colours are baked to flat
 glTF colours on export.
