@@ -144,7 +144,7 @@ for L in agg.values():
     L['captured'] = len(cr)
     pr = sorted(r['price'] for r in cr if r['price'])
     s.append([L['name'], L.get('total'), L.get('captured'), sum(1 for r in cr if r['sioux_falls_in_stock'] == 'yes'),
-              pr[0] if pr else None, statistics.median(pr) if pr else None, pr[-1] if pr else None])
+              pr[0] if pr else None, round(statistics.median(pr), 2) if pr else None, pr[-1] if pr else None])
 s.append(['Unique products (de-duplicated)', None, len(rows)])
 for c in s[1]:
     c.font = Font(bold=True, color='FFFFFF'); c.fill = hdr; c.alignment = Alignment(wrap_text=True)
