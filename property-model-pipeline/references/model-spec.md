@@ -23,7 +23,10 @@ top height above ground (`h`).
 | `upper_pitch`, `break_inset` | gambrel / mansard upper slope and plan distance wall→break line |
 | `eave_overhang`, `rake_overhang` | horizontal overhang beyond the walls (eave sides / gable ends) |
 | `shed_high_overhang` | shed: overhang on the high side |
-| `base_z` | wall bottom (split levels, a wing sitting on another storey) |
+| `eave_height_b` | plate height of the −v side (lopsided / split-level gables with equal pitch); default = `eave_height` |
+| `eave_overhang_b` | overhang of the −v side, up to 4 m (a roof that continues over a porch); default = `eave_overhang` |
+| `roof_only` | `true` = roof patch with no walls (porch roof, junction patch between wings, carport) |
+| `base_z` | wall bottom; with `spec.ground` it is an offset above grade (e.g. a wing on a raised deck) |
 
 Roof of a wing = lower envelope of planes through the wall lines, clipped to the outline grown
 by the overhangs. Wings combine like solids: the higher surface wins, except a lower roof is
@@ -31,6 +34,10 @@ kept where it runs under a taller wing's overhang (it is real roofing).
 
 Shed: low eave on the +v side. For an azimuth-90 (east) wing, +v is north; use azimuth 270
 to put the low side south.
+
+Nearly coplanar pieces from different wings (slope within 0.004, height within 3 cm where they
+touch) are merged into one facet, so a plane may be built from several wings (e.g. a main
+slope continued by a `roof_only` patch) without double counting or fake seam edges.
 
 ## spec.json
 
@@ -40,9 +47,20 @@ to put the low side south.
               "eave_height": 3.4, "pitch": 0.333, "eave_overhang": 0.45, "rake_overhang": 0.3} ],
   "free":  ["M.cx", "M.cy", "M.azimuth", "M.length", "M.width", "M.eave_height", "M.pitch"],
   "ties":  [["M.eave_overhang", "G.eave_overhang"]],
-  "priors": {"M.eave_overhang": {"value": "18in", "sigma": "6in"}}
+  "priors": {"M.eave_overhang": {"value": "18in", "sigma": "6in"}},
+  "ground": [-0.018, 0.007, 0.28],
+  "openings": [{"facade": "E", "width": "16ft", "height": "7ft", "count": 1, "label": "garage door"},
+               {"facade": "E", "width": "36in", "height": "80in", "count": 1, "label": "front door"}]
 }
 ```
+
+* `ground` = finished grade plane z = a x + b y + c in the model datum; walls start there
+  (`pm.py suggest` fills it from the LiDAR ground fit; refine from class-2 points near the walls).
+* `openings` = doors/windows per facade (compass of the outward normal) for net siding area.
+* `ties` = groups of parameters forced equal; overlapping groups are merged.
+* Model datum: z = 0 is the LiDAR ground elevation at the site origin (a level datum, stored in
+  `site.json → datum_m`). `pm.py obs JOB import-geo` converts lon/lat + absolute-elevation
+  observations (e.g. a city 3D wireframe) into this frame.
 
 ## Observation targets
 

@@ -49,7 +49,12 @@ whether the σ's are realistic overall.
    not the roof above it and not a wall at a different depth.
 9. **Correlated samples.** A footprint polygon is one observation from one source, not 100
    independent ones. `fusion` deflates its weight to ≈ one sample per vertex.
-10. **Pitch from far away.** Pitch read off a photo taken at an angle to the gable is biased
+10. **Tilted height reference.** Heights above a fitted (sloped) ground plane tilt every roof
+    plane by the lot slope: on a 2 % lot, 5.94/12 read as 5.71/12 and 5.98/12 as 6.16/12.
+    `pm.py lidar` uses a level datum (ground elevation at the origin).
+11. **Datum offsets between public sources.** City GIS served in WGS84 may apply a different
+    NAD83→WGS84 transform than the LiDAR (≈1 m in 2026). Give each source a `shift`.
+12. **Pitch from far away.** Pitch read off a photo taken at an angle to the gable is biased
     (foreshortening). Rectify the gable wall first, or use LiDAR/gauge.
 
 ## Reading the fit

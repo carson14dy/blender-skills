@@ -40,7 +40,8 @@ through the blender-mcp addon with `scripts/blender/send_to_mcp.py`.
 python3 $PM init  JOB --address "123 Main St, Ames, IA"        # or --latlon 42.0078,-93.6897
                   [--parcel-url https://<county>/arcgis/rest/services/Parcels/FeatureServer/0]
 python3 $PM fetch JOB        # OSM + Microsoft footprints, orthophoto, 3DEP DEM, parcel attributes
-python3 $PM lidar JOB        # USGS 3DEP point cloud -> ground, roof planes (pitch ±σ), outline
+                  [--footprint-layer <city/county ArcGIS footprint layer> --footprint-which roof_outline|footprint]
+python3 $PM lidar JOB        # USGS 3DEP point cloud -> level datum, tree-free roof points, planes (pitch ±σ), outline
 python3 $PM plot  JOB        # LOOK at JOB/overview.png (Read the image) before modelling
 python3 $PM suggest JOB      # one-wing starting spec.json from LiDAR planes
 #   -> edit JOB/spec.json: split L/T/U plans into wings, set roof types (see references/model-spec.md)
@@ -61,6 +62,20 @@ Wing-design hints (from the plane list `pm.py lidar` prints and the overview):
 * Cross gables: give the projecting wing enough `length` that its ridge dies into the main roof.
 * Same plate height & pitch everywhere → `ties` (e.g. `[["M.pitch","G.pitch"]]`) to share evidence.
 * Free only what evidence can determine; give everything else a prior (e.g. overhang 0.45 ± 0.15 m).
+* Split-level / lopsided gable (equal pitch, plates at different heights): one wing with
+  `eave_height_b`. Roof continuing over a porch: `eave_overhang_b`. A roof patch with no walls
+  (junction between wings, porch roof): `roof_only: true`. Walls on a sloping lot: `spec.ground`.
+
+Municipal GIS is often the best free source: many cities publish photogrammetric building
+footprints (check whether they trace walls or drip edges) and some publish 3-D roof
+wireframes/LOD2 multipatches — decode them, bring them in with `obs import-geo`, and expect
+a ~1 m horizontal datum offset (NAD83 vs WGS84 handling) that fusion estimates as a shift.
+Permit portals (Tyler EnerGov, Accela) date re-roofs and additions: geometry evidence older
+than an addition is invalid; a tear-off re-roof leaves geometry valid.
+
+Trees: `pm.py lidar` drops vegetation classes and every non-last return of multi-return
+pulses (canopy), the robust fit down-weights stragglers, and the Blender scene contains only
+the building. Never trace roof edges under canopy in imagery.
 
 ## Photos from inspections
 
