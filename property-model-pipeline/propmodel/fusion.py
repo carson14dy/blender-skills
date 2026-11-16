@@ -40,7 +40,14 @@ import numpy as np
 from shapely.geometry import Polygon, Point, LineString
 
 from . import units as U
-from .roofgeom import Wing, build, plane_azimuth
+from .roofgeom import Wing, plane_azimuth
+from .roofgeom import build as _raw_build
+
+_GROUND = None  # set by fit(): planar grade (a, b, c) used for wall bottoms
+
+
+def build(wings):
+    return _raw_build(wings, ground=_GROUND)
 
 HUBER_K = 2.0
 
@@ -498,6 +505,8 @@ def fit(spec: dict, observations: List[dict], max_iter=40, robust=True, verbose=
     observations stay in the residual table, flagged EXCLUDED, with the value the final
     model predicts for them. Vector evidence (LiDAR, outlines) is never auto-excluded.
     """
+    global _GROUND
+    _GROUND = tuple(spec["ground"]) if spec.get("ground") else None
     active = list(observations)
     excluded = []
     res = _fit_once(spec, active, max_iter, robust, verbose)

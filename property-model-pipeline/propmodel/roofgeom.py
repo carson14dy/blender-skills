@@ -297,6 +297,7 @@ class Wall:
     area_gross: float       # full wing wall incl. gable triangle
     area_exposed: float     # minus parts enclosed by other wings
     profile: list = field(default_factory=list)   # [(x,y,z_top)] along the wall
+    bottom: list = field(default_factory=list)    # [(x,y,z)] at the two wall ends (grade or base_z)
 
 
 @dataclass
@@ -305,6 +306,7 @@ class BuildingModel:
     facets: List[Facet]
     edges: List[Edge]
     walls: List[Wall]
+    ground: Optional[tuple] = None   # (a, b, c): finished grade z = a x + b y + c in the model datum
 
     # ---- aggregate measurements (SI) -------------------------------------
     def edge_total(self, kind):
@@ -417,7 +419,10 @@ def _wing_regions(w: Wing):
     return regs
 
 
-def build(wings: List[Wing], wall_step=0.02) -> BuildingModel:
+def build(wings: List[Wing], wall_step=0.02, ground=None) -> BuildingModel:
+    """Build the exact model. ``ground`` = (a, b, c) makes wall bottoms follow a planar
+    grade z = a x + b y + c (same datum as eave heights); ``base_z`` is then an offset
+    above that grade. Without ``ground`` walls start at z = base_z."""
     wings = [w if isinstance(w, Wing) else Wing.from_dict(w) for w in wings]
     regions = {w.id: _wing_regions(w) for w in wings}
     wall_polys = {w.id: w.wall_polygon() for w in wings}
@@ -470,8 +475,9 @@ def build(wings: List[Wing], wall_step=0.02) -> BuildingModel:
               for i, m in enumerate(merged)]
 
     edges = _classify_edges(facets, wings)
-    walls = _walls(wings, wall_step)
-    return BuildingModel(wings=wings, facets=facets, edges=edges, walls=walls)
+    walls = _walls(wings, wall_step, ground)
+    return BuildingModel(wings=wings, facets=facets, edges=edges, walls=walls,
+                         ground=tuple(ground) if ground is not None else None)
 
 
 def _ring_edges(poly):
@@ -600,8 +606,15 @@ def _classify_edges(facets: List[Facet], wings: List[Wing]):
     return _merge_collinear(edges)
 
 
-def _walls(wings: List[Wing], step):
+def _walls(wings: List[Wing], step, ground=None):
     out = []
+
+    def bottom_at(W, pts):
+        b = np.full(len(pts), float(W.base_z))
+        if ground is not None:  # base_z becomes an offset above grade (e.g. a wing on a raised deck)
+            b = b + ground[0] * pts[:, 0] + ground[1] * pts[:, 1] + ground[2]
+        return b
+
     for W in wings:
         L, Wd = W.length, W.width
         corners = W.to_world([-L / 2, L / 2, L / 2, -L / 2], [-Wd / 2, -Wd / 2, Wd / 2, Wd / 2])
@@ -615,8 +628,9 @@ def _walls(wings: List[Wing], step):
             t = (np.arange(n) + 0.5) / n
             pts = a + np.outer(t, seg)
             top = (pts[:, :1] * P[:, 0] + pts[:, 1:2] * P[:, 1] + P[:, 2]).min(axis=1)
-            gross = float(np.sum(np.maximum(top - W.base_z, 0)) * length / n)
-            cover = np.full(n, W.base_z)
+            bot = bottom_at(W, pts)
+            gross = float(np.sum(np.maximum(top - bot, 0)) * length / n)
+            cover = bot.copy()
             for V in wings:
                 if V.id == W.id:
                     continue
@@ -641,7 +655,10 @@ def _walls(wings: List[Wing], step):
             for tt in sorted(prof_t):
                 p = a + tt * seg
                 prof.append((float(p[0]), float(p[1]), float(np.min(P[:, 0] * p[0] + P[:, 1] * p[1] + P[:, 2]))))
-            out.append(Wall(W.id, names[k], bearing, length, gross, exposed, prof))
+            ends = np.array([a, b])
+            wall = Wall(W.id, names[k], bearing, length, gross, exposed, prof)
+            wall.bottom = [(float(x), float(y), float(z)) for (x, y), z in zip(ends, bottom_at(W, ends))]
+            out.append(wall)
     return out
 
 
@@ -668,6 +685,7 @@ def to_mesh_json(model: BuildingModel):
             "area_m2": f.area_true, "hidden_from_above": f.hidden_from_above,
         })
     walls = [{"wing": w.wing, "side": w.side, "bearing": w.bearing, "base_z": next(x.base_z for x in model.wings if x.id == w.wing),
-              "profile": w.profile, "area_exposed_m2": w.area_exposed} for w in model.walls]
+              "profile": w.profile, "bottom": w.bottom, "area_exposed_m2": w.area_exposed} for w in model.walls]
     edges = [{"kind": e.kind, "facets": e.facets, "p0": list(e.p0), "p1": list(e.p1), "length_m": e.length} for e in model.edges]
-    return {"facets": facets, "walls": walls, "edges": edges, "wings": [w.to_dict() for w in model.wings]}
+    return {"facets": facets, "walls": walls, "edges": edges, "wings": [w.to_dict() for w in model.wings],
+            "ground": list(model.ground) if model.ground is not None else None}

@@ -31,7 +31,17 @@ def suggested_waste(model):
     return w, n
 
 
-def build_report(model, fit=None, site=None, title="Property measurement report"):
+def openings_by_facade(openings):
+    """spec 'openings': [{"facade": "N", "width": "36in", "height": "80in", "count": 1, "label": "door"}]."""
+    from .units import parse_length
+    out = {}
+    for o in openings or []:
+        a = parse_length(o["width"]) * parse_length(o["height"]) * float(o.get("count", 1))
+        out[o["facade"].upper()] = out.get(o["facade"].upper(), 0.0) + a
+    return out
+
+
+def build_report(model, fit=None, site=None, title="Property measurement report", openings=None):
     meas = model.measurements()
     sig = (fit or {}).get("measurement_sigma", {})
     lines = [f"# {title}", ""]
@@ -77,15 +87,19 @@ def build_report(model, fit=None, site=None, title="Property measurement report"
     for k in sorted(by_pitch):
         lines.append(f"| {k:g}/12 | {U.sqft(by_pitch[k]):.0f} | {100 * by_pitch[k] / max(A, 1e-9):.0f} % |")
 
-    lines += ["", "## Walls (siding)", "", "| Facade | Area (ft²) | Area (m²) |", "|---|---|---|"]
+    op = openings_by_facade(openings)
+    lines += ["", "## Walls (siding)", "", "| Facade | Gross (ft²) | Openings (ft²) | Net (ft²) | Net (m²) |", "|---|---|---|---|---|"]
     fac = {}
     for w in model.walls:
         fac[compass(w.bearing)] = fac.get(compass(w.bearing), 0) + w.area_exposed
     for k in COMPASS:
         if fac.get(k, 0) > 0.05:
-            lines.append(f"| {k} | {U.sqft(fac[k]):.0f} | {fac[k]:.1f} |")
+            o = op.get(k, 0.0)
+            lines.append(f"| {k} | {U.sqft(fac[k]):.0f} | {U.sqft(o):.0f} | {U.sqft(fac[k] - o):.0f} | {fac[k] - o:.1f} |")
     W, Ws = meas["wall.area"], sig.get("wall.area", 0)
-    lines += [f"| **Total (gross, openings not deducted)** | **{_pm(U.sqft(W), U.sqft(Ws), '{:.0f}')}** | {_pm(W, Ws)} |",
+    O = sum(op.values())
+    lines += [f"| **Total** | **{_pm(U.sqft(W), U.sqft(Ws), '{:.0f}')}** | {U.sqft(O):.0f} | **{U.sqft(W - O):.0f}** | {W - O:.1f} |",
+              "" if openings else "_No openings listed in spec.json → net = gross. Add `openings` to deduct doors/windows/garage doors._",
               "", f"Footprint (outside of walls): {U.sqft(meas['footprint.area']):.0f} ft² ({meas['footprint.area']:.1f} m²), "
                   f"perimeter {U.ft(meas['footprint.perimeter']):.1f} ft.", ""]
 

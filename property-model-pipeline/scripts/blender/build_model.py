@@ -137,7 +137,10 @@ def build_walls(model, coll):
         if len(prof) < 2:
             continue
         a, b = prof[0], prof[-1]
-        verts = [(a[0], a[1], w["base_z"]), (b[0], b[1], w["base_z"])] + [tuple(p) for p in reversed(prof)]
+        if w.get("bottom"):
+            verts = [tuple(w["bottom"][0]), tuple(w["bottom"][1])] + [tuple(p) for p in reversed(prof)]
+        else:
+            verts = [(a[0], a[1], w["base_z"]), (b[0], b[1], w["base_z"])] + [tuple(p) for p in reversed(prof)]
         mesh_object(f"Wall {w['wing']} {w['side']}", verts, [list(range(len(verts)))], coll, mat)
 
 

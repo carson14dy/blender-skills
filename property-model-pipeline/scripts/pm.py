@@ -7,6 +7,7 @@
     pm.py suggest PROJECT               starting spec.json (one wing) from LiDAR + footprint
     pm.py obs PROJECT add --target roof.area --value "24.5 sq" --sigma 2% --source "EagleView 2019"
     pm.py obs PROJECT import past.csv   (columns: target,value,sigma,source,kind,date)
+    pm.py obs PROJECT import-geo geo_obs.json   (roof_z_wgs84 / outline_wgs84 / z@_wgs84 in lon,lat + absolute m)
     pm.py obs PROJECT list
     pm.py fit PROJECT                   fuse everything -> fit.json, model.json, report.md, overview.png
     pm.py build PROJECT                 geometry + report from spec.json without fitting
@@ -69,6 +70,19 @@ def save(project, name, obj):
 
 def frame_of(project):
     return LocalFrame.from_dict(load(project, "site.json")["origin"])
+
+
+def model_datum(project):
+    """Absolute elevation (m) of model z = 0: ground at the site origin."""
+    site = load(project, "site.json", {})
+    if site.get("datum_m") is not None:
+        return float(site["datum_m"])
+    li = load(project, "data/lidar.json")
+    if li:
+        return float(li["ground_plane"][2])
+    if site.get("ground_elevation_dem") is not None:
+        return float(site["ground_elevation_dem"])
+    raise SystemExit("no datum: run `pm.py lidar` first (or set site.json datum_m)")
 
 
 def set_auto_obs(project, source_prefix, new_obs):
@@ -305,6 +319,34 @@ def cmd_obs(a):
         obs.extend(new)
         save(a.project, "observations.json", obs)
         print(f"imported {len(new)} observations")
+    elif a.action == "import-geo":
+        # observations in WGS84 + absolute elevation (m, same vertical datum as the LiDAR, e.g. NAVD88)
+        frame = frame_of(a.project)
+        datum = model_datum(a.project)
+        new = []
+        for o in json.load(open(a.file)):
+            o = dict(o)
+            t = o["target"]
+            if t == "roof_z_wgs84":
+                pts = np.asarray(o.pop("points"), float)
+                x, y, _ = frame.from_geodetic(pts[:, 1], pts[:, 0])
+                o["points"] = np.column_stack([x, y, pts[:, 2] - datum]).round(4).tolist()
+                o["target"] = "roof_z"
+            elif t == "outline_wgs84":
+                o["polygon"] = frame.ring_from_lonlat(o.pop("polygon"))
+                o["target"] = "outline"
+            elif t in ("z@_wgs84", "pitch@_wgs84", "azimuth@_wgs84"):
+                lon, lat = o.pop("lonlat")
+                x, y, _ = frame.from_geodetic(lat, lon)
+                o["xy"] = [float(x), float(y)]
+                o["target"] = t.replace("_wgs84", "")
+                if o["target"] == "z@":
+                    o["value"] = U.parse_length(o["value"]) - datum
+            o["datum_navd88_m"] = datum
+            new.append(o)
+        obs.extend(new)
+        save(a.project, "observations.json", obs)
+        print(f"imported {len(new)} geo observations (datum {datum:.3f} m)")
     elif a.action == "remove":
         keep = [o for o in obs if not (a.source and str(o.get("source", "")).startswith(a.source))]
         save(a.project, "observations.json", keep)
@@ -319,7 +361,8 @@ def _finish(project, model, fit=None):
     from propmodel import report, roofgeom, plot
     save(project, "model.json", {**roofgeom.to_mesh_json(model), "site": load(project, "site.json")})
     site = load(project, "site.json")
-    md = report.build_report(model, fit, site)
+    spec = load(project, "spec.json", {}) or {}
+    md = report.build_report(model, fit, site, openings=spec.get("openings"))
     with open(P(project, "report.md"), "w") as f:
         f.write(md)
     save(project, "report.json", report.report_json(model, fit, site))
@@ -362,7 +405,7 @@ def cmd_fit(a):
     fitted = dict(spec)
     fitted["wings"] = res["wings"]
     save(a.project, "spec_fitted.json", fitted)
-    model = roofgeom.build([roofgeom.Wing.from_dict(w) for w in res["wings"]])
+    model = roofgeom.build([roofgeom.Wing.from_dict(w) for w in res["wings"]], ground=spec.get("ground"))
     _finish(a.project, model, res)
     if a.accept:
         save(a.project, "spec.json", fitted)
@@ -371,7 +414,7 @@ def cmd_fit(a):
 def cmd_build(a):
     from propmodel import roofgeom
     spec = load(a.project, "spec.json")
-    model = roofgeom.build([roofgeom.Wing.from_dict(w) for w in spec["wings"]])
+    model = roofgeom.build([roofgeom.Wing.from_dict(w) for w in spec["wings"]], ground=spec.get("ground"))
     _finish(a.project, model, load(a.project, "fit.json") if a.with_fit else None)
 
 
@@ -515,7 +558,7 @@ def main():
     s.add_argument("--seed-only", action="store_true", help="ignore footprints; take the blob at the origin")
     s.set_defaults(fn=cmd_lidar)
     s = sp.add_parser("suggest"); s.add_argument("project"); s.add_argument("--force", action="store_true"); s.set_defaults(fn=cmd_suggest)
-    s = sp.add_parser("obs"); s.add_argument("project"); s.add_argument("action", choices=["add", "import", "list", "remove"])
+    s = sp.add_parser("obs"); s.add_argument("project"); s.add_argument("action", choices=["add", "import", "import-geo", "list", "remove"])
     s.add_argument("file", nargs="?"); s.add_argument("--target"); s.add_argument("--value"); s.add_argument("--sigma")
     s.add_argument("--source"); s.add_argument("--kind"); s.add_argument("--xy"); s.add_argument("--date"); s.set_defaults(fn=cmd_obs)
     s = sp.add_parser("fit"); s.add_argument("project"); s.add_argument("--exclude", nargs="*", default=[])

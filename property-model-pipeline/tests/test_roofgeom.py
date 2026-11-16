@@ -104,3 +104,17 @@ def test_gambrel():
     expected = 10 * (2 * 1.0 * math.sqrt(1 + 4) + 2 * 3.0 * math.sqrt(1 + 0.25))
     assert m.roof_area() == pytest.approx(expected, rel=1e-6)
     assert by_kind(m)["transition"] == pytest.approx(20)
+
+
+def test_walls_follow_sloped_grade():
+    w = Wing("A", "gable", azimuth=90, length=10, width=8, pitch=0.5, eave_overhang=0, rake_overhang=0, eave_height=3)
+    flat = build([w])
+    # grade falls 1 m over the 10 m length (x from -5 to 5): linear, so the long walls keep
+    # the same mean height; the low gable end gains 0.5 m x 8 m, the high end loses the same
+    sl = build([w], ground=(-0.1, 0.0, 0.0))
+    long_wall = [x for x in sl.walls if x.side == "-v"][0]
+    assert long_wall.area_exposed == pytest.approx(30.0, rel=1e-3)
+    low_end = [x for x in sl.walls if x.side == "+u"][0]   # x = +5, grade -0.5
+    assert low_end.area_exposed == pytest.approx(8 * 3.5 + 8, rel=1e-3)
+    assert sl.wall_area() == pytest.approx(flat.wall_area(), rel=1e-3)
+    assert sl.roof_area() == pytest.approx(flat.roof_area())
