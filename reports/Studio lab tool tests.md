@@ -1,6 +1,6 @@
 # Roof Studio Lab: findings
 
-Four free tools were added to a copy of Roof Layer Studio and tested side by side on the measured job, 1601 S Discovery Ave, Sioux Falls. Each has a section in the Lab tab with an on/off control, a Run test button that measures in the viewer's own browser, and a short summary.
+Four free tools were added to a copy of Roof Layer Studio and tested side by side on the studio's measured job (a house in Sioux Falls). Each has a section in the Lab tab with an on/off control, a Run test button that measures in the viewer's own browser, and a short summary.
 
 How the numbers were taken: headless Chromium 153 (Playwright) with a software GPU (SwiftShader), and a local server that wraps the page like the artifact host and sends the artifact CSP. Two policies were tested: the one given (no 'wasm-unsafe-eval') and the same plus 'wasm-unsafe-eval'. Frame times are only comparable within this machine; real figures come from Run test on a phone or laptop. Load times are from localhost. Sizes are exact.
 

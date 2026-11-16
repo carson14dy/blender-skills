@@ -11,8 +11,8 @@ carries no georeference. This script recovers one from free data and measures ho
 
 Writes out/lab/data/site.json, which every other lab tool and the Lab tab read.
 
-    python3 tools/align_house.py --address "1601 S Discovery Ave" \
-        --model out/houses/1601-s-discovery-ave.gltf.json
+    python3 tools/align_house.py --address "<Sioux Falls address>" \
+        --model out/houses/<house id>.gltf.json
 """
 import argparse
 import math
@@ -77,7 +77,7 @@ def outline_distance(mask_a, mask_b, cell=CELL):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--address", default="1601 S Discovery Ave")
+    ap.add_argument("--address", required=True)
     ap.add_argument("--model", required=True)
     ap.add_argument("--geoid", type=float, default=-26.9,
                     help="geoid undulation N in metres (GEOID18 near Sioux Falls is about -26.9); only used "
