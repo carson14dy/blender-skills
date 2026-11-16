@@ -4,7 +4,10 @@ A collection of Claude Code skills for automating 3D product workflows in Blende
 
 ## Skills
 
-### 3D Model Generation
+### Measurement-grade property models (accuracy first)
+- **[property-model-pipeline](property-model-pipeline/SKILL.md)** — Address → exact Blender model + roof/siding measurement report with ±1σ on every number. Fuses USGS 3DEP LiDAR, satellite/aerial imagery, OSM + Microsoft footprints, county parcel data, inspection photos (EXIF/drone metadata, plane rectification, camera matching) and past measurement reports in one robust least-squares fit; flags and excludes conflicting sources. See [examples/ames-ia-demo](property-model-pipeline/examples/ames-ia-demo/README.md) and [accuracy budget](property-model-pipeline/references/accuracy-budget.md).
+
+### 3D Model Generation (generative — not metric)
 - **[image-to-3d](image-to-3d/SKILL.md)** — Convert a single photo into a textured 3D model using Meshy API
 - **[multi-image-to-3d](multi-image-to-3d/SKILL.md)** — Convert 1-4 photos from different angles into a high-accuracy 3D model
 
@@ -19,12 +22,15 @@ A collection of Claude Code skills for automating 3D product workflows in Blende
 ### Blender Automation
 - **[blender-toolkit](blender-toolkit/SKILL.md)** — WebSocket-based geometry, materials, modifiers, and Mixamo animation retargeting.
 
+> Generative image-to-3D meshes have arbitrary scale and invented hidden geometry. Never quote measurements from them; use `property-model-pipeline` (or align the mesh with `pm.py align` and check it against LiDAR/tape first).
+
 ## Prerequisites
 
 - Blender 5.x with [blender-mcp](https://github.com/ahujasid/blender-mcp) addon installed
 - Claude Code with MCP server configured (`uvx blender-mcp`)
 - [Meshy API](https://www.meshy.ai/) key (for 3D generation skills)
 - ffmpeg (for video encoding)
+- For property-model-pipeline: Python 3.10+ with `pip install -r property-model-pipeline/requirements.txt`; Blender (GUI, `blender -b`, or `pip install bpy`). No API keys needed for US public data.
 
 ## Setup
 

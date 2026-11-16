@@ -1,0 +1,8 @@
+numpy>=1.24
+shapely>=2.0
+laspy[lazrs]>=2.4
+pillow>=10
+requests>=2.28
+pytest>=7          # tests only
+# optional: headless Blender as a Python module (matching Python version wheels on PyPI)
+# bpy>=4.2
