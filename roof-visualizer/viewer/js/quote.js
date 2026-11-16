@@ -106,8 +106,8 @@ function lineRules(q, job) {
   const lin = (v) => [v, 'ft', `${fmtNum(v, 1)} ft`];
   const area = (v) => [v, 'sq ft', `${fmtNum(v)} sq ft`];
   const waste = Number(job.waste?.pct) || 0;
-  const wasteBy = job.waste?.source === 'typed' ? 'you, Waste % on the Layers tab'
-    : 'suggested from the hips and valleys; change it with Waste % on the Layers tab';
+  const wasteBy = job.waste?.source === 'typed' ? 'you, Waste %'
+    : 'suggested from the hips and valleys; change it with Waste % above';
   const iceText = `${fmtNum(q.iceSqft || 0)} sq ft (${q.iceRows || 0} eave rows${q.valleyFt > 0 ? ' + valleys' : ''})`;
   return [
     { slot: 'covering', basis: area(q.areaSqft), pct: waste, what: 'waste', setBy: wasteBy, kind: 'covering' },
@@ -122,7 +122,16 @@ function lineRules(q, job) {
 }
 
 /** Store quantity for one product on one line. typedCoverage is per sold unit, in the line's unit (sq ft or ft). */
+const EACH_NOUN = { underlayment: 'roll', iceWater: 'roll', dripEdge: 'piece', valley: 'piece', ridgeVent: 'piece', starter: 'bundle', ridgeCap: 'piece' };
+
 function storeQty(rule, need, product, choice) {
+  const r = storeQtyRaw(rule, need, product, choice);
+  // "4 each" reads badly: name the thing (rolls, pieces, bundles); csv keeps `unit`
+  if (r && r.unit === 'each' && EACH_NOUN[rule.slot]) r.noun = rule.slot === 'ridgeCap' && product.kind !== 'metalCap' ? 'bundle' : EACH_NOUN[rule.slot];
+  return r;
+}
+
+function storeQtyRaw(rule, need, product, choice) {
   const per = product.price?.per || 'each';
   // on shingles, caps and starters packCount counts shingles per bundle, not packages: never a pack
   const perBundle = product.category === 'shingle' || ['shingleCap', 'starter'].includes(product.kind) || per === 'bundle';
@@ -210,15 +219,17 @@ function storeCell(rule, needValue, choice, ctx) {
   if (current) notes.push(current.unitPrice == null ? 'now: no price in the store capture'
     : `now ${fmtMoney(current.unitPrice)} (${current.delta >= 0 ? '+' : '−'}${fmtMoney(Math.abs(current.delta))})`);
   let stock = null;
-  if (p.stock && (p.stock.qty != null || p.stock.inStock === false)) {
-    const have = p.stock.qty ?? 0;
+  if (p.stock && p.stock.qty == null && p.stock.inStock === false) {
+    stock = { qty: null, short: false, text: 'not in stock at this store at capture' }; // unknown is never zero
+  } else if (p.stock && p.stock.qty != null) {
+    const have = p.stock.qty;
     const short = qty != null && qty > have;
     stock = { qty: have, short, text: short ? `store had ${fmtNum(have)}, you need ${fmtNum(qty)}` : `${fmtNum(have)} in store at capture` };
   }
   const rebate = status === 'priced' && priceSource === 'store' && p.price?.rebate > 0 ? round2(qty * p.price.rebate) : null;
   return finishTexts({
     status, productId: p.id, name: p.name ?? null, color: choice.color ?? p.color ?? null, suggested: choice.source === 'suggested',
-    qty, unit: sq ? sq.unit : null, unitPrice, priceSource, lineTotal, rebate, stock,
+    qty, unit: sq ? sq.unit : null, noun: sq?.noun ?? null, unitPrice, priceSource, lineTotal, rebate, stock,
     why: u.why ?? null, setBy: u.setBy ?? null, notes,
     needs: { price: unitPrice == null, coverage: !sq }, current,
     ...(sq?.pieces != null ? { pieces: sq.pieces } : {}),
@@ -341,6 +352,8 @@ export function buildQuote({ q, job = {}, catalog, today, priceOverride = null, 
   const lines = [];
   for (const rule of lineRules(q, job)) {
     const [value, unit, text] = rule.basis;
+    // quantities come from the need as shown (to 0.01): the list's arithmetic must be checkable by hand,
+    // and a 0.004 ft overshoot of a rounded figure must not buy one more bundle or piece
     const need = { value: round2(value * (1 + rule.pct / 100)), unit };
     const cells = {};
     for (const s of stores) cells[s] = storeCell(rule, need.value, job.selections?.[rule.slot]?.[s] ?? null, ctx);
@@ -395,7 +408,7 @@ export function crewView(quote, storeId = quote.shownStore) {
       const unknownQty = c.qty == null || c.status === 'notChosen';
       return {
         slot: l.slot, label: l.label, product: c.name, color: c.color,
-        qty: c.status === 'notChosen' ? null : c.qty, qtyText: c.status === 'notChosen' ? DASH : c.qtyText, unit: c.unit,
+        qty: c.status === 'notChosen' ? null : c.qty, qtyText: c.status === 'notChosen' ? DASH : c.qtyText, unit: c.unit, noun: c.noun ?? null,
         measured: l.basis ? l.basis.text : l.allowance?.text ?? '',
         why: unknownQty && c.status !== 'noPrice' ? c.why : null,
       };

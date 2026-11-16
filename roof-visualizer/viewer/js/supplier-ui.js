@@ -516,7 +516,7 @@ export function createStoreUI(ctx) {
   /** Nails and deck repair: no store product; one typed amount for the whole line, both stores. */
   function typedLine(l, quote, interactive) {
     const c = l.cells[quote.stores[0].id];
-    const qty = c.qty != null ? `${c.qtyText} ${plural(c.unit, c.qty)}` : DASH;
+    const qty = c.qty != null ? `${c.qtyText} ${plural(c.noun || c.unit, c.qty)}` : DASH;
     const box = el('div', { class: `sf-cell st-${c.status}` },
       el('div', { class: 'sf-ch' }, el('span', { class: 'sf-store s-both' }, 'Both stores'), c.priceSource === 'typed' ? tag('typed') : null),
       el('div', { class: 'sf-nums' }, el('span', { class: 'sf-q' }, qty), el('span', { class: 'sf-t' }, c.totalText)));
@@ -538,7 +538,7 @@ export function createStoreUI(ctx) {
     cell.append(el('div', { class: 'sf-ch' }, storeTag(s.id),
       interactive ? el('button', { type: 'button', class: 'sf-prod', title: 'Change it in the store picker', onclick: () => jumpToPicker(l.slot, s.id) }, label) : el('span', { class: 'sf-prod' }, label),
       c.suggested ? tag('suggested') : null, c.priceSource === 'typed' ? tag('typed') : null, c.status === 'startingAt' ? tag('from') : null, lower ? tag('lower') : null));
-    const qty = c.qty != null ? `${c.qtyText} ${plural(c.unit, c.qty)}` : DASH;
+    const qty = c.qty != null ? `${c.qtyText} ${plural(c.noun || c.unit, c.qty)}` : DASH;
     cell.append(el('div', { class: 'sf-nums' }, el('span', { class: 'sf-q' }, qty),
       c.unitPrice != null ? el('span', { class: 'sf-u' }, `at ${c.unitPriceText}`) : null,
       el('span', { class: 'sf-t' }, c.totalText)));
@@ -601,7 +601,7 @@ export function createStoreUI(ctx) {
       const product = c.productId ? productLabel(c) : null;
       body.append(el('section', { class: 'sf-card', 'aria-label': l.label }, el('h4', {}, l.label),
         product ? el('p', { class: 'sf-crew-p' }, product) : null,
-        el('p', { class: 'sf-crew-q' }, l.qty != null ? `${l.qtyText} ${plural(l.unit, l.qty)}` : DASH, l.why ? el('span', { class: 'sf-why' }, ` ${l.why}`) : null),
+        el('p', { class: 'sf-crew-q' }, l.qty != null ? `${l.qtyText} ${plural(l.noun || l.unit, l.qty)}` : DASH, l.why ? el('span', { class: 'sf-why' }, ` ${l.why}`) : null),
         el('p', { class: 'sf-basis' }, l.measured, ' ', el('b', {}, ql.basis ? 'measured' : 'allowance'))));
     });
   }
@@ -631,7 +631,7 @@ export function createStoreUI(ctx) {
     const out = [`${job().name}: ${crew ? `crew list, ${storeName(job().shownStore)}` : 'materials list'}`];
     if (crew) {
       const cv = crewView(quote, job().shownStore);
-      for (const l of cv.lines) out.push(`${l.label}: ${l.product ? `${cleanName(l.product)}${l.color ? `, ${l.color}` : ''}: ` : ''}${l.qty != null ? `${l.qtyText} ${plural(l.unit, l.qty)}` : `${DASH} ${l.why || ''}`.trim()} (${l.measured})`);
+      for (const l of cv.lines) out.push(`${l.label}: ${l.product ? `${cleanName(l.product)}${l.color ? `, ${l.color}` : ''}: ` : ''}${l.qty != null ? `${l.qtyText} ${plural(l.noun || l.unit, l.qty)}` : `${DASH} ${l.why || ''}`.trim()} (${l.measured})`);
       return out.join('\n');
     }
     out.push(quote.status.header, quote.status.age.text, '');
@@ -639,7 +639,7 @@ export function createStoreUI(ctx) {
       out.push(`${l.label}: ${[l.basis ? `${l.basis.text} measured` : null, l.allowance ? `${l.allowance.text} (allowance)` : null].filter(Boolean).join(' + ')}`);
       for (const s of quote.stores) {
         const c = l.cells[s.id];
-        out.push(`  ${s.name}: ${c.productId ? productLabel(c) : c.status === 'notChosen' ? 'not chosen' : ''}${c.productId ? ': ' : ''}${c.qty != null ? `${c.qtyText} ${plural(c.unit, c.qty)}` : DASH}${c.unitPrice != null ? ` at ${c.unitPriceText}` : ''} = ${c.totalText}${c.why ? ` (${c.why})` : ''}${l.lower === s.id ? ' [lower]' : ''}`);
+        out.push(`  ${s.name}: ${c.productId ? productLabel(c) : c.status === 'notChosen' ? 'not chosen' : ''}${c.productId ? ': ' : ''}${c.qty != null ? `${c.qtyText} ${plural(c.noun || c.unit, c.qty)}` : DASH}${c.unitPrice != null ? ` at ${c.unitPriceText}` : ''} = ${c.totalText}${c.why ? ` (${c.why})` : ''}${l.lower === s.id ? ' [lower]' : ''}`);
       }
     }
     out.push('', 'Totals');
@@ -709,7 +709,7 @@ export function createStoreUI(ctx) {
             c.suggested ? [' ', tag('suggested')] : null, c.priceSource === 'typed' ? [' ', tag('typed')] : null,
             c.why ? el('div', { class: 'sf-why' }, c.why) : null,
             [...(c.stock ? [c.stock.text] : []), ...c.notes].length ? el('div', { class: 'sf-cnote' }, [...(c.stock ? [c.stock.text] : []), ...c.notes].join(' · ')) : null),
-          el('td', { class: 'n' }, c.qty != null ? `${c.qtyText} ${plural(c.unit, c.qty)}` : DASH),
+          el('td', { class: 'n' }, c.qty != null ? `${c.qtyText} ${plural(c.noun || c.unit, c.qty)}` : DASH),
           el('td', { class: 'n' }, c.unitPriceText),
           el('td', { class: `n tot${lower ? ' lower' : ''}` }, c.totalText, lower ? el('div', {}, tag('lower')) : null),
         ];

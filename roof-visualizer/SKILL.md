@@ -111,7 +111,7 @@ When the user asks you (Claude) to plan a job, write the plan file yourself usin
 
 `?house=ranch-hip|two-story|cottage&pitch=8&product=<catalog id>&plan=plans/x.json&glb=house.glb&t=0.6&explode=1&cut=1&tab=layers|list&quality=standard|high|ultra&view=crew&today=YYYY-MM-DD`
 
-Without `?product=`, the studio opens with the shown store's covering (Menards Duration, Sierra Gray); `?product=arch-charcoal` opens the first built-in product as before.
+Without `?product=`, the studio opens with the shown store's covering (Menards Duration, Sierra Gray); `?product=arch-charcoal` opens the first built-in product as before. A store metal roof's ridge cap takes the covering's metal values (metallic, roughness), so cap and panels match.
 
 `window.roofStudio` (for Playwright scripts or demos): `ready`, `state`, `setProduct(id)`, `explode(bool)`, `cutaway(bool)`, `seek(fraction)`, `play()`, `snapshot(w, h)` (returns a blob URL), `loadPlan(obj)`, `loadHouse(url)`, `pathTrace(bool)`, `settle()`.
 Store features: `suppliers()` (the store catalog), `quote()`, `project()`, `loadProject(obj)`, `pickStore(slot, productId, color)`, `showStore(storeId)`, `storeProduct(productId, color)`, `setCrewView(bool)`, `listText(crew)`, `blenderCommand()`, `tapRoof(x, y)`.

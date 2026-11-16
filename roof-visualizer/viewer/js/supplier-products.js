@@ -108,9 +108,16 @@ export function paletteFor(entry, { asphalt = false } = {}) {
   if (pal.length >= 3) {
     if (!asphalt) return pal;
     const l = pal.map(luma);
-    if (Math.max(...l) - Math.min(...l) >= 20) return pal;
+    // asphalt: pull each sampled color 40% toward the product color, so blends read as one roof from a distance
+    if (Math.max(...l) - Math.min(...l) >= 20) return pal.map((h) => mixHex(h, hex, 0.4));
   }
   return shadesOf(hex);
+}
+
+/** Mix two #rrggbb colors: t = 0 gives a, t = 1 gives b. */
+export function mixHex(a, b, t) {
+  const c = (h, i) => parseInt(h.slice(1 + 2 * i, 3 + 2 * i), 16);
+  return '#' + [0, 1, 2].map((i) => Math.round(c(a, i) + (c(b, i) - c(a, i)) * t).toString(16).padStart(2, '0')).join('');
 }
 
 /** Texture seed for a product: always the same look for the same product. */

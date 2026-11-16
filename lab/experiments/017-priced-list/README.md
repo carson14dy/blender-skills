@@ -63,6 +63,19 @@ Can the measured roof become a materials list priced at both Sioux Falls stores?
 |---|---|---|---|
 | List | ![](img/list-1440.jpg) | ![](img/list-1280.jpg) | ![](img/list-390.jpg) |
 | Full list | ![](img/full-1440.jpg) | ![](img/full-1280.jpg) | ![](img/full-390.jpg) |
+
+The phone shots show the list controls before scrolling; the lines follow below them on the phone.
+
+**Fable 5.2 review, 2026-11-16 (applied):**
+- A store with no stock count at capture now reads "not in stock at this store at capture", not "store had 0". Unknown is never zero.
+- Waste wording now points at the Waste % input in this pane.
+- "each" items name the thing: rolls, pieces, bundles. The CSV keeps the store's unit.
+- Asphalt palettes are pulled 40% toward the product color, so the roof doesn't read as a checkerboard.
+
+**Not applied:** the review suggested computing quantities from the unrounded need. Quantities stay on the need as shown, to 0.01. Two reasons:
+- The list's arithmetic must check by hand: the shown need ÷ coverage = quantity.
+- An overshoot of 0.004 of a rounded measurement must not buy one more bundle. With the change, a Home Depot test line went from 24 to 25 pieces for 0.004 ft.
+
 | Crew view | ![](img/crew-1440.jpg) | ![](img/crew-1280.jpg) | ![](img/crew-390.jpg) |
 
 - **Desktop and laptop:** the dialog shows both stores side by side. The cheaper total has a soft accent fill and the word "lower". At 1280 × 720 the table scrolls inside the dialog under a sticky header.

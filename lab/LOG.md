@@ -6,6 +6,15 @@ Newest first. One entry per session: date, cloud or local, what changed, results
 
 ## 2026-11-16 · cloud (8)
 
+**Review (Fable 5.2) and fixes, applied after the build:**
+- Unknown stock is shown as unknown, not 0.
+- The waste wording points at the List pane.
+- Unit nouns: rolls, pieces, bundles.
+- Asphalt palettes are softened (Duration no longer reads as a checkerboard).
+- 018 has shots at all three widths; 019 has its own image.
+- One suggestion was not applied (quantities from the unrounded need), with the reason in 017.
+- Tests are 79/79, and all 10 page checks pass again: ranch $6,746.27 / $6,533.59 / $6,431.38, 0 store-image requests, 0 console errors.
+
 Sioux Falls studio, steps 016–018, the texture part of 019, and a read-only 022. Built in four lanes from the planner's spec: A catalog and colors, B render recipes and metal textures, C quote and project-file rules, D layers, UI, checks and write-ups.
 
 **Changed**

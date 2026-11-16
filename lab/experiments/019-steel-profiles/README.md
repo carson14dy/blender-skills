@@ -42,7 +42,7 @@ Can the store's steel panels be drawn at their measured profile in the web studi
 
 - Pro-Rib Ash Gray renders with metalness 0. Its roughness factor of 1.01 scales the texture's roughness map, whose mean is 0.40, so the average comes out at the catalog's 0.4: painted steel reads satin, not chrome.
 
-![Pro-Rib Ash Gray, about 3 m from the eave (software WebGL)](../016-store-picker-colors/img/prorib-close-1440.jpg)
+![Pro-Rib Ash Gray, about 3 m from the eave (software WebGL)](img/prorib-close-1440.jpg)
 
 **What a texture cannot do** (why the geometry step stays on the list):
 - Ribs do not stand up at the eave or rake edge.

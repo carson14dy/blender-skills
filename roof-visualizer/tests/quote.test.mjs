@@ -468,7 +468,7 @@ test('crew view and crew CSV carry no prices', () => {
   for (const k of banned) assert.ok(!keys.includes(`"${k}"`), `crew view has no ${k}`);
   assert.ok(!keys.includes('$'));
   assert.deepEqual(crew.lines.find((l) => l.slot === 'covering'), {
-    slot: 'covering', label: 'Shingles / panels', product: PRODUCTS[0].name, color: 'Sierra Gray', qty: 98, qtyText: '98', unit: 'bundle', measured: '2,743 sq ft', why: null,
+    slot: 'covering', label: 'Shingles / panels', product: PRODUCTS[0].name, color: 'Sierra Gray', qty: 98, qtyText: '98', unit: 'bundle', noun: null, measured: '2,743 sq ft', why: null,
   });
   const csv = quoteCSV(Qt, { view: 'crew', store: MN });
   assert.ok(!csv.includes('$'), 'no $ anywhere in the crew file');
@@ -499,4 +499,19 @@ test('office CSV: RFC 4180, CRLF, BOM, one row per line per store, totals, rebat
   assert.deepEqual(csvFields('a,"b, ""c""",,d'), ['a', 'b, "c"', '', 'd']);
   assert.equal(csvFileName('Untitled roof', TODAY), 'materials-untitled-roof-2026-11-16.csv');
   assert.equal(csvFileName('Untitled roof', TODAY, 'crew'), 'materials-crew-untitled-roof-2026-11-16.csv');
+});
+
+test('review fixes: unknown stock is not zero, and "each" items get a noun', () => {
+  const q = quote();
+  const drip = q.lines.find((l) => l.slot === 'dripEdge').cells['homedepot-4301'];
+  assert.equal(drip.stock.qty, null, 'no stock count at capture stays unknown');
+  assert.equal(drip.stock.short, false);
+  assert.match(drip.stock.text, /not in stock at this store at capture/);
+  assert.doesNotMatch(drip.stock.text, /had 0/);
+  const under = q.lines.find((l) => l.slot === 'underlayment').cells['menards-3064'];
+  assert.equal(under.unit, 'each', 'the CSV keeps the store unit');
+  assert.equal(under.noun, 'roll');
+  assert.equal(q.lines.find((l) => l.slot === 'dripEdge').cells['menards-3064'].noun, 'piece');
+  const cov = q.lines.find((l) => l.slot === 'covering');
+  assert.match(cov.allowance.setBy, /Waste % above$/);
 });

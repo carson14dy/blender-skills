@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  toStudioProduct, layerOptionFor, suggestedSelections, paletteFor, colorEntry, defaultColor,
+  toStudioProduct, layerOptionFor, suggestedSelections, paletteFor, colorEntry, defaultColor, mixHex,
   shortName, specFor, storeName, seedFor, shadesOf, SUGGESTED, SLOTS, STORE_IDS, NEUTRAL,
 } from '../viewer/js/supplier-products.js';
 import { hashString } from '../viewer/js/util.js';
@@ -78,7 +78,8 @@ test('Duration: architectural, 5-5/8" exposure, its sampled palette of 4', () =>
   assert.equal(p.procedural.kind, 'architectural');
   assert.equal(p.exposureIn, 5.625);
   assert.equal(p.procedural.exposureIn, 5.625);
-  assert.deepEqual(p.procedural.palette, duration.colors[0].palette);
+  // asphalt palettes are pulled 40% toward the product color (Fable review: the raw spread read as a checkerboard)
+  assert.deepEqual(p.procedural.palette, duration.colors[0].palette.map((h) => mixHex(h, duration.colors[0].hex, 0.4)));
   assert.equal(p.procedural.palette.length, 4);
   assert.equal(p.id, 'mn-1444450489132::sierra-gray');
   assert.equal(p.name, 'TruDefinition Duration, Sierra Gray');
@@ -103,7 +104,7 @@ test('Timberline (Home Depot): listed color takes the product photo hex and pale
   assert.equal(p.procedural.kind, 'architectural');
   assert.equal(p.exposureIn, 5.625); // no size in the store data
   assert.equal(p.hex, '#3e3f42');
-  assert.deepEqual(p.procedural.palette, timberline.palette);
+  assert.deepEqual(p.procedural.palette, timberline.palette.map((h) => mixHex(h, timberline.hex, 0.4)));
   assert.equal(p.supplier, 'Home Depot');
   assert.deepEqual(p.pbr, pbrShingle); // product-level pbr (Home Depot rule)
   const h = toStudioProduct(timberline, 'Hickory');
@@ -257,4 +258,10 @@ test('names: short names, label spec, store names', () => {
   assert.equal(specFor(duration, 'Sierra Gray'), 'TruDefinition Duration, Sierra Gray · Menards');
   assert.equal(specFor(hdPanel, null), 'Fabral Grandrib 3 · Home Depot');
   assert.equal(storeName('lowes-1', { stores: { 'lowes-1': { name: "Lowe's" } } }), "Lowe's");
+});
+
+test('mixHex blends two colors', () => {
+  assert.equal(mixHex('#000000', '#ffffff', 0.5), '#808080');
+  assert.equal(mixHex('#4c4d4b', '#7d7d7b', 0), '#4c4d4b');
+  assert.equal(mixHex('#4c4d4b', '#7d7d7b', 1), '#7d7d7b');
 });

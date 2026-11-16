@@ -44,7 +44,9 @@ Can a job be saved as one small JSON file and reopened exactly? It has to hold t
 | House model not loaded | the notice shows, the list uses the saved 3,000 sq ft; changing the house preset ends it |
 | New with unsaved changes | asks "This job has changes that are not saved." with **Discard and start new** and **Cancel**; after a discard, typed amounts are gone and the totals are the ranch figures again |
 
-![Project tab: Project file section](img/project-1440.jpg)
+| 1440 | 1280 | 390 |
+|---|---|---|
+| ![Project tab: Project file section](img/project-1440.jpg) | ![](img/project-1280.jpg) | ![](img/project-390.jpg) |
 
 **Not saved:** images, the house model file, crew view, camera and render settings.
 - A photo on the roof reopens as the built-in default, with "The photo *name* is not saved in project files."
