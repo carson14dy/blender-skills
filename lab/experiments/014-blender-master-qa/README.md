@@ -60,6 +60,6 @@ Images, old code on the left and new on the right:
 
 - **Keep** all fixes. They are in both apps (web `roof-geometry.js` and `layers.js`; Blender `roof_core.py`).
 - **Keep** `lab/tools/roof_qa.py` as the geometry gate. Run it after any change to `roof_core.py` or the shared layer heights.
-  - It uses the four scripts vendored in `lab/tools/vendor/blender-master/` (MIT), so sessions without the skill get the same checks.
+  - It used four scripts vendored in `lab/tools/vendor/blender-master/` (MIT). Update, 2026-11-16: that copy was replaced by the repo's `blender-suite` skill (`.claude/skills/blender-suite/`), whose newer `qa_check.py` gives the same result.
 - **Promote** the geometry fixes with the next app pull request (already on PR #1's branch).
 - **Next, local:** run `roof_qa.py` with real Blender on a real RoofTec house (`--blend`), and look at a Cycles close-up of a hip in Blender's viewport.

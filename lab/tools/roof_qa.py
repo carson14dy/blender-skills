@@ -1,4 +1,4 @@
-"""Roof layer QA gate: build (or open) the roof layer stack, then check the finished roof with blender-master's qa_check.
+"""Roof layer QA gate: build (or open) the roof layer stack, then check the finished roof with the blender-suite skill's qa_check.
 
     $LAB_BPY_PYTHON lab/tools/roof_qa.py                       (cloud, pip bpy)
     blender -b --factory-startup --python-exit-code 1 --python lab/tools/roof_qa.py      (local, real Blender)
@@ -15,7 +15,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-sys.path.insert(0, os.path.join(HERE, "vendor", "blender-master"))
+sys.path.insert(0, os.path.join(ROOT, ".claude", "skills", "blender-suite", "scripts"))
 sys.path.insert(0, os.path.join(ROOT, "roof-blender", "scripts"))
 
 import bpy  # noqa: E402

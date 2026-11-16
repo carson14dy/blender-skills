@@ -10,6 +10,7 @@ Research and testing sandbox for RoofTec 3D-home features before they go into th
 
 - `roof-visualizer/`: Roof Layer Studio, the Three.js web app ([SKILL.md](roof-visualizer/SKILL.md))
 - `roof-blender/`: the same layer stack in Blender ([SKILL.md](roof-blender/SKILL.md))
+- `.claude/skills/blender-suite/`: the one Blender skill (modeling to rendering, films, QA); loads by itself in every session
 - `lab/NEXT.md`: what each session does next, plus the Windows setup steps
 - `lab/GOALS.md`: research tracks, what "done" means, experiment backlog
 - `lab/LOG.md`: running hand-off log between sessions, newest first
@@ -43,7 +44,7 @@ node lab/tools/doctor.mjs                       # what this machine can run, and
 cd roof-visualizer && npm install && npm test   # unit tests (Node 18+)
 cd roof-visualizer && npm start                 # web app at http://127.0.0.1:8080
 $LAB_BPY_PYTHON roof-blender/tests/test_roof_core.py   # Blender core checks with pip bpy (cloud; see setup-cloud.sh)
-$LAB_BPY_PYTHON lab/tools/roof_qa.py                    # geometry gate (blender-master qa_check): z-fighting, flipped faces, floating parts; pass = "roof QA passed"
+$LAB_BPY_PYTHON lab/tools/roof_qa.py                    # geometry gate (blender-suite qa_check): z-fighting, flipped faces, floating parts; pass = "roof QA passed"
 blender -b --factory-startup --python-exit-code 1 --python roof-blender/tests/test_roof_core.py   # same, real Blender (local); pass = "all roof_core checks passed"
 node lab/tools/capture.mjs --url "http://127.0.0.1:8080/?quality=standard" --shots finished,layers,cutaway,midbuild --out lab/experiments/NNN-name/img
 node lab/tools/snapshot.mjs --url "http://127.0.0.1:8080/" --size 3840x2160 --explode --out out/roof-4k.png
@@ -52,7 +53,7 @@ node lab/tools/closeup.mjs --url "http://127.0.0.1:8080/?quality=standard" --out
 
 Cloud only: `bash lab/tools/setup-cloud.sh` creates a Python venv with `bpy` (about 430 MB download) and prints the paths to use.
 
-Blender checks come from the **blender-master** skill (`/anthropic-skills:blender-master`, MIT). Use the skill when it is listed. Its QA scripts are also vendored in `lab/tools/vendor/blender-master/`, so `roof_qa.py` works without it. Its rule applies here too: report numbers, then look at the result. Run `roof_qa.py`, then a close-up.
+Blender work uses the **blender-suite** skill in `.claude/skills/blender-suite/` (MIT; sources in its `NOTICE.md`). If `blender-master` or separate `blender-*` skills are also listed, they are older copies of the same material: use `blender-suite`. `roof_qa.py` imports its `qa_check.py`. Its rule applies here too: report numbers, then look at the result. Run `roof_qa.py`, then a close-up. Check the skill itself with `python .claude/skills/blender-suite/tests/check_skill.py`.
 
 ## Long-running commands
 

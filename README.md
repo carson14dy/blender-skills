@@ -25,7 +25,7 @@
 | [lab/LOG.md](lab/LOG.md) | Hand-off notes between sessions, newest first |
 | [lab/GOALS.md](lab/GOALS.md) | The research tracks and the experiment backlog |
 | [lab/experiments/](lab/experiments/) | One folder per experiment with results and images |
-| [lab/tools/](lab/tools/) | Environment check, geometry gate (`roof_qa.py`, blender-master checks), screenshots, snapshots, Blender stand-ins |
+| [lab/tools/](lab/tools/) | Environment check, geometry gate (`roof_qa.py`, blender-suite checks), screenshots, snapshots, Blender stand-ins |
 
 ---
 

@@ -10,7 +10,8 @@ The current to-do list for both sessions. Do the first open item for your kind o
   1. Run `blender -b --factory-startup --python-exit-code 1 --python lab/tools/roof_qa.py -- --save out/qa/roof.blend`. Pass = `roof QA passed`.
   2. Open `out/qa/roof.blend` in Blender. Switch the viewport to Rendered (Cycles, GPU) and zoom in on a hip foot and a ridge end. The cap halves should meet with no slit, and the ridge vent should sit on the shingles.
   3. Add the `RT_QA` line and one sentence on how the close-up looks to `lab/LOG.md`.
-  4. If Claude lists the `/anthropic-skills:blender-master` skill here, use it for any other Blender check. If not, the same checks are in `lab/tools/vendor/blender-master/`.
+  4. For any other Blender check, use the `blender-suite` skill in `.claude/skills/blender-suite/` (it loads by itself).
+- [ ] **blender-suite on real Blender (about 10 minutes):** run the four commands under "Needs local" in the newest `lab/LOG.md` entry, and report the last line of each.
 - [ ] **Experiment 003, a real RoofTec house:**
   1. Export one house as `.glb` into `lab/experiments/003-real-house/out/` (git-ignored). Name the roof mesh `Roof` if the export tool allows it.
   2. Load it in the viewer (Project tab > Load house model).
