@@ -1,0 +1,59 @@
+{
+ "radiusM": 200.0,
+ "buildings": 97,
+ "cityFaces": 2353,
+ "tiles": 7,
+ "files": {
+  "q0.glb": {
+   "bytes": 209824,
+   "triangles": 2677,
+   "meshes": 48,
+   "packedBytes": 279907
+  },
+  "q1.glb": {
+   "bytes": 14436,
+   "triangles": 174,
+   "meshes": 3,
+   "packedBytes": 19386
+  },
+  "q2.glb": {
+   "bytes": 192264,
+   "triangles": 2486,
+   "meshes": 41,
+   "packedBytes": 256491
+  },
+  "q3.glb": {
+   "bytes": 32448,
+   "triangles": 489,
+   "meshes": 4,
+   "packedBytes": 43402
+  },
+  "lod0.glb": {
+   "bytes": 59412,
+   "triangles": 960,
+   "meshes": 1,
+   "packedBytes": 79356
+  },
+  "subject.glb": {
+   "bytes": 5340,
+   "triangles": 54,
+   "meshes": 1,
+   "packedBytes": 7262
+  },
+  "ground.glb": {
+   "bytes": 916536,
+   "triangles": 34320,
+   "meshes": 1,
+   "lidarGroundPoints": 307443,
+   "packedBytes": 1222191
+  },
+  "tileset.json": {
+   "bytes": 2952
+  }
+ },
+ "totalBytes": 1433212,
+ "subjectOid": 14026,
+ "lod": "LOD0 boxes (geometricError 4 m) -> LOD1 city solids (0)",
+ "attribution": "Contains data from the City of Sioux Falls, CC BY 4.0. Lidar: USGS 3DEP (public domain). Imagery: USDA NAIP (public domain).",
+ "totalPackedBytes": 1910947
+}

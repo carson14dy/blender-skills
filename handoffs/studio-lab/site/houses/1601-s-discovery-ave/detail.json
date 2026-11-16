@@ -1,0 +1,15 @@
+{
+  "address": "1601 S Discovery Ave, Sioux Falls, SD 57106",
+  "modelFrame": "site-local ENU metres; GLB is Y-up with north = -Z (front of the house faces east)",
+  "verified": { "areaM2": 221.9, "eaveM": 30.48, "rakeM": 45.9, "ridgeM": 20.15, "hipM": 0, "valleyM": 8.65,
+                "stepFlashingM": 4.76, "headwallM": 1.26, "dripEdgeM": 76.4 },
+  "sigma": { "areaM2": 3.5, "eaveM": 0.35, "rakeM": 0.9, "ridgeM": 0.35, "valleyM": 0.45, "stepFlashingM": 0.3, "headwallM": 0.3, "dripEdgeM": 1.0 },
+  "pitch": { "main": "5.95/12 ± 0.05", "garage": "5.9/12 ± 0.15" },
+  "wasteSuggestedPct": 12,
+  "sources": ["USGS 3DEP SD_EasternSD_3_2020 LiDAR (flown 2020-12-20, leaf-off, tree returns removed)",
+              "City of Sioux Falls building footprint + 3D BuildingWireframe (LOD2)",
+              "36 inspection photos (autumn 2026), 4 camera-matched overlays",
+              "Permit Permit-RB-299090-2023 (tear-off re-roof, finaled 2023-10-18); no additions since 2003",
+              "County card (third-party copy): split level, 2003, 1st floor 1084 ft², garage 528 ft²"],
+  "review": "Fit + 4 independent reviewers incl. Fable 5.2 advisor: pass with notes"
+}

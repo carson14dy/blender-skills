@@ -1,0 +1,41 @@
+{
+  "houses": [
+    {
+      "id": "1601-s-discovery-ave",
+      "label": "1601 S Discovery Ave, Sioux Falls",
+      "jobName": "1601 S Discovery Ave, Sioux Falls, SD 57106",
+      "subtitle": "Measured model: 2020 USGS LiDAR + city 3D/footprint + 36 inspection photos",
+      "glb": "houses/1601-s-discovery-ave.gltf.json",
+      "detail": "houses/1601-s-discovery-ave/detail.json",
+      "report": "houses/1601-s-discovery-ave/report.html",
+      "lat": 43.5313,
+      "facing": 180,
+      "waste": 12,
+      "summary": {
+        "rows": [
+          [
+            "Roof area",
+            "2,388 \u00b1 38 ft\u00b2 \u00b7 23.9 \u00b1 0.4 sq"
+          ],
+          [
+            "Pitch",
+            "5.95/12 main \u00b7 5.9/12 garage"
+          ],
+          [
+            "Ridge cap / valley",
+            "66.1 ft / 28.4 ft"
+          ],
+          [
+            "Eaves / rakes",
+            "100.0 ft / 150.5 ft"
+          ],
+          [
+            "Siding (clad, est.)",
+            "2,185 \u00b1 85 ft\u00b2"
+          ]
+        ]
+      },
+      "thumb": "houses/1601-s-discovery-ave/drone.jpg"
+    }
+  ]
+}

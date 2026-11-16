@@ -1,0 +1,28 @@
+{
+  "title": "Standing seam metal re-roof",
+  "summary": "Existing shingles removed, high-temperature underlayment, 16\" standing seam panels with concealed clips. Choose a metal product in Materials before playing.",
+  "generator": "claude",
+  "steps": [
+    { "id": "tear", "title": "Tear off existing shingles", "duration": 6, "camera": "orbit",
+      "detail": "Shingles and felt come off; the deck must be flat for metal panels, so every nail is pulled.",
+      "actions": [ { "layer": "oldShingles", "op": "remove" }, { "layer": "oldFelt", "op": "remove" } ] },
+    { "id": "deck", "title": "Re-nail and repair the deck", "duration": 2.5,
+      "detail": "Sheathing re-nailed to the rafters at 6\" o.c. and soft spots replaced.",
+      "actions": [ { "layer": "deckRepair", "op": "install" } ] },
+    { "id": "drip", "title": "Eave drip edge", "duration": 1.5, "detail": "Drip edge along the eaves.",
+      "actions": [ { "layer": "dripEdge", "op": "install", "from": 0, "to": 0.5 } ] },
+    { "id": "ice", "title": "High-temp ice & water", "duration": 3,
+      "detail": "Smooth high-temperature membrane at the eaves and valleys; metal gets hot enough to soften granular membranes.",
+      "actions": [ { "layer": "iceWater", "op": "install" } ] },
+    { "id": "under", "title": "Synthetic underlayment", "duration": 3, "detail": "Full coverage, 4\" laps.",
+      "actions": [ { "layer": "underlayment", "op": "install" }, { "layer": "dripEdge", "op": "install", "from": 0.5, "to": 1 } ] },
+    { "id": "clips", "title": "Panel clips", "duration": 2, "detail": "Clips at every seam, 24\" o.c., allow thermal movement.",
+      "actions": [ { "layer": "nails", "op": "install" } ] },
+    { "id": "panels", "title": "Set the panels", "duration": 8, "camera": "orbit",
+      "detail": "Panels run eave to ridge, set left to right and mechanically seamed.",
+      "actions": [ { "layer": "covering", "op": "install" } ] },
+    { "id": "ridge", "title": "Vented ridge and caps", "duration": 3,
+      "detail": "Vented closure strip and matching ridge and hip caps.",
+      "actions": [ { "layer": "ridgeVent", "op": "install" }, { "layer": "ridgeCap", "op": "install" } ] }
+  ]
+}

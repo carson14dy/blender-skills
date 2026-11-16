@@ -1,14 +1,14 @@
 # Roof Studio Lab: findings
 
-Four free tools were added to a copy of Roof Layer Studio and tested side by side on the studio's measured job (a house in Sioux Falls). Each has a section in the Lab tab with an on/off control, a Run test button that measures in the viewer's own browser, and a short summary.
+Four free tools were added to a copy of Roof Layer Studio and tested side by side on the measured job, 1601 S Discovery Ave, Sioux Falls. Each has a section in the Lab tab with an on/off control, a Run test button that measures in the viewer's own browser, and a short summary.
 
 How the numbers were taken: headless Chromium 153 (Playwright) with a software GPU (SwiftShader), and a local server that wraps the page like the artifact host and sends the artifact CSP. Two policies were tested: the one given (no 'wasm-unsafe-eval') and the same plus 'wasm-unsafe-eval'. Frame times are only comparable within this machine; real figures come from Run test on a phone or laptop. Load times are from localhost. Sizes are exact.
 
 | Tool | Verdict | One line |
 |---|---|---|
-| model-viewer AR | Adopt later | Works as a 3D viewer (2.6 MB AR GLB, 0.5 s load); AR itself is very likely blocked inside the artifact frame |
+| model-viewer AR | Adopt later | Works as a 3D viewer (2.9 MB AR GLB, 0.5 s load); AR itself is very likely blocked inside the artifact frame |
 | three.js WebGPU | Skip for now | One shared three core and a faithful WebGL2 fallback, but no speed gain; reveal shaders, path tracer and splats need porting |
-| 3d-tiles-renderer | Adopt | 1.37 MB tileset of 97 city solids + ground loads in under 1 s and lands within 4 cm of the house |
+| 3d-tiles-renderer | Adopt | 1.37 MB tileset (1.91 MB as base64 JSON) of 97 city solids + ground loads in under 1 s and lands within 4 cm of the house |
 | Spark splats | Adopt later | Works as soft context but from lidar it is blurry, needs WebAssembly and is heavy; worth it with a real capture |
 
 ## 1. model-viewer (AR)
@@ -20,7 +20,7 @@ Measured (headless desktop):
 - Copies of three: 1 (r186 shared). The self-contained model-viewer.min.js is 1.07 MB and would add three r183.
 - Download-button GLB: 20.8 MB (21,788,248 B), of which 21.46 MB are 9 PNG textures; export 9.4–11.5 s.
 - AR GLB with 1024 px PNG: 10.8 MB.
-- AR GLB with 1024 px JPEG + exterior layers + house (the Lab default): 2.6 MB (1.80 MB images, 0.55 MB geometry, 367 meshes, 24 materials).
+- AR GLB with 1024 px JPEG + exterior layers + house (the Lab default): 2.9 MB (1.80 MB images, 0.78 MB geometry, 458 meshes, 34 materials) with the November house model; 2.6 MB with the previous one.
 - Viewer load: 0.5–0.64 s.
 - `canActivateAR` and immersive-ar: false (no AR hardware).
 - In a sandboxed iframe: the 3D view works; `window.open` is refused without allow-popups.
@@ -36,7 +36,7 @@ AR by place:
 Run test prints inIframe, the xr permission, immersive-ar, Quick Look support and canActivateAR, so one tap on an Android phone and an iPhone settles it.
 
 - Pros: Apache-2.0; reuses the studio exporter with no server; one button covers Android and iOS; small when it shares three.
-- Cons: the artifact frame likely blocks AR; the export was 20.8 MB (now 2.6 MB for AR); the peer range is three ^0.183, so sharing 0.186 works but is not promised; WebAssembly compiles on import.
+- Cons: the artifact frame likely blocks AR; the export was 20.8 MB (now 2.9 MB for AR); the peer range is three ^0.183, so sharing 0.186 works but is not promised; WebAssembly compiles on import.
 - Verdict: adopt later. Adopt the export options now; ship AR from a normal https page or share link that serves the GLB by URL.
 - Improve: host an AR page outside the artifact; merge the 367 house meshes before export; add a 1:50 table-top scale.
 
@@ -68,7 +68,7 @@ Would break or need porting:
 Keeps working: standard materials, instanced fasteners, shadows, AgX, fog, OrbitControls, DOM labels, GLTFLoader and GLTFExporter, 3d-tiles-renderer.
 
 - Pros: same package, one core, automatic fallback that matches the WebGL picture.
-- Cons: no speed-up (the scene is bound by its 764 draw calls); reveal, cutaway, path tracing, splats and snapshots need porting; slower compile in fallback; WebGPU on phones is uneven and was unstable here.
+- Cons: no speed-up (the scene is bound by its 946 draw calls); reveal, cutaway, path tracing, splats and snapshots need porting; slower compile in fallback; WebGPU on phones is uneven and was unstable here.
 - Verdict: skip for now.
 - Improve: merge static meshes first; port patchReveal to TSL behind a flag and test on a WebGPU phone; revisit when a WebGPU path tracer is usable.
 
@@ -98,7 +98,7 @@ Alignment:
 Measured (localhost, headless):
 - Import 89–499 ms; tileset.json 119–532 ms; all tiles 0.3–0.7 s.
 - 7 tile contents loaded, 6 active (LOD1 replaced LOD0); 41,160 triangles.
-- Draw calls 957 with vs 764 without.
+- Draw calls 1,139 with vs 946 without (957 vs 764 with the previous house model).
 - GPU-inclusive frame 699 vs 530 ms in software.
 - No load errors. The library warns that 3D Tiles 1.1 support is limited.
 - The path tracer renders the tiles but ignores the ground's vertex colours.
@@ -147,18 +147,18 @@ Looks: useful as soft context from a distance. Lawn, driveways, street and sidew
 Ranked by value for effort; all $0.
 
 1. **Show the attribution with measured jobs.** The model uses City of Sioux Falls GIS (CC BY 4.0) and USGS 3DEP, but the studio never shows "Contains data from the City of Sioux Falls, CC BY 4.0. Lidar: USGS 3DEP." Effort: XS, 30 min.
-2. **Merge the house's 375 static meshes by material.** They cause 764 draw calls per frame (colour + shadow passes); merging gives about 50. This is the biggest phone win and also shrinks AR exports. Effort: S, half a day.
-3. **Open the measured job by default.** The studio starts on the demo ranch preset, and an artifact link cannot pass ?measured=. Effort: XS, 15 min.
+2. **Merge the house's 466 static meshes by material.** They cause 946 draw calls per frame (764 before the November model update) (colour + shadow passes); merging gives about 50. This is the biggest phone win and also shrinks AR exports. Effort: S, half a day.
+3. **Open the measured job by default.** Done by the November studio build, which opens the newest measured job on the Project tab.
 4. **Show accuracy with every number.** The chips say "23.9 sq" while the report says 23.9 ± 0.4 sq. The report says "verified" while the roof-measure rules say "estimate" until the accuracy study passes. Effort: S, 2 h.
-5. **Make the GLB export phone- and AR-ready.** It is 20.8 MB, 98% PNG; the `jpeg`/`maxTextureSize`/`skip` options now exist (2.6 MB). Effort: XS, 1 h.
+5. **Make the GLB export phone- and AR-ready.** It is 20.8 MB, 98% PNG; the `jpeg`/`maxTextureSize`/`skip` options now exist (2.9 MB). Effort: XS, 1 h.
 6. **Store the georeference per house.** Write origin lon/lat, NAVD88 height and heading into detail.json from the measuring pipeline. Effort: XS, 1 h.
-7. **Ship the house model as binary.** The 4.0 MB base64 .gltf.json is decoded with atob on the main thread; as GLB it would be 2.8 MB (the tiles show .glb is served), less with KHR_mesh_quantization. Effort: S, 2 h.
+7. **Ship the house model as binary.** The 5.4 MB base64 .gltf.json is decoded with atob on the main thread. The host serves no .glb, so keep JSON but quantize the geometry inside it (KHR_mesh_quantization, no decoder) and use Uint8Array.fromBase64 where available. Effort: S, 2 h.
 8. **Vendor or hide what cannot work in the artifact.** The Poly Haven HDRI (blocked by connect-src; the studio falls back with a toast), the Draco/KTX2 decoders from jsDelivr, and meshopt and Spark, which need 'wasm-unsafe-eval'. The meshopt import no longer logs an error. Effort: S, 2 h.
 9. **Adopt 3D Tiles context for every measured job.** Merge buildings per tile first. Effort: M, 1–2 days.
 10. **Phone tab bar.** The 7 tabs fit at 390 px (55.7 px each, 11.5 px type) but are tight; an icon bar or a "More" overflow would scale beyond 7. Effort: S, 2 h.
 11. **Context-loss recovery.** A GPU reset lost and restored the studio's WebGL context. Rebuild the canvas textures and PMREM on webglcontextrestored, and test on iOS. Effort: S, half a day.
 
-Nothing in the existing studio broke. These all ran with no console errors, in light and dark, desktop and phone: all six tabs, Layers view, Cutaway, Before, build playback, product change, takeoff, snapshot, switching to a preset and back, and path tracing with the tiles on.
+Nothing in the existing studio broke. These all ran with no console errors, in light and dark, desktop and phone: all six studio tabs (including the new Materials browser and the phone drawer), Layers view, Cutaway, Before, build playback, product change, takeoff, snapshot, switching to a preset and back, and path tracing with the tiles on.
 
 ## Only checkable on a real device
 
@@ -169,14 +169,19 @@ Nothing in the existing studio broke. These all ran with no console errors, in l
 
 ## Rebuild for another house
 
+Use the roof-studio-lab skill (`.claude/skills/roof-studio-lab/`, see `references/data.md`):
+
 ```
-cd studio-lab
-python3 tools/align_house.py --address "<Sioux Falls address>" --model out/houses/<id>.gltf.json
-python3 tools/build_tileset.py --radius 200
-python3 tools/build_splat.py --radius 70
+export LAB_OUT=<lab site folder> LAB_CACHE=<cache folder outside git>
+S=.claude/skills/roof-studio-lab/scripts
+python3 $S/align_house.py --address "<Sioux Falls address>" --model $LAB_OUT/houses/<id>.gltf.json
+python3 $S/build_tileset.py --radius 200
+python3 $S/build_splat.py --radius 70
 ```
 
-Needs Python 3.9+, numpy, scipy, laspy + lazrs, rasterio + pyproj, and the rooftec-roof-measure `scripts/` folder (set ROOF_MEASURE_SCRIPTS if it lives elsewhere). Downloads are cached in studio-lab/cache/; outputs go to out/lab/.
+The builders pack every binary as base64 JSON (`*.glb.json`, `*.spz.json`) because the artifact host
+serves no .glb or .spz. The November 2026 house model update left the georeference unchanged (same
+fit: IoU 0.987, outline mean 4.1 cm, heading 0.32°), so the tiles and splat were kept.
 
 ## Licences and attribution
 
