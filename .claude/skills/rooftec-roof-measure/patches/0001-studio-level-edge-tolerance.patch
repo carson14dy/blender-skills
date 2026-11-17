@@ -1,0 +1,12 @@
+--- a/roof-visualizer/viewer/js/roof-geometry.js	2026-11-16 02:45:10.696368251 +0000
++++ b/roof-visualizer/viewer/js/roof-geometry.js	2026-11-16 02:45:10.705864016 +0000
+@@ -123,7 +123,8 @@
+         const [mu, mv] = Q.from3(mid);
+         if (Q.contains2(mu, mv, -0.01)) { match = { Q, f: null }; interior = true; break; }
+       }
+-      const horizontal = Math.abs(e.A.y - e.B.y) < 0.01 + 0.01 * e.A.distanceTo(e.B);
++      // measured roofs (city solids, lidar) are not perfectly level: accept up to 3 degrees, as rooftec-roof-measure does
++      const horizontal = Math.abs(e.A.y - e.B.y) < 0.02 + 0.0524 * e.A.distanceTo(e.B);
+       if (match) {
+         e.other = match.Q;
+         if (interior) { e.type = 'valley'; }

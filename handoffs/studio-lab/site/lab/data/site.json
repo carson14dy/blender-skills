@@ -1,0 +1,37 @@
+{
+ "address": "1601 S DISCOVERY AVE",
+ "footprintOid": 200151,
+ "solidOid": 14026,
+ "originCityFt": [
+  2217573.1724,
+  15820577.3013
+ ],
+ "originLonLat": [
+  -96.822897305,
+  43.531314099
+ ],
+ "originElevM": 457.792,
+ "geoidM": -26.9,
+ "originEllipsoidM": 430.892,
+ "gridConvergenceDeg": 1.4999,
+ "modelRotationDeg": 1.821,
+ "modelTrueNorth": true,
+ "modelHeadingDeg": 0.321,
+ "fit": {
+  "planIoU": 0.9866,
+  "outlineDistance": {
+   "meanM": 0.041,
+   "p95M": 0.15,
+   "maxM": 0.2
+  },
+  "groundPoints": 19155,
+  "groundRobustSdM": 0.014,
+  "roofPoints": 930,
+  "roofMedianM": 0.018,
+  "roofRobustSdM": 0.103,
+  "cityTopMinusModelTopM": -0.076
+ },
+ "frames": "scene x = east, y = up (NAVD88 - originElevM), z = -north; the studio then shifts the model by its bounding box (read glbRoot.position at runtime)",
+ "attribution": "Contains data from the City of Sioux Falls, CC BY 4.0. Lidar: USGS 3DEP.",
+ "gridToModelDeg": -1.8209
+}

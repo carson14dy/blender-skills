@@ -1,0 +1,376 @@
+# Review log
+
+Each review round re-derives the skill's numbers, fixes what is wrong and records the change level here. The fixed test set is in `references/benchmark.md`.
+
+## Round 1 (2026-11-16)
+
+**Change level: MAJOR.** By the numbers alone it would be MODERATE: the largest sloped-area change on the benchmark is +0.42% and the largest main-plane pitch change is 0.36 in 12 (0.32 on a house). It is MAJOR because two rules for MAJOR were met: correctness bugs in the roof-line geometry (ridge lengths changed by 12 to 22 ft on 3 of 12 buildings), and a research finding that changed a decision (lidar now supplies the pitch).
+
+### Findings
+
+| # | Severity | Finding | Evidence | Fix |
+|---|---|---|---|---|
+| 1 | High | **The city pitch reads low; lidar is the better pitch source.** v1 kept the city pitch whenever lidar agreed within 1.5 degrees. | Independent fits (own decoder, pyproj, no skill code) reproduce the bias: lidar is 0.16 in 12 steeper on average. Lidar main planes land on whole-number pitches (8, 6, 6, 4 and 5 in 12 on five houses) and the city planes do not. Details in the research note `review-round-1.md`. | A plane with a precise lidar fit now shows the lidar pitch (`PREFER_LIDAR` in `lidar.py`). The city pitch is kept as `cityPitchDeg`. |
+| 2 | High | **The "clean lidar fit" test could never fail.** v1 required the RMSE of the inliers to be under 0.10 m, and inliers are within 0.10 m by definition. A plane half covered by a tree could override the city pitch. | Code reading, and test `test_half_covered_plane_cannot_override`: a fit with 45% tree points has an inlier RMSE under 0.10 m. | New test `is_precise`: 80% of the points on the plane and a pitch standard error of 0.25 degree or less. An imprecise fit never supplies a pitch. |
+| 3 | High | **A ridge drawn with a sliver wall was counted as two "high edges".** | Benchmark 176864: 12.85 ft of ridge reported as 25.7 ft of `top`. Benchmark 363469: 12.1 ft. The two sides lie 0.05 and 0.08 m apart. | Pairs of `top` lines within 0.15 m become one ridge (`_pair_split_ridges`); new `split-ridge` info flag. |
+| 4 | Medium | **A lidar override changed the numbers and left the 3D model alone**, so `roof.json` and `roof.glb` described different roofs, and rake and hip lengths did not follow the new pitch. | v1 `apply_overrides`; the studio check had to compare against `cityAreaM2`. | `planes.retilt` rebuilds the geometry: each plane takes its pitch, outline corners stay on their wall lines, plan area does not change. The studio now measures the same area as `roof.json` (within 0.15%). |
+| 5 | Medium | **The roof-to-wall test flipped with 3 cm of movement.** It probed 0.05 m above the edge and needed the wall plane within 0.03 m. | On 235248, 17 ft of an edge under a wall was called rake because it sat 0.05 m from the wall plane. | Probe at 0.10 and 0.25 m, wall plane within 0.08 m. Walls under 0.10 m tall are slivers, not flashing lines. |
+| 6 | Medium | **An eave a few degrees out of level was called a rake**, and a near-level ridge a hip. | 363469: 22 ft of outer edge sloping 4.7 degrees, running 8 degrees off the contour of its plane, was a rake. | An edge is level if it rises under 3 degrees or runs within 10 degrees of its plane's contour line. |
+| 7 | Medium | **Houses newer than the lidar were only detected for address lookups.** With `--oid` or `--latlon` they got unexplained lidar disagreements. | `assess` used `yearBuilt` from the address point only. | `OCCUPIEDDATE` on or after 2020-12-19 raises `newer-than-lidar`. |
+| 8 | Low | **One small imprecise plane could put a whole house on `site-check`.** | 176864: a 168 sq ft plane with 36 of 43 points on the plane; a 389 sq ft plane 1.61 degrees off with a standard error of 0.42. | Fewer than 40 points on the plane means not checked; an imprecise fit is allowed twice its standard error before it disagrees. |
+| 9 | Low | **A face delivered twice would count twice.** | Solid 33181 (benchmark 204065) holds one duplicated face; it happened to be hidden, so v1's area was not affected. | Duplicate faces are dropped and reported (`duplicate-faces`). |
+| 10 | Low | Lidar capture date was "2020"; the points over Sioux Falls are from 19 and 20 December 2020. More solids than one request returns were not flagged. | GPS times of 2.5 million points; `exceededTransferLimit` was stored and never read. | `capturedOn` is `2020-12`; `solid-match` flag covers the transfer limit. |
+
+### Checked and found correct
+
+- **Units and projection.** `proj.py` agrees with pyproj to 0.0033 ft. US survey feet are used throughout. Grid-to-ground scale changes areas by 0.01%.
+- **Decoder.** An independent decoder gives the same delivered areas on all 12 buildings.
+- **Elevation datum.** Lidar ground and city ground agree within 0.15 m on level lots.
+- **Outline.** The city outline is the roof edge within about 0.07 m (lidar return analysis, 6 houses). This bounds the plan-area error at roughly 2% per house, with no sign of a bias. It is the first independent check of plan area; the footprint comparison in v1 was circular.
+- **Tests.** The synthetic roofs use hand-computed answers and the projection test uses PROJ values, so they are not tautological. The 235245 edge totals are regression values, not truth.
+- **Studio import.** Run headless against branch `rooftec-lab` at three 0.186.1: 11 of 12 benchmark buildings pass.
+
+### Tried and rejected
+
+- Holding every outline corner in place while the delivered faces are made flat. It kept plan area equal to the footprint, but it changed main-plane pitches by up to 1.3 degrees and moved 17 ft between edge classes. The v1 cleaning step stays; its plan-area drift is 0.33% at most on the benchmark.
+
+### Benchmark before and after
+
+The full table is in `references/benchmark.md`. Summary: sloped area changed by -0.03% to +0.42%; predominant pitch rose on 7 of 12 buildings, by 0.15 in 12 at most; 176864 went from `site-check` to estimate; the four must-fail buildings still end as `site-check`.
+
+Tests: 51, all passing (v1 had 43).
+
+### Open issues for round 2, most important first
+
+1. **No ground truth yet.** Finding 1 rests on indirect evidence. One taped or reported roof would confirm or overturn it. Nothing can become `verified` before that.
+2. **Permits are not checked.** The plan promised "permits since capture" in `checks`. The layer is verified (`Data/Community/MapServer/3`, fields `MAINADDRESS`, `WORKCLASS`, `ISSUEDATE`); an `Addition` or `New` permit after June 2023 should raise a flag. About 1 hour.
+3. **Faces under the roof are dropped whole or kept whole.** On 204065 the top surface should equal the footprint, and the tool reports 10% less. Clipping faces to the visible surface would fix it. The building is `site-check` today, so no wrong number escapes.
+4. **Cleaning moves outline corners.** Plan area drifts up to 0.33% from the footprint (176864), and one corner moves 0.6 m. See "Tried and rejected".
+5. **Ridge against hip on low-slope hip roofs is unstable.** On 235246 a 6 ft edge changed class after the re-tilt.
+6. **The licence sentence about resale cannot be found any more**, and the Building Wireframe layer has no licence statement of its own. Ask the city in the planned email.
+7. **Snow.** The lidar was flown on 19 and 20 December 2020. Check weather records once.
+8. **The studio's own ridge, hip and valley totals still differ** from `roof.json` on 8 of 12 buildings without the patch in `patches/`.
+9. **A real browser check** of the GLB has still not been run.
+
+## Round 2 (2026-11-16)
+
+**Change level: MODERATE.** No benchmark number moved: sloped area changed by 0.00% and main-plane pitch by 0.00 in 12 on all 13 buildings. It is not MINOR, because two failure modes are now detected that were silent before (a roof changed under a permit after the capture, and lidar points off the roof surface) and two real bugs were fixed. It is not MAJOR: no bug was found in geometry, units or reprojection, and the one decision that was challenged hardest, `PREFER_LIDAR`, was kept as it is.
+
+**Verdict on round 1's main claim.** Keep `PREFER_LIDAR`. Round 1 decided it on 8 houses and an argument that could have been cherry-picked. Round 2 tested it on 30 fresh houses and it held more clearly than on the benchmark. There was no snow.
+
+### Round 1's claims, checked
+
+| # | Claim | Verdict | Evidence |
+|---|---|---|---|
+| 1 | The city pitch reads low and lidar should set the pitch | **Confirmed, kept unchanged.** The bias is 0.12 to 0.15 in 12, a little less than the 0.16 round 1 gave. | 30 random houses, 94 precise main planes: lidar is within 0.15 of a whole-number pitch on 85%, the city on 50% (chance 30%). Lidar pitches of one house are closer together than its city pitches on 29 of 33 houses. Two flight lines 22 degrees apart agree within 0.04 in 12. Edge insets from 0.3 to 1.0 m move large planes by 0.1 at most. |
+| 1a | Snow on 19 and 20 December 2020 | **No snow.** | NOAA daily summaries, station `USW00014944`: snowfall 0 and snow depth 0 every day from 15 November to 22 December 2020. Lidar ground heights match the city's; only roofs sit 0.1 m higher, which snow would not do. |
+| 1b | The re-tilt is consistent | **Confirmed.** | On all 12 buildings the GLB area equals `roof.json` within 0.003% (0.6% on City Hall), each plane's area equals plan area over cos(pitch), edge lengths match their end points to 1 mm, and the re-tilt starts from the delivered corners each time, so nothing is adjusted twice. |
+| 2 | The fit-quality test is calibrated and can fail | **Confirmed.** | Pitches fitted to the two halves of a plane differ by 0.8 times the predicted standard error (median, 18 planes). The test refuses the plane that needs it (235248 plane 0, a bump 0.6 to 0.9 m high on it). |
+| 3 | Edge classes after the fixes | **Confirmed on 218452 and 176864, with one doubtful edge.** | Every edge of both was read by hand. On 176864 a 9.2 ft outer edge of a small skewed plane is called rake and is more likely eave (open issue 5). |
+| 4 | The outline is the roof edge within about 0.07 m | **Right in kind, too tight in number.** | Round 1's script re-run on 8 houses: mean 0.02 m inside, scatter 0.07 m, worst 0.14 m. And 0.1 m is 2 to 4% of plan area, so this check cannot confirm the 2% area target. The docs said "roughly 2%, no bias" as if that settled plan area. |
+| 5 | The resale sentence cannot be found | **Overturned.** | `<layer>/metadata?f=xml` on layers 66, 5, 0 and 3 holds the full use limitation, with CC BY 4.0 and "This data is not intended for use in mapping products for resale". Round 1 tried `format=default`, which is switched off. |
+
+### Findings
+
+| # | Severity | Finding | Evidence | Fix |
+|---|---|---|---|---|
+| 1 | High | **A roof changed under a permit after June 2023 gave a clean estimate.** Only new houses were caught, through the occupied date. | The city issued 350 residential `Addition` permits since June 2023. House 199138 has one from March 2024 on an unchanged footprint; without `--lidar` the round 1 code called it an estimate. | New permit lookup (one cached request) and the `permit-since-capture` site check. Benchmark building 14. |
+| 2 | High | **A blocked roof was labelled "Status: ESTIMATE".** `summary.confidence` was `estimate` for clean and blocked roofs alike, and the report headline and the CLI printed it. | `takeoff.md` of 363456 in the round 1 output. | New `summary.siteCheckRequired`; the report and the CLI say "SITE CHECK REQUIRED"; the GLB carries the field. |
+| 3 | Medium | **A plane could "agree" with lidar while lidar showed something else on it.** The fit ignores points off the plane, and nothing reported them. | 177261: a tree 4 m above the north plane (30% of its points). 235247: solid returns 0.7 to 1.5 m above two planes, most likely dormers the model lacks. 176864: 29% of the largest plane lies 0.4 m lower. Sample house 243577: 63% ground points under a 400 sq ft plane that "agreed". | Each plane records the share of points above, below and at ground level; the `lidar-surface` review flag names the planes. |
+| 4 | Medium | **A download cut off half way crashed the run.** `IncompleteRead` skipped the retry loop. | 1 of 32 live runs in this round. | Retried like a timeout. |
+| 5 | Low | A plane with no lidar points was described as "too small for a lidar check", also on new houses with 780 sq ft planes. | 363469 in the round 1 output. | Now "not checked: too few points". |
+| 6 | Low | The report said overhangs "are already included" with no hint of how well the outline is known. | Claim 4 above. | The report gives the 4 in figure and asks for a taped eave. The error budget names the outline as the largest unknown. |
+| 7 | Low | The licence pages said the resale sentence could not be found and that CC BY for the solids was an inference. | Claim 5 above. | `licenses.md`, `data-sources.md` and `SKILL.md` now quote the text and its address. |
+
+### Tried and rejected
+
+- **Refusing a lidar fit whose two halves disagree.** It would have refused 6 precise planes in 43 houses. On 3 of them lidar was right and the city wrong by 0.4 to 0.7 in 12, and on the other 3 the two sources were within 0.1 of each other. It also would have turned benchmark house 175156 into a site check for no gain.
+- **Loosening the "precise" test.** Imprecise lidar fits are still closer to their house's common pitch than the city is (0.17 against 0.40 in 12, 26 planes). That argues for a "one house, one pitch" rule, which is more than a threshold change and should wait for a taped roof.
+
+### Benchmark before and after
+
+The table is in `references/benchmark.md`. Largest sloped-area change: 0.00%. Largest main-plane pitch change: 0.00 in 12. Line totals: unchanged. New flags: `lidar-surface` on 3 of the 8 clean houses, `permit-since-capture` on City Hall and on building 14. The baseline was the round 1 code run on the same cached city answers and lidar points.
+
+Tests: 60, all passing (round 1 had 51). The studio check was not run again, because the roof geometry in the GLB did not change.
+
+### Open issues for round 3, most important first
+
+1. **No ground truth, and the outline is the part that needs it.** Pitch is worth 0.2 to 0.4% of area; the outline is uncertain by 2 to 4%. Tape one eave and one rake per study roof.
+2. **`lidar-surface` cannot tell a tree from a dormer.** The return number can: the tree points on 177261 are 100% multiple returns, the points above 235247 are 6 to 14%. The cached points do not keep the return number. About 1 hour, and it would let a likely dormer become a stronger warning about missing area.
+3. **"One house, one pitch" for small planes.** City pitches of imprecise planes are 0.40 in 12 from the house's common pitch.
+4. **Additions without a permit.** NAIP 2025 photos (0.3 m, July 2025) are free and newer than the solid.
+5. **Open edges on skewed planes.** An outer edge 11 to 35 degrees off its plane's contour is called a rake. On 235248 that is 55 ft on one plane, and on 176864 a 9 ft eave. The city model is the cause; the tool could at least flag such edges.
+6. **Faces partly under the roof** (204065), and the GLB of City Hall holding 0.6% more area than `roof.json`. Both buildings are site checks.
+7. **The permit rule is a first guess.** The 1 January 2023 cut-off is not tested, commercial `Demolition` permits may be interior work, and `Remodel/Renovation` is ignored.
+8. **`OCCUPIEDDATE` can be years after the build.** 363456 is "occupied December 2025" and has a new-house permit from February 2021, so its `newer-than-solid` flag may be a false alarm.
+9. Cleaning still moves outline corners (plan area up to 0.33% off the footprint).
+10. The studio's own line totals, and the check in a real browser, are where round 1 left them.
+
+## Round 3 (2026-11-16)
+
+**Change level: MODERATE.** The largest sloped-area change on the benchmark is +0.28% and the largest main-plane pitch change is 0.39 in 12, which is inside the MODERATE band (pitch between 0.1 and 0.5 in 12). Three failure modes are also detected now that were silent before: an open edge that is neither eave nor rake, a plane that faces the wrong way, and a permit answer that was cached for ever. It is not MAJOR: no bug was found in geometry, units or reprojection, no area moved by more than 2%, and no decision was reversed. It is not MINOR: three benchmark houses changed a main-plane pitch by 0.19 to 0.39 in 12.
+
+**Verdict on the outline.** It cannot be measured better than about 4 in (0.10 m) for $0. Lidar agrees with the city outline within 0.05 m on average over 38 houses, but the method itself is only good to 0.08 m, and the 2025 aerial photos are worse. No area was moved. Every roof now carries a likely range: 2.3 to 4.4% on the clean benchmark houses.
+
+**Verdict on `lidar-surface`.** Keep it, and split it. All three benchmark hits were real, but one was a tree, which does not put the roof in doubt. The lidar return count separates trees from solid surfaces with a wide gap, so trees now raise an info flag and the review flag is kept for surfaces the model lacks.
+
+### Round 2's claims, checked
+
+| # | Claim | Verdict | Evidence |
+|---|---|---|---|
+| 1 | 0.1 m of outline is 2 to 4% of plan area | **Right on the benchmark, low for small roofs.** | Open-edge length times 0.1 m over plan area: 2.3 to 4.4% on the 8 clean houses, 2.5 to 5.3% on 30 random ones. |
+| 2 | City outline against lidar edge: mean 0.02 m inside, scatter 0.07 m, worst 0.14 m | **The mean holds; the scatter was mostly lidar noise.** | 38 houses, 145 edges, 817 m. Mean -0.04 to +0.03 m depending on one setting of the method. House averages scatter by 0.09 m, of which 0.08 m is measurement noise. Round 2's worst house (235247, 8 in 12) is still the worst at 0.21 m inside (standard error 0.10); part of its offset came from a height band that is too tight on steep roofs. |
+| 3 | The return number would separate trees from dormers | **Confirmed.** | 13 planes with points above the surface on 40 houses: 6 with 83 to 100% multi-return points (trees), 6 with 0 to 15% (solid), 1 mixed. The July 2025 photo shows the tree on 177261. |
+| 4 | The permit point sits on the building | **Confirmed, and explained.** | On 30 houses every permit point is exactly on a city address point; the address point lies on the footprint on 8 of 8 houses. No neighbour's permit was matched, and none of the 30 houses raised a false site check. |
+| 5 | `summary.siteCheckRequired` and the `IncompleteRead` retry | **Confirmed.** | Set on all five must-fail buildings, in the report headline and in the GLB. `IncompleteRead` is an `HTTPException`, which the retry loop catches. |
+| 6 | `PREFER_LIDAR` held on 30 random houses | **Confirmed on a spot check.** | 5 of the 30 houses (seed 3), my own reader and fit: 14 of 16 precise main planes within 0.15 in 12 of a whole number against 9 for the city; lidar 0.14 steeper; my fit within 0.11 of the skill's. |
+| 7 | City pitches of imprecise planes are 0.40 in 12 from the house's common pitch, lidar 0.17 | **Not reproduced.** | 71 imprecise planes with a precise plane of similar pitch on the same house: city 0.26, own lidar 0.22. Under 215 sq ft: 0.29 against 0.26. No case for a general "one house, one pitch" rule. |
+
+### Findings
+
+| # | Severity | Finding | Evidence | Fix |
+|---|---|---|---|---|
+| 1 | High | **An area was printed with no hint of how far off it can be.** The outline is the largest error and the report gave one number to the square foot. | Section 1 of the research note `review-round-3.md`. | `summary.areaRange` and a "likely range" line in the report and the CLI: outline 0.10 m along the open edges, plus pitch (0.3 degree from lidar, 1 degree from the city). |
+| 2 | Medium | **A sharp lidar fit was thrown away when a second surface lay beside it.** The largest plane of 176864 kept a city pitch 0.2 in 12 low, although lidar fits it to 0.09 degree and the other side of the ridge has the same pitch. | 4 planes on 38 houses; on all 4 the lidar pitch is near a whole number (0.09 in 12 away) and the city pitch is not (0.29). | A fit that fails "precise" only on the 80% rule supplies the pitch when a precise main plane of the same house agrees within 0.5 degree (`_confirm_by_sibling`). |
+| 3 | Medium | **The permit answer was cached for ever.** A permit issued after the first run was never seen on a repeat run. | `Http.get_json` returned any cached file. | The permit answer is asked again after 30 days; the old answer is used when the service does not respond. |
+| 4 | Medium | **`lidar-surface` treated a tree like a missing dormer.** | 177261 (tree) and 235247 (solid) got the same review flag. | Cached points keep the return count. `tree-over-roof` (info) for trees; `lidar-surface` (review) says "solid surface" when it is one. |
+| 5 | Medium | **Open edges that are neither eave nor rake were silently counted as rake.** | 14 of 39 houses have 10 ft or more of them (71 ft on 235248). On 4 edges lidar shows the plane is drawn 11 to 16 degrees askew and the edge is really level. | `skewed-edge` and `lidar-azimuth` review flags. No edge was re-classed: there is no ground truth for it. |
+| 6 | Low | **The report showed a lidar pitch fitted to 6 points.** "16.6/12 (+24.5 deg, 6 pts)" beside a 36 sq ft plane on 235247. | `takeoff.md` of 235247 in the round 2 output. | A lidar pitch is shown only for a plane that was checked. |
+| 7 | Low | **One pitch printed two ways in one row** (7.8/12 and 7.9/12 for 33.2 degrees), lines to a tenth of a foot, areas with and without thousands separators, lidar shift in metres in a report in feet. | Same file. | One pitch formatter, whole feet for lines with a note that an edge is good to about 1 ft, commas, feet. |
+| 8 | Low | **The 12 in overhang default could be read as something to add.** | `assumptions.overhangM` in `roof.json`. | Its note now says it is not added to any area or length. |
+| 9 | Low | Repair and remodel permits were invisible. | 5 of 30 random houses have one since 2023. | `permit-other` info flag. They stay out of the site check: about 7,100 were issued since 2023. |
+| 10 | Low | The docs gave the laser spot as 0.5 m wide and the outline check as "8 houses". | The strength of a roof return fades over 0.9 m across a rake. | Docs corrected. |
+
+### Checked and found correct
+
+- **Re-tilt consistency after the new rule.** On all 12 buildings but City Hall the GLB holds the same sloped area as `roof.json` within 0.004%; each plane's area is its plan area over cos(pitch) within 0.13%; edge lengths match their end points to 1.4 mm.
+- **Benchmark rules.** Buildings 9 to 12 and 14 are site checks, building 14 also without `--lidar`; point 13 fails cleanly; plan area is within 0.33% of the footprint on buildings 1 to 8; precise main planes show their lidar pitch within 0.19 degree.
+- **Permit classes.** `New%` matches new houses, town homes and duplexes only. Sheds and accessory buildings have their own classes.
+
+### Tried and rejected
+
+- **A physical model of the lidar pulse at a roof edge** (spot size, detection threshold, bright gutter). The fitted eave position moved between 0.22 m outside and 0.40 m inside the city line depending on which parameters were free. The data does not hold the answer.
+- **NAIP 2025 for the outline.** Roofs are shifted 0.3 to 1.5 m in the photo; one clean eave-to-eave length agreed with the city within 0.15 m; the rest were blocked by trees or shadow.
+- **A per-house "outline is off" flag from lidar.** The lidar noise per house (0.08 m) is as large as the tolerance. It would have fired on 1 house in 38, at two standard errors.
+- **A general "one house, one pitch" rule for small planes.** See claim 7.
+- **Re-classing slanted open edges as eaves.** Physically likely, but it would move up to 71 ft between eave and rake on a benchmark house with nothing to check it against.
+
+### Benchmark before and after
+
+The table is in `references/benchmark.md`. Largest sloped-area change: +0.28% (176864). Largest main-plane pitch change: 0.39 in 12 (235247 plane 3). Predominant pitch changed on one house (176864, 4.66 to 4.85). Line totals moved by 0.2 ft at most. No building changed between estimate and site check. The baseline was the round 2 code (tag `roof-measure-v3`) on the same cached city answers and lidar nodes.
+
+Tests: 69, all passing (round 2 had 60). The studio check was not run; the GLB area was compared with `roof.json` directly instead.
+
+### Open issues for round 4, most important first
+
+1. **Tape one roof.** Measure one eave-to-eave width at the shingle edge and one rake-to-rake length. If the city line is on the gutter lip, the width will read 8 to 10 in short. It would settle the largest open question in the error budget and could roughly halve the range. Nothing free can replace it.
+2. **House 235247: the main eave may be drawn 0.4 m too far out.** Lidar has no roof returns in the outer 0.25 m of a 14 m eave. That is 2 standard errors, so it is a lead, not a finding. It would be about 6% of that plane.
+3. **Slanted open edges.** Decide with photos or a tape whether edges 10 to 45 degrees off level should count as eaves. On 235248 it moves 71 ft.
+4. **The confirmed-by-another-plane rule stops at planes that agree.** A sharp fit that is 1.5 to 4 degrees from the city and is confirmed by another plane is still a site check. Letting it override would remove some site checks; it needs more than the 4 cases seen so far.
+5. **Faces partly under the roof** (204065) and City Hall's GLB holding 0.6% more area than `roof.json`. Both are site checks.
+6. **Ridge against hip on low-slope hip roofs** (235246) is still unstable by a few feet. Not looked at in this round.
+7. **Cleaning moves outline corners.** Plan area is up to 0.33% off the footprint (176864). The area range is ten times that, so this is no longer urgent.
+8. **The permit rule's 1 January 2023 cut-off is untested**, and a permit whose address point lies off the building would be missed without a word.
+9. **`OCCUPIEDDATE` can be years after the build** (363456), so `newer-than-solid` may be a false alarm there.
+10. **The "solid surface" calls rest on lidar alone.** A 0.3 m photo cannot show a dormer.
+11. The studio's own line totals, and the check in a real browser, are where round 1 left them.
+
+## Round 4 (2026-11-16)
+
+**Change level: MAJOR, on one rule only.** No benchmark area and no benchmark pitch changed (0.00% and 0.00 in 12 on all 13 buildings), and no building changed between estimate and site check. The level is MAJOR because the rules say so when a correctness bug is found in the core geometry: rakes on nearly flat planes were counted as eaves and plane tops, which moved up to 64 ft between line classes on three benchmark buildings (all three are site checks). By the numbers alone the round would be MINOR. It is also not a quiet round for two more reasons: one error source was found that no earlier round had named (roof hidden under an upper roof's overhang), and three random houses out of 51 changed from site check to estimate.
+
+**Verdict on the "confirmed by another plane" pitch rule: keep it.** It is sound, not overfit. One gap was closed: a plane it moves by more than 1.5 degrees is now reported as an override.
+
+**Verdict on the flags: too many asked for nothing.** A random house carried 2.6 review flags; it now carries 1.7. No real warning was removed.
+
+**Verdict on the area range: the arithmetic is right, and one thing was missing from it.** The lower roof under an upper roof's overhang is in no number. It is now printed beside the range.
+
+### Findings
+
+| # | Severity | Finding | Evidence | Fix |
+|---|---|---|---|---|
+| 1 | High | **Roof hidden under an upper roof's overhang is not counted, and nothing said so.** The city planes never overlap seen from above, so where a lower roof runs under the eave or rake of an upper roof, that strip is missing. It always makes the area too small. | Plan areas of the planes add up to the footprint within 0.2% on 5 houses. Roof-to-wall joints times a 12 in overhang: median 1.3% of the sloped area on 59 houses, none on 9, over 2% on 19, 5.2% on the worst. This is an inference from geometry; the overhang is not in any free data. | `summary.areaRange.underOverhang` and a "Not counted" line in the report and the CLI. It is added to no number. |
+| 2 | High | **Rakes on a nearly flat plane were counted as eave or plane top.** On a plane under about 0.9 in 12 every edge rises less than 3 degrees, and the "level" test saw nothing else. It also raised a false `roof-step` flag. | 5 of 64 houses. 199138: eave 166 to 138 ft, rake 78 to 143 ft, plane tops 36 to 0 ft. Held-out 196729: 45 ft of rake had become eave and top after the lidar pitch made the plane flatter. | An open edge that runs more than 45 degrees off its plane's contour line is never level (`UPDIP_PLAN_DEG` in `planes.py`). Planes of 0.9 in 12 or steeper cannot be affected. |
+| 3 | Medium | **One small plane could block a whole house.** A plane under 215 sq ft with a clean lidar surface 2 to 4 degrees off the city pitch, and a fit just short of "precise", made the house a site check. | 3 of the 9 lidar site checks on 51 random houses. Standard errors 0.251, 0.252 and 0.41 against a limit of 0.25. Either pitch changes the total area by 0.11 to 0.21%. | `lidar-disagrees` is a review flag when every unsettled plane is under 215 sq ft, within 4 degrees, has half or more of its points on one surface, and together they are 10% of the roof or less. A main plane, a larger difference or no clean surface stays a site check. |
+| 4 | Medium | **The sibling rule could move a pitch by up to 2 degrees with no flag.** An imprecise fit is allowed twice its standard error before it "disagrees". | 2 of 11 planes: 1.5 and 1.8 degrees (16.3 to 18.1 on held-out 247949). A precise fit that far off is an override. | Such a plane now has status `override` and raises `lidar-override`. |
+| 5 | Medium | **Review flags that asked for nothing.** | See the flag table below. | `lidar-pitch` removed. `roof-step`, `skewed-edge`, `regularize` and `solid-match` are `review` only when the amount matters, `info` otherwise. |
+| 6 | Low | `regularize` said "the city faces do not fit together well" when the lidar pitch had moved the corner. | On 12 of the 25 houses over the 1 ft limit, the faces alone stayed under it. | The message now says which lines can be off and by how much. |
+| 7 | Low | `lidar-override` and `lidar-disagrees` did not say which plane. | Report of 235245. | Both name the planes. |
+| 8 | Low | Free plane tops were left out of the outline part of the area range. | 235245 has 8.5 ft of them. | They count as open edge. The range grows by 0.1 point on four benchmark buildings. |
+| 9 | Low | A solid with no roof faces crashed with a `TypeError` while writing the report. | Synthetic walls-only solid. Not seen on a real building. | A clear "no roof faces" message. |
+
+### The sibling rule on held-out houses
+
+The 20 houses are the next 20 of the 60 that round 2 drew at random; no round had measured them. The rule fired on 7 planes there and on 11 planes over all 64 houses.
+
+- **Test.** Fit each plane again using only points more than 1 m away from any off-surface point. That is the plane without the tree or the second surface.
+- **Result.** Enough points were left on 9 of the 11 planes. On all 9, every remaining point lies on one surface, and the pitch is closer to the pitch the rule used than to the city pitch (0.04 to 0.44 degree against 0.5 to 1.9).
+- **Other checks.** All 11 planes moved towards a whole-number pitch. The pitch moves by 0.1 degree at most across 12 random seeds. Benchmark plane 235247 number 3: city 31.85, rule 33.20, clean part 33.36, the plane across the ridge 33.25.
+- **Not shown.** No plane was taped, so "towards the truth" means towards what lidar sees on the clean part of the same plane.
+
+### Flag burden
+
+51 random houses (31 from round 2, 20 new) and the 13 benchmark buildings, before (tag `roof-measure-v4`) and after. The 31 older houses were run without a permit lookup, so permit flags are under-counted.
+
+| Flag | Severity | Random before | Random after | Actionable? | Decision |
+|---|---|---|---|---|---|
+| `lidar-pitch` | info | 51 (100%) | 0 | No. Every house has it. | Removed |
+| `roof-step` | review | 26 (51%) | 11 (22%) | From 10 ft: check whether a ridge is longer. Under that: no. | Info under 10 ft (14 houses) |
+| `regularize` | review | 23 (45%) | 7 (14%) | From 2 ft: a ridge or hip is off by more than the report says. | Info from 1 to 2 ft (16 houses) |
+| `skewed-edge` | review | 21 (41%) | 8 (16%) | From 30 ft it can change an order of starter or ice barrier. | Info from 10 to 30 ft (13 houses) |
+| `lidar-surface` | review | 16 (31%) | 16 (31%) | Yes. The part lidar sees differently is 2% of the roof or more on 20 of 22 hits. | Kept |
+| `lidar-override` | review | 12 (24%) | 14 (27%) | Yes: check that plane's pitch. | Kept; names the plane; 2 more from finding 4 |
+| `eave-under-wall` | review | 11 (22%) | 11 (22%) | Yes: expect valleys there. | Kept |
+| `lidar-disagrees` | site-check | 9 (18%) | 6 (12%) | Yes. | Review on 3 houses (finding 3) |
+| `low-slope` | review | 7 (14%) | 7 (14%) | Yes: not a shingle slope. | Kept |
+| `solid-match` | review | 7 (14%) | 0 | Only when the chosen solid fits badly. On all 7 it overlapped 100% and matched the footprint area. | Info on those 7 |
+| `tree-over-roof` | info | 8 (16%) | 8 (16%) | No, and it says so. | Kept as info |
+| `lidar-azimuth` | review | 4 (8%) | 4 (8%) | Yes: that plane is drawn askew. | Kept |
+| `top-height-mismatch`, `non-planar-face`, `overlapping-faces`, `plan-area-mismatch` | as before | 3, 2, 1, 1 | same | Yes | Kept |
+
+- Review flags per random house: 2.6 before, 1.7 after. Houses with none: 4 before, 12 after. Houses with three or more: 23 before, 12 after.
+- Site checks on random houses: 10 of 51 before, 7 after.
+- The 30 ft line for `skewed-edge` and the 10 ft line for `roof-step` are judgements. Nothing measured sets them.
+
+### The area range, derived again
+
+| House | Tool | Outline grown by 0.10 m | Random trial, one standard deviation |
+|---|---|---|---|
+| 177261 (gable) | 3.9% | 3.9% | 3.9% |
+| 235246 (hip) | 2.3% | 2.3% | 2.3% |
+| 209733 (held-out gable) | 3.4% | 3.4% | 3.4% |
+| 235245 (cross gable) | 3.2% | 2.8% | 3.2% |
+| 241834 (held-out, two levels) | 4.0% | 2.9% | 4.0% |
+
+The tool's range is wider than the outer outline alone on the last two because it also counts edges where an upper roof ends above a lower one. That is fair: those lines are no better known. The range is neither falsely tight nor useless for outline and pitch. It never covered finding 1, which is why that is printed on its own line.
+
+### Checked and found correct
+
+- **End to end from a cold cache.** Three houses by id, by lat/lon and by address: 7 to 9 seconds each, the same numbers as the benchmark run, and a GLB identical to the cached run.
+- **Studio check.** Run against `rooftec-lab` at commit `39fe9e1` with `three` 0.186.1. 12 of 13 benchmark buildings pass with the same plane count and the area within 0.14% (City Hall 0.58%). 204065 fails as in round 1 (8 of 9 planes; it is a site check). Three cold-cache houses and three held-out houses pass.
+- **Benchmark rules.** GLB and `roof.json` hold the same area within 0.004% on buildings 1 to 8; plan area is within 0.33% of the footprint; precise main planes show their lidar pitch within 0.19 degree.
+- **Edge cases.** Empty lidar, lidar heights that are not numbers, a flat box and an 80 degree plane all run and give sensible output.
+
+### Looked at and left alone
+
+- **The lidar pitch can change a line's class.** On 7 of 64 houses the re-tilt moved 3 ft or more of edge from one class to another, after the fix for finding 2. The largest: 22 ft of step flashing became rake on 239951, because a wall a few centimetres tall no longer reached the probe height. There is no ground truth to say which answer is right.
+- **Edges 10 to 45 degrees off level on a nearly flat plane** are still called level. They are ambiguous on any plane.
+- **Ridge against hip between two nearly flat planes** is always "ridge". Both take the same cap.
+
+### Benchmark before and after
+
+The table is in `references/benchmark.md`. Sloped area: 0.00% on all 13. Main-plane pitch: 0.00 in 12 on all 13. Line totals changed on 204065, 250390 and 199138 only. Status: unchanged on all 13.
+
+Tests: 75, all passing (round 3 had 69). The six new ones fail on the round 3 code.
+
+### What remains, most important first
+
+**Needs a tape or a visit (code cannot settle these)**
+
+1. **One eave-to-eave width at the shingle edge.** Still the largest unknown: 2 to 5% of the area.
+2. **The overhang at one roof-to-wall joint.** It sizes finding 1: 1.3% of the area on the median house, over 2% on one house in three.
+3. **One pitch on a rake board.** The direct proof that lidar is right about pitch, including the sibling rule.
+4. **Are slanted open edges eaves?** And are `eave-under-wall` joints really valleys?
+5. **House 235247:** the main eave may be drawn 0.4 m too far out (round 3, two standard errors).
+
+**Code could still fix these**
+
+1. **Line classes that flip when the lidar pitch is applied** (7 of 64 houses, see above). A wall probe that does not depend on a few centimetres would help.
+2. **Site checks on main planes where a sharp fit is 1.5 to 4 degrees off and another plane confirms it** (3 of the 6 that are left). Round 3 listed this; 11 confirmed cases now support the rule, none of them in this band on a main plane.
+3. **The permit checks on the 31 older sample houses** were never run, so the count of permit flags on random houses is unknown.
+4. **Faces partly under the roof** (204065), and City Hall's GLB holding 0.6% more area than `roof.json`. Both are site checks.
+5. **The studio's own line totals** and a check in a real browser are where round 1 left them.
+
+## Round 5 (2026-11-16)
+
+**Change level: MAJOR, on one output only.** The rules say MAJOR when a correctness bug is found in the geometry, and one was: on 12 of 64 houses the 3D model (`roof.glb`) held 0.1 to 2.9% more roof than `roof.json`. No number in `roof.json` or in the report was wrong because of it. On the benchmark nothing moved at all: area 0.00%, pitch 0.00 in 12, line totals 0.0 ft, the same flags and the same result on all 13 buildings. By the benchmark numbers alone this round would be MINOR.
+
+**Verdict on round 4's small-plane relaxation: keep it, tightened.** It let no wrong roof through on 64 houses. Its promise ("under 0.5% of the area") was not enforced and it could have decided between a shingle slope and a low slope. Both are now closed, and no measured house changes.
+
+**Verdict on round 4's info downgrades: keep three as they are, tighten one.** `roof-step`, `skewed-edge` and `solid-match` hide nothing that matters on the 51 random houses. `regularize` hid one case: a house that lost 0.8% of its plan area carried only an info flag.
+
+**Verdict on the low-slope edge fix: correct.** It changes the 5 houses that have a plane under 0.9 in 12 and nothing else.
+
+### Findings
+
+| # | Severity | Finding | Evidence | Fix |
+|---|---|---|---|---|
+| 1 | High | **The GLB held more roof than `roof.json` wherever a city face crosses itself.** The city draws about one roof face in 25 with a twisted corner, so two of its edges cross. The triangle routine cannot handle such a ring and covered ground that is not roof. The studio measures the GLB, so the studio showed more area than the report. | 17 of 444 roof faces, on 12 of 64 houses (11 of 51 random). GLB against `roof.json`: +2.9%, +2.3%, +1.7%, +1.5%, +1.5%, +1.3%, +1.1% and five under 1%. The studio check failed on area on 7 random houses. City Hall's +0.58%, listed since round 1, was the same bug. | `planes.simple_loops` cuts a ring at each crossing and leaves out the small loop the twist encloses. Largest difference now 0.39%; the GLB of the other 52 houses is identical byte for byte. `checks.glb.roofAreaM2` records the mesh area. |
+| 2 | Medium | **The wall test looked at cleaned corners, so a low wall could come and go.** The test asks whether a wall rises 10 cm above the middle of a roof edge. It was asked after cleaning and after the lidar re-tilt, which move corners by centimetres. | 239951: a wall 11 cm tall at the probe became 9.5 cm after the re-tilt, and 22 ft of step flashing turned into rake. 190679: cleaning moved an edge 8.7 cm off its wall (the limit is 8 cm), so 19 ft of step flashing was counted as rake with and without lidar. | The test now reads the city faces as delivered. Lidar supplies a pitch and says nothing about walls. Four random houses change (22, 19, 2 and 0.5 ft); no benchmark building does. |
+| 3 | Medium | **The small-plane rule did not enforce what its flag says.** It allowed any small planes up to 10% of the roof, 4 degrees apart, and said "the total area moves by under 0.5%". It also never looked at which side of 2 in 12 the two pitches fall. | Worst case by arithmetic: 10% of the roof at 60 degrees, 4 degrees apart, is 1.2% of the area. The IRC allows asphalt shingles only from 2 in 12 (R905.2.2). The three relaxed houses are far from both limits: 4.3 to 5.8 in 12, and 0.11 to 0.21% of the area. | The rule computes the area effect and stays a site check above 0.5%, and when one pitch is under 2 in 12 and the other is not. The flag prints both pitches. |
+| 4 | Low | **An info-level `regularize` flag hid a 0.8% loss of plan area.** | Sample house 220518: a corner moved 1.4 ft and the plan area fell 0.79%. On 64 houses cleaning changes the plan area by 0.03% on average and by more than 0.5% on this one house only. | `regularize` is a review flag when the plan area changed by more than 0.5%, and says by how much. |
+| 5 | Low | The reason given for the 30 ft `skewed-edge` line was wrong: "that little does not change an order". | If such an edge is an eave, 30 ft at two courses is about one 200 sq ft roll of ice barrier. | The line stays; the docs and the code comment now say "up to one roll". |
+
+### Round 4's relaxations, checked
+
+- **Small plane, pitch not settled (3 houses).** City and lidar pitch: 4.3 and 5.2, 5.1 and 5.8, 5.1 and 5.7 in 12. All are shingle slopes on both readings, and all sit above 4 in 12, so neither the material nor the underlayment rule depends on which pitch is right. The area moves by 0.21, 0.11 and 0.12%.
+- **`roof-step` under 10 ft (14 random houses).** 2 to 10 ft of plane top. The most that can be wrong is 10 ft of ridge cap or headwall flashing.
+- **`regularize` from 1 to 2 ft (16 random houses).** The plan area changed by 0.36% or less on 14, by 0.49% on one and by 0.79% on one (finding 4).
+- **`skewed-edge` from 10 to 30 ft (12 random houses).** 10 to 27 ft. See finding 5: at most one roll of ice barrier, and the flag still prints with the same words.
+- **`solid-match` (7 random houses).** All 7 overlap their footprint 100% and match its plan area within 0.5%.
+
+### The low-slope edge fix, checked by hand
+
+- **199138** (plane 0, 0.64 in 12): the three low edges are eaves, the four edges that run up the slope are rakes, the two high edges at the wall are headwall. Correct.
+- **204065** (plane 0, 0.38 in 12) and **250390** (flat): the classes follow the same rule. Both are site checks, and the model tilts 204065's plane 30 degrees off its own outline, so nothing more can be said.
+- **Three houses outside the benchmark:** 196729 (0.35 in 12), 202687 (0.80 in 12) and 243577 (0.19 in 12). The first two have eaves at the low side, rakes up the slope and a headwall or plane top at the high side. The third is under 1.15 degrees, where every open edge is an eave by design.
+- **Steep roofs:** between tags `roof-measure-v4` and `roof-measure-v5` the line totals changed on exactly the 5 houses that have a plane under 0.9 in 12. The other 59 are identical to 0.05 ft.
+
+### The leftovers from round 4
+
+- **Line classes that flip with the lidar pitch.** Finding 2 removed the largest one. Nine of 64 houses still move 3 ft or more (14 ft at most). On the six looked at edge by edge, the edge is within 2 degrees of a class line (10 degrees off the contour for eave against rake), or sits on a plane that lidar re-tilted by more than 2 degrees. The other three trade ridge for hip at the 3 degree line, and both take the same cap. A hard line always has edges next to it; left alone.
+- **Permit checks on the older sample houses.** Run on all 31. None has a permit that changes the roof shape since January 2023; 5 have a repair or remodel permit (info). On 51 random houses the count is 0 permit site checks and 8 permit info flags.
+- **City Hall's GLB.** Closed by finding 1.
+- **Not touched:** site checks on main planes where a sharp fit is 1.5 to 4 degrees off (needs a tape), faces partly under the roof on 204065, and the studio's own line totals.
+
+### Checked and found correct
+
+- **The four outputs agree.** On 8 houses every number in the command-line summary and in `takeoff.md` equals `roof.json` to the printed digit: area, squares, range, plan area, pitch, plane count, each plane, each line total and piece count, each flag, and the status. The GLB mesh area equals `roof.json` within 0.004% on 7 of them and 0.15% on the one with a twisted face.
+- **Docs against code.** The code can raise 30 flags. All 30 are in `references/accuracy.md`, and every flag named there exists.
+- **Quick start, word for word, from a clean copy.** 7 seconds, 17 requests, the same numbers as the cached benchmark run. 79 tests pass in the clean copy.
+- **Studio check on all 64 houses** (`rooftec-lab` at `39fe9e1`): 55 pass. Nine fail on the plane count alone, with the area within 0.3%: 204065 and 8 random houses. The studio groups triangles into planes by its own rule (4 degrees and 6 cm). With the round 4 code, 12 random houses failed.
+
+### Looked at and left alone
+
+- **Walls that taper to nothing.** On 36 of 64 houses a roof-to-wall joint has a wall that runs from 0 to under 0.6 m tall along its length (10 ft or more of it on 24 houses). The tool counts a rake on the upper plane and step flashing on the lower one. Such a joint may be a real step, or a hip or valley the city drew with two planes that do not quite meet. Nothing free can tell, so nothing was changed. It is the most likely reason for a rake or step-flashing total that is too long.
+- **The twisted corner in `roof.json`.** The plane area there is the main loop minus the small loop. Compared with the footprint, that is the better of the two readings on the three houses with the largest loops. The GLB holds the main loop, so the two differ by up to 0.4%.
+
+### Benchmark before and after
+
+The full table is in `references/benchmark.md`. The baseline was tag `roof-measure-v5` on the same cached answers, offline.
+
+| What | Change on the 13 buildings |
+|---|---|
+| Sloped area | 0.00% on all 13 |
+| Main-plane pitch | 0.00 in 12 on all 13 |
+| Line totals | 0.0 ft on all 13 |
+| Flags and severities | The same on all 13 |
+| Estimate or site check | The same on all 13 |
+| GLB area against `roof.json` | City Hall +0.58% to 0.00%; the other 12 were and are 0.00% |
+
+On the 51 random houses: site checks 7 before and 7 after; review flags per house 1.7 before and after; line classes changed on 4 houses (finding 2); one flag changed from info to review (finding 4).
+
+Tests: 79, all passing (round 4 had 75). The four new ones fail on the round 4 code.
+
+### What remains
+
+**Needs a tape, a visit or a photo**
+
+1. One eave-to-eave width at the shingle edge (2 to 5% of the area).
+2. The overhang at one roof-to-wall joint (1.3% of the area on the median house).
+3. One pitch on a rake board.
+4. Whether slanted open edges are eaves, and whether tapering walls are real steps.
+
+**Code could still fix these**
+
+1. Check the GLB area on random houses in every round, not only on the benchmark.
+2. Faces partly under the roof (204065).
+3. The studio's plane grouping and line totals; the patch in `patches/` covers part of it.
+
+### State of the skill
+
+1. **Trustworthy now:** the plan area (within 1% of the city footprint, or the tool blocks the house), the pitch of large planes (lidar, to about 0.3 degree against itself), and the agreement between `roof.json`, the report, the command line and the GLB.
+2. **Trustworthy as a range:** the sloped area, to the printed 2 to 5%, plus the "Not counted" strip under overhangs.
+3. **Not trustworthy without a look:** line classes at roof-to-wall joints and slanted edges, anything under a `review` flag, and small planes.
+4. **Only a tape can settle:** where the shingle edge is, how wide the overhangs are, and that lidar is right about pitch. Until then every value stays `estimate`.
+5. **One house in 7 is a site check**, and the tool says so before any number.

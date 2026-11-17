@@ -1,0 +1,57 @@
+/* Lab tab: four free tools tested inside the studio. Uses the page tokens (--panel, --line, --accent ...),
+   so light and dark both follow the studio. */
+
+.lab { display: grid; gap: 14px; min-width: 0; }
+.lab p { margin: 0; }
+.lab-intro { display: grid; gap: 8px; }
+.lab-intro .row { gap: 6px; }
+.lab-tool { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); display: grid; gap: 10px; padding: 12px; min-width: 0; }
+.lab-head { display: flex; gap: 8px; align-items: baseline; justify-content: space-between; flex-wrap: wrap; }
+.lab-head h4 { margin: 0; font: 700 15px/1.2 var(--font-ui); letter-spacing: 0.01em; }
+.lab-head .lic { color: var(--fg-dim); font: 500 11px/1 var(--font-mono); }
+.lab-verdict { font: 700 10.5px/1 var(--font-ui); letter-spacing: 0.08em; text-transform: uppercase; border-radius: 999px; padding: 4px 8px; border: 1px solid currentColor; white-space: nowrap; }
+.lab-verdict.adopt { color: var(--ok); }
+.lab-verdict.later { color: var(--accent); }
+.lab-verdict.skip { color: var(--caution); }
+.lab-what { color: var(--fg-dim); font-size: 13px; }
+.lab-ctrl { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.lab-ctrl label { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; cursor: pointer; }
+.lab-switch { display: inline-flex; gap: 8px; align-items: center; font: 600 13.5px/1 var(--font-ui); cursor: pointer; }
+.lab-status { font: 500 12px/1.3 var(--font-mono); color: var(--fg-dim); overflow-wrap: anywhere; }
+.lab-status.ok { color: var(--ok); }
+.lab-status.warn { color: var(--caution); }
+.lab-out { margin: 0; font: 400 11.5px/1.45 var(--font-mono); background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 300px; overflow-y: auto; font-variant-numeric: tabular-nums; }
+.lab-out:empty { display: none; }
+.lab table.lab-res { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.lab table.lab-res td { padding: 4px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+.lab table.lab-res td:first-child { color: var(--fg-dim); padding-right: 10px; width: 46%; }
+.lab table.lab-res td:last-child { font-family: var(--font-mono); font-size: 12px; text-align: right; overflow-wrap: anywhere; }
+.lab table.lab-res tr.bad td:last-child { color: var(--caution); }
+.lab table.lab-res tr.good td:last-child { color: var(--ok); }
+.lab details { border-top: 1px solid var(--line); padding-top: 8px; }
+.lab summary { cursor: pointer; font: 600 13px/1.3 var(--font-ui); color: var(--fg); }
+.lab summary:focus-visible, .lab-switch input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.lab details ul { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 3px; font-size: 12.5px; }
+.lab details h5 { margin: 8px 0 0; font: 700 11px/1 var(--font-ui); letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-dim); }
+.lab-mv { width: 100%; height: 260px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel-2); display: block; --poster-color: transparent; }
+.lab-diff { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.lab-diff figure { margin: 0; display: grid; gap: 3px; min-width: 0; }
+.lab-diff img { width: 100%; border-radius: 6px; border: 1px solid var(--line); display: block; background: var(--panel-2); }
+.lab-diff figcaption { font: 500 11px/1.2 var(--font-ui); color: var(--fg-dim); }
+.lab-rank { margin: 0; padding-left: 20px; display: grid; gap: 4px; font-size: 12.5px; }
+.lab-rank b { font-weight: 600; }
+.lab-rank .cost { color: var(--fg-dim); font-family: var(--font-mono); font-size: 11.5px; }
+
+/* side-by-side WebGL / WebGPU viewports over the stage */
+.lab-compare { position: absolute; inset: 0; z-index: 6; display: grid; grid-template-columns: 1fr 1fr; gap: 2px; background: var(--line); }
+.lab-compare > div { position: relative; min-width: 0; min-height: 0; background: var(--bg); }
+.lab-compare canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+.lab-compare .tag { position: absolute; left: 10px; top: calc(10px + env(safe-area-inset-top, 0px)); background: var(--panel); border: 1px solid var(--line); border-radius: 7px; padding: 6px 9px; font: 600 12.5px/1.25 var(--font-ui); box-shadow: var(--shadow); max-width: calc(100% - 20px); }
+.lab-compare .tag span { display: block; font: 400 11.5px/1.3 var(--font-mono); color: var(--fg-dim); }
+.lab-compare .close { position: absolute; right: 10px; top: calc(10px + env(safe-area-inset-top, 0px)); z-index: 2; }
+/* phones: the panel is a drawer over the stage (--sheet-vis is its visible height), so stop above it */
+@media (max-width: 860px) { .lab-compare { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; bottom: var(--sheet-vis, 46vh); } }
+
+/* data attribution, shown while the city tiles or the splat are on */
+.lab-attrib { position: absolute; left: 12px; bottom: calc(70px + env(safe-area-inset-bottom, 0px)); z-index: 3; margin: 0; max-width: min(560px, calc(100% - 24px)); background: var(--panel); color: var(--fg-dim); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font: 500 11px/1.35 var(--font-ui); box-shadow: var(--shadow); }
+@media (max-width: 860px) { .lab-attrib { bottom: calc(var(--sheet-vis, 46vh) + 52px); left: 8px; font-size: 10.5px; } }

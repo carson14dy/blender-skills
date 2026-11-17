@@ -1,0 +1,208 @@
+{
+ "asset": {
+  "version": "1.1",
+  "tilesetVersion": "lab-1",
+  "extras": {
+   "attribution": "Contains data from the City of Sioux Falls, CC BY 4.0. Lidar: USGS 3DEP (public domain). Imagery: USDA NAIP (public domain).",
+   "site": "1601 S DISCOVERY AVE"
+  }
+ },
+ "geometricError": 60.0,
+ "root": {
+  "transform": [
+   0.992918,
+   -0.118801,
+   0.0,
+   0.0,
+   0.081824,
+   0.683873,
+   0.724998,
+   0.0,
+   -0.08613,
+   -0.719864,
+   0.688751,
+   0.0,
+   -550262.549767,
+   -4599007.234957,
+   4370781.525911,
+   1.0
+  ],
+  "boundingVolume": {
+   "box": [
+    -10.331,
+    10.47,
+    2.255,
+    216.82,
+    0.0,
+    0.0,
+    0.0,
+    213.193,
+    0.0,
+    0.0,
+    0.0,
+    7.823
+   ]
+  },
+  "geometricError": 30.0,
+  "refine": "ADD",
+  "children": [
+   {
+    "boundingVolume": {
+     "box": [
+      0.0,
+      0.0,
+      -0.228,
+      200.5,
+      0.0,
+      0.0,
+      0.0,
+      200.5,
+      0.0,
+      0.0,
+      0.0,
+      3.84
+     ]
+    },
+    "geometricError": 0,
+    "content": {
+     "uri": "ground.glb"
+    }
+   },
+   {
+    "boundingVolume": {
+     "box": [
+      -10.331,
+      10.47,
+      2.6,
+      215.32,
+      0.0,
+      0.0,
+      0.0,
+      211.693,
+      0.0,
+      0.0,
+      0.0,
+      5.978
+     ]
+    },
+    "geometricError": 4.0,
+    "refine": "REPLACE",
+    "content": {
+     "uri": "lod0.glb"
+    },
+    "children": [
+     {
+      "boundingVolume": {
+       "box": [
+        -108.412,
+        -104.391,
+        4.657,
+        117.202,
+        0.0,
+        0.0,
+        0.0,
+        96.832,
+        0.0,
+        0.0,
+        0.0,
+        5.333
+       ]
+      },
+      "geometricError": 0,
+      "content": {
+       "uri": "q0.glb"
+      }
+     },
+     {
+      "boundingVolume": {
+       "box": [
+        60.948,
+        -87.745,
+        4.597,
+        70.324,
+        0.0,
+        0.0,
+        0.0,
+        68.394,
+        0.0,
+        0.0,
+        0.0,
+        5.758
+       ]
+      },
+      "geometricError": 0,
+      "content": {
+       "uri": "q1.glb"
+      }
+     },
+     {
+      "boundingVolume": {
+       "box": [
+        -103.045,
+        107.397,
+        3.258,
+        111.954,
+        0.0,
+        0.0,
+        0.0,
+        114.75,
+        0.0,
+        0.0,
+        0.0,
+        6.636
+       ]
+      },
+      "geometricError": 0,
+      "content": {
+       "uri": "q2.glb"
+      }
+     },
+     {
+      "boundingVolume": {
+       "box": [
+        96.853,
+        96.279,
+        3.696,
+        107.989,
+        0.0,
+        0.0,
+        0.0,
+        103.238,
+        0.0,
+        0.0,
+        0.0,
+        5.643
+       ]
+      },
+      "geometricError": 0,
+      "content": {
+       "uri": "q3.glb"
+      }
+     }
+    ]
+   },
+   {
+    "boundingVolume": {
+     "box": [
+      -0.045,
+      0.21,
+      3.591,
+      8.382,
+      0.0,
+      0.0,
+      0.0,
+      8.667,
+      0.0,
+      0.0,
+      0.0,
+      4.303
+     ]
+    },
+    "geometricError": 0,
+    "content": {
+     "uri": "subject.glb"
+    }
+   }
+  ]
+ }
+}

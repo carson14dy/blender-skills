@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Roof Measurement Report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  --bg: #eef1f4; --panel: #ffffff; --panel-2: #f2f4f7; --line: #d8dde4; --fg: #18202c; --fg-dim: #5a6577;
+  --accent: #1d6ad8; --caution: #b9650a; --ok: #1f8556;
+  --font-body: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-ui: "Barlow Semi Condensed", "Barlow", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --bg: #0f1318; --panel: #161b22; --panel-2: #1d232c; --line: #2a323d; --fg: #e8ecf1; --fg-dim: #97a3b3; --accent: #4c9cff; --caution: #f0a23a; --ok: #4fc08d; color-scheme: dark; }
+}
+:root[data-theme="dark"] { --bg: #0f1318; --panel: #161b22; --panel-2: #1d232c; --line: #2a323d; --fg: #e8ecf1; --fg-dim: #97a3b3; --accent: #4c9cff; --caution: #f0a23a; --ok: #4fc08d; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 var(--font-body); -webkit-font-smoothing: antialiased; }
+main { max-width: 980px; margin: 0 auto; padding: 28px 16px 48px; display: grid; gap: 20px; }
+header h1 { margin: 0; font: 700 28px/1.15 var(--font-ui); text-wrap: balance; }
+header p { margin: 6px 0 0; color: var(--fg-dim); }
+.badge { display: inline-block; font: 600 11px/1 var(--font-ui); letter-spacing: .08em; text-transform: uppercase; color: var(--ok); border: 1px solid var(--ok); border-radius: 999px; padding: 4px 8px; margin-top: 10px; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+.kpi { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+.kpi .k { font: 600 11px/1 var(--font-ui); letter-spacing: .08em; text-transform: uppercase; color: var(--fg-dim); }
+.kpi .v { font: 700 24px/1.2 var(--font-ui); margin-top: 6px; font-variant-numeric: tabular-nums; }
+.kpi .s { color: var(--fg-dim); font-size: 13px; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; display: grid; gap: 10px; min-width: 0; }
+section h2 { margin: 0; font: 700 13px/1 var(--font-ui); letter-spacing: .09em; text-transform: uppercase; color: var(--fg-dim); }
+.scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 600 12px/1.2 var(--font-ui); letter-spacing: .05em; text-transform: uppercase; color: var(--fg-dim); }
+td.n, th.n { text-align: right; font-family: var(--font-mono); font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+tr.total td { font-weight: 600; border-bottom: 0; }
+.figs { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+figure { margin: 0; display: grid; gap: 6px; }
+figure img { width: 100%; border-radius: 8px; border: 1px solid var(--line); display: block; background: var(--panel-2); }
+figcaption { color: var(--fg-dim); font-size: 13px; }
+p { margin: 0; }
+.note { color: var(--fg-dim); font-size: 13.5px; }
+ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.warn { border-left: 3px solid var(--caution); padding: 8px 10px; background: var(--panel-2); border-radius: 0 7px 7px 0; font-size: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>1601 S Discovery Ave, Sioux Falls, SD 57106</h1>
+    <p>Roof and siding measurements from a fitted 3D model. All ± values are one standard deviation (68 %).</p>
+    <span class="badge">Verified: 4 independent reviews, pass with notes</span>
+  </header>
+
+  <div class="kpis">
+    <div class="kpi"><div class="k">Roof area</div><div class="v">2,388 ft²</div><div class="s">± 38 ft² · 221.9 ± 3.5 m²</div></div>
+    <div class="kpi"><div class="k">Squares</div><div class="v">23.9 sq</div><div class="s">± 0.4 · order ≈ 26.75 sq at 12 % waste</div></div>
+    <div class="kpi"><div class="k">Pitch</div><div class="v">6/12</div><div class="s">main 5.95 ± 0.05 · garage 5.9 ± 0.15</div></div>
+    <div class="kpi"><div class="k">Siding (clad, est.)</div><div class="v">2,185 ft²</div><div class="s">± 85 ft² · 203 ± 8 m²</div></div>
+  </div>
+
+  <section>
+    <h2>Roof facets</h2>
+    <div class="scroll"><table>
+      <tr><th>Facet</th><th>Faces</th><th class="n">Pitch</th><th class="n">Area ft²</th><th class="n">Area m²</th></tr>
+      <tr><td>F1 main, rear slope</td><td>West</td><td class="n">5.95/12</td><td class="n">638</td><td class="n">59.2</td></tr>
+      <tr><td>F2 main front slope + porch + junction</td><td>East</td><td class="n">5.95/12</td><td class="n">991</td><td class="n">92.0</td></tr>
+      <tr><td>F3 rear bump</td><td>West</td><td class="n">5.95/12</td><td class="n">136</td><td class="n">12.6</td></tr>
+      <tr><td>F4 garage</td><td>North</td><td class="n">5.9/12</td><td class="n">407</td><td class="n">37.8</td></tr>
+      <tr><td>F5 garage</td><td>South</td><td class="n">5.9/12</td><td class="n">217</td><td class="n">20.2</td></tr>
+      <tr class="total"><td>Total roofing</td><td></td><td></td><td class="n">2,388 ± 38</td><td class="n">221.9 ± 3.5</td></tr>
+    </table></div>
+    <p class="note">2.1 m² of the total is real bump roofing under the main and garage rake overhangs; the area visible from above is 2,366 ft². Reference: the city 3D model and the 2023 re-roof permit list 2,340 ft² (the model is +2 %, within the stated uncertainty; those two are probably one source).</p>
+  </section>
+
+  <section>
+    <h2>Lengths</h2>
+    <div class="scroll"><table>
+      <tr><th>Edge</th><th class="n">ft</th><th class="n">m</th></tr>
+      <tr><td>Ridge cap</td><td class="n">66.1 ± 1.1</td><td class="n">20.15 ± 0.35</td></tr>
+      <tr><td>Valley (main/garage 6.22 m + bump/garage 2.42 m)</td><td class="n">28.4 ± 1.5</td><td class="n">8.65 ± 0.45</td></tr>
+      <tr><td>Eave (= gutter runs)</td><td class="n">100.0 ± 1.1</td><td class="n">30.48 ± 0.35</td></tr>
+      <tr><td>Rake</td><td class="n">150.5 ± 3</td><td class="n">45.9 ± 0.9</td></tr>
+      <tr><td>Drip edge (eaves + rakes)</td><td class="n">250.5 ± 3</td><td class="n">76.4 ± 1.0</td></tr>
+      <tr><td>Step flashing (bump roof on main north wall)</td><td class="n">15.6 ± 1</td><td class="n">4.76 ± 0.3</td></tr>
+      <tr><td>Headwall flashing (bump roof on garage west gable)</td><td class="n">4.1 ± 1</td><td class="n">1.26 ± 0.3</td></tr>
+      <tr><td>Hips</td><td class="n">0</td><td class="n">0</td></tr>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>Walls and siding</h2>
+    <div class="scroll"><table>
+      <tr><th>Facade</th><th class="n">Gross ft²</th><th class="n">Openings ft²</th><th class="n">Net ft²</th></tr>
+      <tr><td>North</td><td class="n">767</td><td class="n">23</td><td class="n">744</td></tr>
+      <tr><td>East (front)</td><td class="n">697</td><td class="n">186</td><td class="n">511</td></tr>
+      <tr><td>South</td><td class="n">832</td><td class="n">47</td><td class="n">785</td></tr>
+      <tr><td>West (rear)</td><td class="n">717</td><td class="n">139</td><td class="n">578</td></tr>
+      <tr class="total"><td>Total, grade to roof plane</td><td class="n">3,012 ± 32</td><td class="n">395 (14 units)</td><td class="n">2,618 ± 38</td></tr>
+    </table></div>
+    <p class="warn">Siding actually clad is an estimate: net 243 m², less the porch attic above the flat ceiling (10.0 m²), brick piers (2.6), foundation reveal (~13) and the soffit/rake band (~14) = <b>203 ± 8 m² (2,185 ± 85 ft²)</b>. One course count to the soffit on the west wall would tighten it.</p>
+  </section>
+
+  <section>
+    <h2>Model checked against the photos</h2>
+    <div class="figs">
+      <figure><img src="overlay-south-gable.jpg" alt="Model rendered over the south gable photo"><figcaption>South gable (IMG_3634): model rakes and wall on the photo.</figcaption></figure>
+      <figure><img src="overlay-rear-bump.jpg" alt="Model rendered over the rear bump photo"><figcaption>Rear bump and garage west gable (IMG_3628).</figcaption></figure>
+      <figure><img src="overlay-porch-garage.jpg" alt="Model rendered over the porch and garage photo"><figcaption>Porch and garage south side (IMG_3644).</figcaption></figure>
+      <figure><img src="front.jpg" alt="Front of the detailed model from the street"><figcaption>Front from S Discovery Ave: porch, doors, windows and garage placed from the photo measurements.</figcaption></figure>
+      <figure><img src="hero.jpg" alt="3D render of the detailed model from the south-east"><figcaption>South-east view of the detailed model (no trees, ground follows grade).</figcaption></figure>
+      <figure><img src="rear.jpg" alt="Rear of the detailed model with the deck"><figcaption>Rear: both window levels, patio slider and deck.</figcaption></figure>
+      <figure><img src="aerial.jpg" alt="Aerial view of the house on its lot"><figcaption>On its lot: LiDAR terrain, driveway and front walk, sidewalks, streets and curbs from city GIS.</figcaption></figure>
+      <figure><img src="plan.jpg" alt="Plan view of the roof facets"><figcaption>Plan view with facet labels.</figcaption></figure>
+    </div>
+  </section>
+
+  <section>
+    <h2>Evidence and method</h2>
+    <ul>
+      <li>USGS 3DEP LiDAR (flown 2020-12-20, leaf-off): 779 roof returns after removing tree canopy; the model matches them with 4 cm robust spread.</li>
+      <li>City of Sioux Falls building footprint and 3D roof wireframe; their ~1 m datum offset was estimated and removed.</li>
+      <li>36 inspection photos (autumn 2026): wall positions, overhangs, porch, openings; 4 photos camera-matched to 2.5–4.2 px.</li>
+      <li>Permits: tear-off re-roof finaled 2023-10-18; no additions since the 2003 construction, so the 2020 geometry is current.</li>
+      <li>County card (third-party copy): split level, 2003; first floor 1,084 ft², garage 528 ft². Model footprint 1,679 ± 27 ft² (main block 1,075 ft², −0.8 %).</li>
+      <li>Robust least-squares fit of a parametric model; uncertainties from Monte Carlo plus wall-position sensitivity; reviewed by four independent checks including a Fable 5.2 advisor.</li>
+    </ul>
+    <p class="note">Largest remaining uncertainties: main north rake position (city outline says 0.2 m further south, about −2 m²), garage plate height (photos 0.1 m lower than LiDAR; walls only), and the soffit band height (siding). One taped eave-to-porch-drip length (expected 14.06 m) would remove most of the roof-area uncertainty.</p>
+  </section>
+</main>
+</body>
+</html>
