@@ -177,10 +177,14 @@ dialog::backdrop { background: rgba(8, 12, 18, 0.55); }
 @media (max-width: 860px) {
   /* the 3D view stays full-screen and never resizes; the panel is a drawer that slides over it */
   #app { grid-template-columns: 1fr; grid-template-rows: 1fr; }
-  .panel { position: absolute; left: 0; right: 0; bottom: 0; height: 46vh; border-left: 0; border-top: 1px solid var(--line);
-    transform: translateY(var(--sheet-off, 0px)); will-change: transform; }
+  /* the drawer's height is what you drag: anywhere from hidden to just under the top of the screen; its list
+     scrolls inside whatever height it has */
+  .panel { position: absolute; left: 0; right: 0; bottom: 0; height: var(--sheet-vis, 46vh); max-height: calc(100% - 50px);
+    border-left: 0; border-top: 1px solid var(--line); overflow: visible; }
   .panel.dragging { transition: none; }
-  .panel:not(.dragging) { transition: transform 0.22s ease; }
+  .panel:not(.dragging) { transition: height 0.22s ease; }
+  .panel > .tabs, .panel > .tabpanes { overflow-x: hidden; }
+  .panel.collapsed { border-top-color: transparent; }
   .panel.collapsed .tabs, .panel.collapsed .tabpanes { visibility: hidden; }
   /* grip that sticks up from the panel's top-right corner: hold and drag down to hide, up to show, or tap */
   .sheet-handle {
@@ -204,7 +208,8 @@ dialog::backdrop { background: rgba(8, 12, 18, 0.55); }
   .chip .sw { width: 11px; height: 11px; }
   .tabs { padding-top: 0; }
   .toolbar { bottom: calc(var(--sheet-vis, 46vh) + 8px); padding: 3px; gap: 2px; border-radius: 10px; }
-  #app:not(.sheet-dragging) .toolbar { transition: bottom 0.22s ease; }
+  #app:not(.sheet-dragging) .toolbar { transition: bottom 0.22s ease, opacity 0.15s; }
+  #app.sheet-high .toolbar { opacity: 0; pointer-events: none; }   /* drawer nearly full-screen: no room above it */
   .tb { padding: 6px 9px; border-radius: 7px; font-size: 12px; gap: 5px; }
   .tb svg { width: 15px; height: 15px; }
   .grid { grid-template-columns: repeat(4, 1fr); }
@@ -268,22 +273,22 @@ dialog::backdrop { background: rgba(8, 12, 18, 0.55); }
   </main>
 
   <aside class="panel" id="panel" aria-label="Controls">
-    <button class="sheet-handle" id="sheetHandle" type="button" aria-expanded="true" aria-controls="panel" aria-label="Hide or show the panel (drag or tap)">
+    <button class="sheet-handle" id="sheetHandle" type="button" aria-expanded="true" aria-controls="panel" aria-label="Resize the panel: drag up or down, or tap to hide and show it">
       <span class="grip" aria-hidden="true"></span>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
     </button>
     <div class="tabs" role="tablist">
-      <button class="tab" role="tab" aria-selected="false" data-tab="materials">Materials</button>
+      <button class="tab" role="tab" aria-selected="true" data-tab="materials">Materials</button>
       <button class="tab" role="tab" aria-selected="false" data-tab="layers">Layers</button>
       <button class="tab" role="tab" aria-selected="false" data-tab="list">List</button>
       <button class="tab" role="tab" aria-selected="false" data-tab="build">Build</button>
       <button class="tab" role="tab" aria-selected="false" data-tab="render">Render</button>
-      <button class="tab" role="tab" aria-selected="true" data-tab="project">Project</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="project">Project</button>
       <button class="tab" role="tab" aria-selected="false" data-tab="lab">Lab</button>
     </div>
     <div class="tabpanes">
       <!-- MATERIALS -->
-      <div class="pane" data-pane="materials" hidden>
+      <div class="pane" data-pane="materials">
         <div id="storePicker" class="sf"></div>
         <div class="sec" id="builtinSec" hidden>
           <!-- searched and filtered from the Materials browser (Studio samples) -->
@@ -400,7 +405,7 @@ dialog::backdrop { background: rgba(8, 12, 18, 0.55); }
       </div>
 
       <!-- PROJECT -->
-      <div class="pane" data-pane="project">
+      <div class="pane" data-pane="project" hidden>
         <div class="sec" id="measuredSec">
           <h3>Projects</h3>
           <div id="measuredList" class="stack"></div>
@@ -468,33 +473,41 @@ dialog::backdrop { background: rgba(8, 12, 18, 0.55); }
 </dialog>
 
 <script>
-// Mobile drawer: the 3D view stays full-screen (no resize, no re-render of a new size); the panel
-// slides over it. Hold the grip at the panel's top-right and drag down to uncover more of the
-// view or up to cover it again; a tap toggles. The toolbar rides on top of the drawer.
+// Mobile drawer: the 3D view stays full-screen (no resize, no re-render at a new size); the panel
+// covers part of it. Hold the grip at the panel's top-right and drag anywhere from the top of the
+// screen to the bottom; it stays where you let go (snapping shut near the bottom and fully open near
+// the top). A tap hides it, or brings it back to where it was. The toolbar rides on top of the drawer.
 (function () {
   const app = document.getElementById('app'), panel = document.getElementById('panel'), handle = document.getElementById('sheetHandle');
   if (!panel || !handle) return;
   const KEY = 'rls.sheet';
+  const TOP_GAP = 50;            // keeps the grip on screen when the drawer is all the way up
+  const SNAP = 56;               // within this many px of an end, the drawer snaps to that end
   const mobile = () => window.matchMedia('(max-width: 860px)').matches;
-  const H = () => panel.getBoundingClientRect().height || Math.round(window.innerHeight * 0.46);
-  let off = 0;
-  try { const v = JSON.parse(localStorage.getItem(KEY) || 'null'); if (v && v.open === false) off = Infinity; } catch (_) {}
-  function apply(o, save) {
-    const h = H();
-    off = Math.max(0, Math.min(h, o));
-    panel.style.setProperty('--sheet-off', `${off}px`);
-    app.style.setProperty('--sheet-vis', `${h - off}px`);
-    const isOpen = off < h / 2;
-    panel.classList.toggle('collapsed', off >= h - 1);
+  const maxVis = () => Math.max(120, app.getBoundingClientRect().height - TOP_GAP);
+  const dflt = () => Math.round(window.innerHeight * 0.46);
+  let vis = dflt(), lastOpen = vis;
+  try {
+    const v = JSON.parse(localStorage.getItem(KEY) || 'null');
+    if (v && v.open === false) { vis = 0; if (v.frac > 0) lastOpen = v.frac * maxVis(); }
+    else if (v && v.frac > 0) vis = lastOpen = v.frac * maxVis();
+  } catch (_) {}
+  function apply(px, save) {
+    vis = Math.max(0, Math.min(maxVis(), px));
+    app.style.setProperty('--sheet-vis', `${Math.round(vis)}px`);
+    const isOpen = vis > 1;
+    panel.classList.toggle('collapsed', !isOpen);
+    app.classList.toggle('sheet-high', vis > maxVis() - 70);
     handle.setAttribute('aria-expanded', String(isOpen));
-    if (save) { try { localStorage.setItem(KEY, JSON.stringify({ open: isOpen })); } catch (_) {} }
+    if (isOpen) lastOpen = vis;
+    if (save) { try { localStorage.setItem(KEY, JSON.stringify({ open: isOpen, frac: +(lastOpen / maxVis()).toFixed(3) })); } catch (_) {} }
   }
-  const setOpen = (isOpen) => apply(isOpen ? 0 : H(), true);
-  if (mobile()) apply(off, false);
+  const toggle = () => apply(vis > 1 ? 0 : (lastOpen > SNAP ? lastOpen : dflt()), true);
+  if (mobile()) apply(vis, false);
   let start = null;
   handle.addEventListener('pointerdown', (e) => {
     if (!mobile()) return;
-    start = { y: e.clientY, off, moved: false };
+    start = { y: e.clientY, vis, moved: false };
     handle.setPointerCapture(e.pointerId);
     panel.classList.add('dragging'); app.classList.add('sheet-dragging');
     e.preventDefault();
@@ -503,21 +516,26 @@ dialog::backdrop { background: rgba(8, 12, 18, 0.55); }
     if (!start) return;
     const dy = e.clientY - start.y;
     if (Math.abs(dy) > 6) start.moved = true;
-    apply(start.off + dy, false);
+    apply(start.vis - dy, false);
   });
   const end = () => {
     if (!start) return;
     panel.classList.remove('dragging'); app.classList.remove('sheet-dragging');
-    if (!start.moved) setOpen(off >= H() / 2);
-    else setOpen(off < H() / 2);
+    if (!start.moved) { start = null; toggle(); return; }
     start = null;
+    if (vis < SNAP) apply(0, true);
+    else if (vis > maxVis() - SNAP) apply(maxVis(), true);
+    else apply(vis, true);
   };
   handle.addEventListener('pointerup', end);
   handle.addEventListener('pointercancel', end);
-  handle.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(off >= H() / 2); } });
+  handle.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+    else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); apply(vis + (e.key === 'ArrowUp' ? 1 : -1) * maxVis() * 0.1, true); }
+  });
   window.addEventListener('resize', () => {
-    if (mobile()) apply(off >= H() / 2 ? H() : 0, false);
-    else { panel.style.removeProperty('--sheet-off'); app.style.removeProperty('--sheet-vis'); panel.classList.remove('collapsed'); }
+    if (mobile()) apply(vis > 1 ? Math.min(vis, maxVis()) : 0, false);
+    else { app.style.removeProperty('--sheet-vis'); panel.classList.remove('collapsed'); }
   });
 })();
 </script>

@@ -24,7 +24,7 @@
    "p95M": 0.15,
    "maxM": 0.2
   },
-  "groundPoints": 19164,
+  "groundPoints": 19155,
   "groundRobustSdM": 0.014,
   "roofPoints": 930,
   "roofMedianM": 0.018,

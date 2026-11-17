@@ -35,7 +35,12 @@
           ]
         ]
       },
-      "thumb": "houses/1601-s-discovery-ave/drone.jpg"
+      "thumb": "houses/1601-s-discovery-ave/drone.jpg",
+      "view": {
+        "bearing": 106,
+        "elevation": 23,
+        "note": "front-right corner from the street, as the project thumbnail"
+      }
     }
   ]
 }

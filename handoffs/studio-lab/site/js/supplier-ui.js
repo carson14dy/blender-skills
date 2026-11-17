@@ -196,6 +196,8 @@ export function createStoreUI(ctx) {
   // materials browser (Materials tab): suppliers -> projects -> material types -> products.
   // Each type implies the list line (slot) its products fill; choosing still goes through choose().
 
+  /** append children, skipping null / false (Element.append would print them as text) */
+  const put = (parent, ...kids) => parent.append(...kids.flat().filter((k) => k != null && k !== false && k !== ''));
   const nav = { level: 1, supplier: null, project: null, type: null, search: null, q: '', find: '', sort: 'recommended', limit: PAGE,
     filters: defaultFilters(), memo: new Map(), scroll: [0, 0, 0, 0, 0], opened: [], expanded: null };
   try { const s = JSON.parse(localStorage.getItem('rls.mat') || '{}'); if (SORTS.some(([id]) => id === s.sort)) nav.sort = s.sort; } catch (_) { /* storage blocked */ }
@@ -366,7 +368,7 @@ export function createStoreUI(ctx) {
   }
 
   function renderSuppliers(body) {
-    body.append(
+    put(body, 
       searchBox('matFind', nav.find, 'Search suppliers or products', (e) => { nav.find = e.target.value; renderSupplierGrid(); }),
       el('ul', { id: 'matGrid', class: 'mat-grid', role: 'list' }),
       el('div', { id: 'matFindAll' }),
@@ -423,7 +425,7 @@ export function createStoreUI(ctx) {
         onclick: () => (n ? forward(pr.id, { level: 3, project: pr.id, type: null }) : ctx.toast(`No ${pr.label.toLowerCase()} products captured from ${supplierName(nav.supplier)} yet.`)) },
       el('span', { class: 'mat-mono pic' }, svg(ICONS[pr.icon])), el('span', { class: 'mat-ct' }, el('b', {}, pr.label), el('small', {}, n ? `${n} products` : 'Not captured yet')))));
     }
-    body.append(el('p', { class: 'mat-lead' }, 'What are you working on?'), grid);
+    put(body, el('p', { class: 'mat-lead' }, 'What are you working on?'), grid);
   }
 
   // ---- level 3: material types -----------------------------------------------
@@ -458,7 +460,7 @@ export function createStoreUI(ctx) {
         ul.append(typeRow({ key: t.id, label: t.label, blurb: t.blurb, count: n, mos, empty: !n && !t.always,
           onclick: () => (n || t.always ? forward(t.id, { level: 4, type: t.id }) : ctx.toast(`No ${t.label.toLowerCase()} yet.`)) }));
       }
-      body.append(ul);
+      put(body, ul);
       return;
     }
     const pr = findProject(nav.project);
@@ -475,7 +477,7 @@ export function createStoreUI(ctx) {
         mos: mosaic(productsFor(allProducts(), { supplier: nav.supplier, type: t.id })),
         onclick: () => (c.total ? forward(t.id, { level: 4, type: t.id }) : ctx.toast(`No ${t.label.toLowerCase()} captured from ${supplierName(nav.supplier)} yet.`)) }));
     }
-    body.append(ul);
+    put(body, ul);
   }
 
   // ---- level 4: products -----------------------------------------------------
@@ -484,7 +486,7 @@ export function createStoreUI(ctx) {
     const s = $('search');
     if (s) s.value = nav.q;
     ctx.setCatalogFilter?.(nav.type);
-    $('matHeadBar').append(el('div', { class: 'mat-bar' }, searchBox('matSearch', nav.q, `Search ${titleText().toLowerCase()}`, (e) => {
+    put($('matHeadBar'), el('div', { class: 'mat-bar' }, searchBox('matSearch', nav.q, `Search ${titleText().toLowerCase()}`, (e) => {
       nav.q = e.target.value;
       if (s) { s.value = nav.q; s.dispatchEvent(new Event('input')); }
     })));
@@ -494,7 +496,7 @@ export function createStoreUI(ctx) {
     const t = curType();
     const pr = findProject(nav.project);
     const what = searching() ? 'all products' : (t?.label || pr?.allLabel || 'products').toLowerCase();
-    $('matHeadBar').append(
+    put($('matHeadBar'), 
       el('div', { class: 'mat-bar' },
         searchBox('matSearch', nav.q, `Search ${what}`, (e) => {
           nav.q = e.target.value; nav.limit = PAGE;
@@ -505,7 +507,7 @@ export function createStoreUI(ctx) {
           el('button', { type: 'button', class: 'mat-pill', id: 'matSort', onclick: openSort }, svg(ICONS.sort, 'mat-ic sm'), el('span', { id: 'matSortL' })),
           el('span', { class: 'mat-count', id: 'matCount', 'aria-live': 'polite' }))),
       el('div', { class: 'mat-chips', id: 'matChips' }));
-    body.append(
+    put(body, 
       t ? el('p', { class: 'hint mat-fills' }, t.slot ? `Fills the ${LINE_LABELS[t.slot]} line of your list.` : 'Listed for reference: your materials list has no line for these yet.', t.note && !/Fills/.test(t.note) ? ` ${t.note}` : '') : null,
       el('div', { id: 'sfChosen', class: 'sf-chosen', 'aria-live': 'polite' }),
       el('div', { id: 'sfResults', class: 'sf-results', role: 'list' }),
@@ -721,7 +723,7 @@ export function createStoreUI(ctx) {
       const fs = facets(sc, draft, nav.q, { inStock, supplier: listSupplier(), typeFixed: !!curType() });
       const body = el('div', { class: 'mat-sbody' });
       const sw = (key, label) => el('label', { class: 'mat-switch' }, el('input', { type: 'checkbox', 'data-fk': key, checked: draft[key], onchange: (e) => { draft[key] = e.target.checked; render(); } }), el('span', {}, label));
-      body.append(group('Availability', sw('priced', 'Priced only'), hasHD && !crewLocked ? sw('inStock', 'In stock at Home Depot') : null));
+      put(body, group('Availability', sw('priced', 'Priced only'), hasHD && !crewLocked ? sw('inStock', 'In stock at Home Depot') : null));
       for (const f of fs) {
         const opts = el('div', { class: `mat-opts${f.id === 'colours' ? ' col' : ''}`, role: 'group', 'aria-label': f.label });
         for (const o of f.options) {
@@ -734,12 +736,12 @@ export function createStoreUI(ctx) {
             } },
           o.hex ? el('span', { class: 'mat-sw', style: `background:${o.hex}` }) : null, o.label, el('small', {}, String(o.count))));
         }
-        body.append(group(f.label, opts));
+        put(body, group(f.label, opts));
       }
       if (priced && !crewLocked) {
         const num = (key, label) => el('label', { class: 'mat-num' }, label, el('input', { type: 'number', min: '0', step: '1', inputmode: 'decimal', 'data-fk': key, value: draft[key] ?? '', placeholder: key === 'priceMin' ? '0' : 'any',
           onchange: (e) => { draft[key] = e.target.value === '' ? null : Math.max(0, Number(e.target.value)); render(); } }));
-        body.append(group('Price per item', el('div', { class: 'mat-nums' }, num('priceMin', 'Min $'), num('priceMax', 'Max $'))));
+        put(body, group('Price per item', el('div', { class: 'mat-nums' }, num('priceMin', 'Min $'), num('priceMax', 'Max $'))));
       }
       d.append(sheetHead('Filters', d), body,
         el('div', { class: 'mat-sfoot' },

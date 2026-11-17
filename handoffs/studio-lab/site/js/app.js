@@ -266,6 +266,32 @@ function frameView(exploded = false, instant = false) {
   tweenCamera(center, center.clone().addScaledVector(dir, dist), instant ? 0 : 0.9);
 }
 
+/**
+ * A project's saved view: the camera's compass bearing from the house (0 = north, 90 = east), how far it
+ * looks down, framed on the house (roof and walls) rather than the whole yard. The model's +z axis points to
+ * compass S.sun.facing ("Front faces"), so bearings convert to model directions through it.
+ */
+function houseViewDir(bearing, elevation) {
+  const d = THREE.MathUtils.degToRad(bearing - S.sun.facing), e = THREE.MathUtils.degToRad(elevation);
+  return new THREE.Vector3(-Math.sin(d) * Math.cos(e), Math.sin(e), Math.cos(d) * Math.cos(e));
+}
+
+function frameHouseView(view, instant = false) {
+  const box = new THREE.Box3();
+  if (layers) box.expandByObject(layers.root);
+  if (box.isEmpty()) { frameView(false, instant); return; }
+  box.min.y = Math.min(box.min.y, 0); // down to the ground under the walls
+  const center = box.getCenter(new THREE.Vector3());
+  const size = box.getSize(new THREE.Vector3());
+  const r = size.length() / 2;
+  const tanV = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+  // fit the house in both directions; the bounding sphere overstates it, so pull in by `fit`
+  const fit = view.fit ?? 1.25;
+  const dist = Math.max(r / tanV, r / (tanV * Math.max(0.2, camera.aspect))) * fit;
+  center.y = box.min.y + size.y * 0.42;
+  tweenCamera(center, center.clone().addScaledVector(houseViewDir(view.bearing, view.elevation ?? 23), dist), instant ? 0 : 0.9);
+}
+
 let camTween = null;
 function tweenCamera(target, position, dur = 0.9) {
   if (dur <= 0) { controls.target.copy(target); camera.position.copy(position); camTween = null; return; }
@@ -902,7 +928,7 @@ async function loadMeasuredIndex() {
 }
 const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-async function openMeasuredHouse(id) {
+async function openMeasuredHouse(id, { instant = false } = {}) {
   const h = S.measuredHouses.find((x) => x.id === id);
   if (!h) return;
   let detail = {};
@@ -916,6 +942,7 @@ async function openMeasuredHouse(id) {
   $('pHouse').value = `m:${h.id}`;
   document.querySelectorAll('.measured-card').forEach((c) => c.classList.toggle('active', c.dataset.id === h.id));
   await loadHouseModel(h.glb, { verified: detail.verified || h.verified || null, label: h.label });
+  if (h.view && Number.isFinite(h.view.bearing)) { S.houseView = h.view; frameHouseView(h.view, instant); } else S.houseView = null;
   const nameBox = document.getElementById('sfJobName');
   if (nameBox && (!nameBox.value || nameBox.value === 'Untitled roof')) { nameBox.value = h.jobName || h.label; nameBox.dispatchEvent(new Event('input')); }
   if (h.waste != null) { wasteTouched = true; $('waste').value = Math.round(h.waste); } // the report's reviewed waste, not the generic rule
@@ -1289,13 +1316,13 @@ async function boot() {
   // unless the link asks for a specific house, model or plan
   const askedHouse = params.get('house') || params.get('glb') || params.get('plan');
   const openId = params.get('measured') || (!askedHouse && S.measuredHouses[0]?.id);
-  if (openId) await openMeasuredHouse(openId);
+  if (openId) await openMeasuredHouse(openId, { instant: true });
   if (params.get('plan')) await usePlan(params.get('plan'));
   if (params.get('glb')) await loadHouseModel(params.get('glb'));
   if (params.has('t')) player.seek(Number(params.get('t')) * player.duration);
   if (params.get('explode') === '1') { setExplode(true); layers.explode = 1; frameView(true, true); }
   if (params.get('cut') === '1') { setCutaway(true); layers.cut = 0; }
-  selectTab(params.get('tab') || (S.measuredHouses.length ? 'project' : 'materials'));
+  selectTab(params.get('tab') || 'materials');
   $('loading').hidden = true;
   requestAnimationFrame(frame);
   readyResolve();

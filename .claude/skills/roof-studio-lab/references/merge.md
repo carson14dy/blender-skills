@@ -32,3 +32,5 @@ the build you merge now as its base.
 
 The November 2026 merge had one conflict (the tab buttons in `index.html`); `suppliers.css` and
 `app.js` merged cleanly.
+
+The 17 November 2026 merge (studio version 1794875264-e252: resizable phone drawer, Materials as the opening tab, a saved house camera view) again had one conflict, the tab buttons. The house georeference was unchanged, so the tiles and splat were kept. Keep the studio's own choice of opening tab; the Lab button always stays `aria-selected="false"`.
