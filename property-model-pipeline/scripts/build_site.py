@@ -142,7 +142,9 @@ def main():
     cy = (Y[:-1, :-1] + Y[1:, 1:]) / 2
     fx, fy = cx.ravel(), cy.ravel()
     cls = np.zeros(fx.shape, int)
-    for k, geom in ((1, beds), (2, concrete), (3, street), (4, house)):
+    # only grid cells wholly inside the walls are dropped (a cell straddling a wall stays, under the wall),
+    # so no gap opens round the house where no overlay covers the ground
+    for k, geom in ((1, beds), (2, concrete), (3, street), (4, house.buffer(-c * 0.75))):
         if not geom.is_empty:
             cls[shapely.contains_xy(geom, fx, fy)] = k
     # paved surfaces are planar-ish: smooth them more (curb faces come separately)

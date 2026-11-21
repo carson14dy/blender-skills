@@ -19,6 +19,9 @@ ap.add_argument("--swing", type=float, default=-16.0)
 ap.add_argument("--elev", type=float, default=23.0)
 ap.add_argument("--samples", type=int, default=128)
 ap.add_argument("--size", default="800x600")
+ap.add_argument("--terrain", action="store_true", help="keep the LiDAR terrain in the shot (hillside lots); crop to the house")
+ap.add_argument("--grade", default="median", choices=["median", "low"],
+                help="floor height: median grade under the house, or its low side (hillside / walk-out lots)")
 a = ap.parse_args(sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:])
 
 bpy.ops.wm.open_mainfile(filepath=a.blend)
@@ -28,8 +31,8 @@ KEEP_SITE = ("AC", "pad (AC)", "gas meter", "egress window well")
 for o in bpy.data.objects:
     names = [c.name for c in o.users_collection]
     if o.name.startswith("Ground") or any(n in HIDE for n in names) or ("Site" in names and not o.name.startswith(KEEP_SITE)):
-        o.hide_render = True
-house = [o for o in bpy.data.objects if o.type == "MESH" and not o.hide_render]
+        o.hide_render = not (a.terrain and o.name.startswith("Terrain"))
+house = [o for o in bpy.data.objects if o.type == "MESH" and not o.hide_render and not o.name.startswith("Terrain")]
 pts = [o.matrix_world @ Vector(c) for o in house for c in o.bound_box]
 lo = Vector((min(p.x for p in pts), min(p.y for p in pts), min(p.z for p in pts)))
 hi = Vector((max(p.x for p in pts), max(p.y for p in pts), max(p.z for p in pts)))
@@ -39,14 +42,14 @@ ter = next((o for o in bpy.data.objects if o.name.startswith("Terrain")), None)
 if ter:
     c = (lo + hi) / 2; r = max(hi.x - lo.x, hi.y - lo.y) / 2
     zs = sorted(p.z for p in (ter.matrix_world @ v.co for v in ter.data.vertices) if abs(p.x - c.x) < r and abs(p.y - c.y) < r)
-    if zs: z0 = zs[len(zs) // 2]
+    if zs: z0 = zs[len(zs) // 2] if a.grade == "median" else zs[len(zs) // 10]
 
 sc.render.engine = "CYCLES"; sc.cycles.samples = a.samples; sc.cycles.device = "CPU"
 try: sc.cycles.use_denoising = True
 except Exception: pass
 vt = [i.identifier for i in sc.view_settings.bl_rna.properties["view_transform"].enum_items]
 sc.view_settings.view_transform = "AgX" if "AgX" in vt else "Filmic"
-sc.render.film_transparent = True
+sc.render.film_transparent = not a.terrain
 w = sc.world or bpy.data.worlds.new("World"); sc.world = w
 w.use_nodes = True; nt = w.node_tree; nt.nodes.clear()
 bg = nt.nodes.new("ShaderNodeBackground"); bg.inputs[0].default_value = (0.9, 0.92, 0.95, 1); bg.inputs[1].default_value = 1.1
@@ -60,8 +63,9 @@ th = math.radians(90 - cam_bearing)
 # sun high and a little to the camera's right, so the front is lit and the shadow falls behind the house
 sth = th - math.radians(30)
 sun.rotation_euler = (math.radians(35), 0, sth + math.pi / 2); sun.data.energy = 3.0; sun.data.angle = math.radians(8)
-bpy.ops.mesh.primitive_plane_add(size=400, location=((lo.x + hi.x) / 2, (lo.y + hi.y) / 2, z0 + 0.02))
-bpy.context.active_object.is_shadow_catcher = True
+if not a.terrain:
+    bpy.ops.mesh.primitive_plane_add(size=400, location=((lo.x + hi.x) / 2, (lo.y + hi.y) / 2, z0 + 0.02))
+    bpy.context.active_object.is_shadow_catcher = True
 cd = bpy.data.cameras.new("Thumb"); cam = bpy.data.objects.new("Thumb", cd); sc.collection.objects.link(cam)
 cd.lens = 55
 tgt = Vector(((lo.x + hi.x) / 2, (lo.y + hi.y) / 2, z0 + (hi.z - z0) * 0.35))
@@ -78,9 +82,20 @@ bpy.ops.render.render(write_still=True)
 
 from PIL import Image
 im = Image.open(tmp).convert("RGBA")
-x0, y0, x1, y1 = im.getchannel("A").point(lambda v: 255 if v > 40 else 0).getbbox()
+if a.terrain:   # crop to the house's projected box (the terrain fills the frame)
+    from bpy_extras.object_utils import world_to_camera_view
+    cs = [Vector((x, y, z)) for x in (lo.x, hi.x) for y in (lo.y, hi.y) for z in (lo.z, hi.z)]
+    uv = [world_to_camera_view(sc, cam, c) for c in cs]
+    W_, H_ = im.size
+    x0, x1 = min(p.x for p in uv) * W_, max(p.x for p in uv) * W_
+    y0, y1 = (1 - max(p.y for p in uv)) * H_, (1 - min(p.y for p in uv)) * H_
+else:
+    x0, y0, x1, y1 = im.getchannel("A").point(lambda v: 255 if v > 40 else 0).getbbox()
 cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
 W = max((x1 - x0) * 1.12, (y1 - y0) * 1.12 * 4 / 3); H = W * 3 / 4
+if a.terrain:   # keep the crop on the render (no backdrop to pad with)
+    W, H = min(W, im.width), min(H, im.height)
+    cx = min(max(cx, W / 2), im.width - W / 2); cy = min(max(cy, H / 2), im.height - H / 2)
 pad = int(max(W, H))                                   # crop may run past the render: pad with backdrop
 flat = Image.new("RGBA", (im.width + 2 * pad, im.height + 2 * pad), (242, 242, 240, 255)); flat.alpha_composite(im, (pad, pad))
 cx, cy = cx + pad, cy + pad
