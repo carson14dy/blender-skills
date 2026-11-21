@@ -24,7 +24,8 @@ rock-bed overlays, curb lines, subject parcel, point features). yard.json (model
              {"kind": "mailbox" | "light_post", "xy": [x,y], "rotation": deg} ],
   # every item may carry "z" (absolute base, model frame) instead of sitting on the terrain
   "materials": {"rock_bed": [[r,g,b],[r,g,b]], "lawn": [...], "street": [...], "concrete": [...]},   # two-tone overrides
-  "show_parcel": true
+  "show_parcel": true,
+  "keep_wall_bottoms": ["M"]          # wing ids whose walls stand on another storey: not extended to the terrain
 }
 
 Grounding: walls and foundation strips are extended to 0.3 m below the terrain under them
@@ -463,7 +464,9 @@ def main():
             m_ = mat(f"{it.get('name', 'item')} colour", tuple(it["color"]), 0.6) if it.get("color") else M.get(it.get("material", "concrete"), M["concrete"])
             obox(it.get("name", f"item {i}"), (x, y), (w, d), z, z + h, it.get("rotation", 0.0), c, m_)
     # ---- ground the house -----------------------------------------------------
-    walls = list(bpy.data.collections["Walls"].objects)
+    # walls of an upper storey that stands on a lower one (or cantilevers over it) keep their bottoms
+    keep = set(Y.get("keep_wall_bottoms", []))
+    walls = [o for o in bpy.data.collections["Walls"].objects if not (len(o.name.split()) > 1 and o.name.split()[1] in keep)]
     n = snap_bottoms(walls, G, below=0.3, tol=0.6)
     det = bpy.data.collections.get("Details")
     if det:

@@ -689,16 +689,37 @@ def _walls(wings: List[Wing], step, ground=None):
             top = (pts[:, :1] * P[:, 0] + pts[:, 1:2] * P[:, 1] + P[:, 2]).min(axis=1)
             bot = bottom_at(W, pts)
             gross = float(np.sum(np.maximum(top - bot, 0)) * length / n)
-            cover = bot.copy()
+            # hidden = the parts of [bot, top] that lie inside another wing's walls AND within that wing's own
+            # height range [its wall bottom, its roof]: a stacked storey (a main floor over a lower level on the
+            # same wall line) hides nothing, an interior wall is hidden completely
+            hidden = np.zeros(len(pts))
+            spans = []
             for V in wings:
-                if V.id == W.id:
+                if V.id == W.id or V.roof_only:
                     continue
                 inside = V.inside_walls(pts)
                 if inside.any():
                     PV = np.array(V.planes())
                     zv = (pts[:, :1] * PV[:, 0] + pts[:, 1:2] * PV[:, 1] + PV[:, 2]).min(axis=1)
-                    cover = np.where(inside, np.maximum(cover, zv), cover)
-            exposed = float(np.sum(np.maximum(top - cover, 0)) * length / n)
+                    vb = bottom_at(V, pts)
+                    lo = np.where(inside, np.maximum(vb, bot), np.inf)
+                    hi = np.where(inside, np.minimum(zv, top), -np.inf)
+                    spans.append((lo, hi))
+            if spans:
+                for i_ in range(len(pts)):
+                    iv = sorted((lo[i_], hi[i_]) for lo, hi in spans if hi[i_] > lo[i_])
+                    tot, cur_lo, cur_hi = 0.0, None, None
+                    for a_, b_ in iv:
+                        if cur_hi is None or a_ > cur_hi:
+                            if cur_hi is not None:
+                                tot += cur_hi - cur_lo
+                            cur_lo, cur_hi = a_, b_
+                        else:
+                            cur_hi = max(cur_hi, b_)
+                    if cur_hi is not None:
+                        tot += cur_hi - cur_lo
+                    hidden[i_] = tot
+            exposed = float(np.sum(np.maximum(np.maximum(top - bot, 0) - hidden, 0)) * length / n)
             outward = np.array([seg[1], -seg[0]]) / (length + 1e-12)  # corners are CCW
             bearing = (math.degrees(math.atan2(outward[0], outward[1])) + 360) % 360
             # exact top profile: wall endpoints + every place the envelope changes plane
