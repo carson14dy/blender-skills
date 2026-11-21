@@ -25,6 +25,7 @@ from dataclasses import dataclass, field, asdict, fields
 from typing import Dict, List, Optional
 
 import numpy as np
+import shapely
 from shapely.geometry import Polygon, MultiPolygon, LineString, Point, GeometryCollection
 from shapely.ops import unary_union, linemerge
 
@@ -71,6 +72,11 @@ class Wing:
     eave_overhang_b: Optional[float] = None # -v side overhang (e.g. roof continued over a porch); default = eave_overhang
     roof_only: bool = False                 # roof patch without walls of its own (porch/junction/carport roofs)
     label: str = ""
+    # measured shapes that are not rectangles (site frame, metres). The parametric rectangle still defines
+    # the roof PLANES; these only replace where the roof stops and where the walls stand:
+    outline: Optional[list] = None          # roof drip-edge polygon [[x,y],...] (prow ends, notches)
+    outline_holes: Optional[list] = None    # openings in the roof (an open trellis bay): [[[x,y],...], ...]
+    walls: Optional[list] = None            # wall polygon [[x,y],...] (cantilevers, recesses); sides are named w0, w1, ...
 
     NUMERIC = ("cx", "cy", "azimuth", "length", "width", "eave_height", "pitch", "pitch_b", "end_pitch",
                "upper_pitch", "break_inset", "eave_overhang", "rake_overhang", "base_z",
@@ -108,6 +114,8 @@ class Wing:
 
     # ---- geometry ------------------------------------------------------
     def wall_polygon(self):
+        if self.walls:
+            return _ccw(Polygon(self.walls))
         L, W = self.length, self.width
         return self.rect(-L / 2, L / 2, -W / 2, W / 2)
 
@@ -125,8 +133,13 @@ class Wing:
         return L / 2 + ork, -W / 2 - ob, W / 2 + oa
 
     def roof_outline(self):
+        if self.outline:
+            return _ccw(Polygon(self.outline, self.outline_holes or []).buffer(0))
         umax, vlo, vhi = self.extents()
-        return self.rect(-umax, umax, vlo, vhi)
+        r = self.rect(-umax, umax, vlo, vhi)
+        if self.outline_holes:
+            r = r.difference(unary_union([Polygon(h) for h in self.outline_holes]))
+        return r
 
     def solid_polygon(self):
         """Region treated as 'solid building' for visibility (walls, or the outline of a roof-only wing)."""
@@ -176,10 +189,13 @@ class Wing:
         xy = np.atleast_2d(np.asarray(xy, float))
         P = np.array(self.planes())
         z = (xy[:, :1] * P[:, 0] + xy[:, 1:2] * P[:, 1] + P[:, 2]).min(axis=1)
-        rel = xy - np.array([self.cx, self.cy])
-        uu, vv = rel @ self.u, rel @ self.v
-        umax, vlo, vhi = self.extents()
-        inside = (np.abs(uu) <= umax + 1e-9) & (vv >= vlo - 1e-9) & (vv <= vhi + 1e-9)
+        if self.outline or self.outline_holes:
+            inside = shapely.contains_xy(self.roof_outline().buffer(1e-9), xy[:, 0], xy[:, 1])
+        else:
+            rel = xy - np.array([self.cx, self.cy])
+            uu, vv = rel @ self.u, rel @ self.v
+            umax, vlo, vhi = self.extents()
+            inside = (np.abs(uu) <= umax + 1e-9) & (vv >= vlo - 1e-9) & (vv <= vhi + 1e-9)
         z[~inside] = np.nan
         return z
 
@@ -187,6 +203,8 @@ class Wing:
         xy = np.atleast_2d(np.asarray(xy, float))
         if self.roof_only:
             return np.zeros(len(xy), bool)
+        if self.walls:
+            return shapely.contains_xy(self.wall_polygon().buffer(tol), xy[:, 0], xy[:, 1])
         rel = xy - np.array([self.cx, self.cy])
         return (np.abs(rel @ self.u) <= self.length / 2 + tol) & (np.abs(rel @ self.v) <= self.width / 2 + tol)
 
@@ -194,6 +212,14 @@ class Wing:
 # ---------------------------------------------------------------------------
 # polygon helpers
 # ---------------------------------------------------------------------------
+
+def _ccw(poly):
+    """Polygon with a counter-clockwise exterior (wall sides are walked CCW so outward = right)."""
+    from shapely.geometry.polygon import orient
+    if poly.geom_type != "Polygon":
+        poly = max(_polys(poly), key=lambda p: p.area) if _polys(poly) else Polygon()
+    return orient(poly, 1.0) if not poly.is_empty else poly
+
 
 def _clip_box(bounds, pad=5.0):
     x0, y0, x1, y1 = bounds
@@ -645,11 +671,16 @@ def _walls(wings: List[Wing], step, ground=None):
         if W.roof_only:
             continue
         L, Wd = W.length, W.width
-        corners = W.to_world([-L / 2, L / 2, L / 2, -L / 2], [-Wd / 2, -Wd / 2, Wd / 2, Wd / 2])
-        names = ["-v", "+u", "+v", "-u"]
+        if W.walls:
+            corners = np.array(list(W.wall_polygon().exterior.coords)[:-1])
+            names = [f"w{k}" for k in range(len(corners))]
+        else:
+            corners = W.to_world([-L / 2, L / 2, L / 2, -L / 2], [-Wd / 2, -Wd / 2, Wd / 2, Wd / 2])
+            names = ["-v", "+u", "+v", "-u"]
         P = np.array(W.planes())
-        for k in range(4):
-            a, b = corners[k], corners[(k + 1) % 4]
+        nc = len(corners)
+        for k in range(nc):
+            a, b = corners[k], corners[(k + 1) % nc]
             seg = np.subtract(b, a)
             length = float(np.linalg.norm(seg))
             n = max(int(math.ceil(length / step)), 1)

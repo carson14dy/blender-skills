@@ -48,12 +48,25 @@ def polys_of(feats, pred=lambda p: True):
     return unary_union(out) if out else Polygon()
 
 
+def _wing_poly(w):
+    import math
+    if w.get("walls"):
+        return Polygon(w["walls"]).buffer(0)
+    t = math.radians(w["azimuth"])
+    u = np.array([math.sin(t), math.cos(t)]); v = np.array([-u[1], u[0]])
+    cxy = np.array([w["cx"], w["cy"]])
+    L, W = w["length"] / 2, w["width"] / 2
+    return Polygon([cxy + s * L * u + r * W * v for s, r in ((-1, -1), (1, -1), (1, 1), (-1, 1))])
+
+
 def _wing_union(model):
     import math
     polys = []
     for w in model["wings"]:
         if w.get("roof_only"):
             continue
+        if w.get("walls"):
+            polys.append(_wing_poly(w)); continue
         t = math.radians(w["azimuth"])
         u = np.array([math.sin(t), math.cos(t)]); v = np.array([-u[1], u[0]])
         cxy = np.array([w["cx"], w["cy"]])
@@ -142,17 +155,7 @@ def main():
     Z = median_filter(Z, size=3, mode="nearest")
 
     # ---- surface classes --------------------------------------------------
-    wing_polys = []
-    for w in model["wings"]:
-        if w.get("roof_only"):
-            continue
-        import math
-        t = math.radians(w["azimuth"])
-        u = np.array([math.sin(t), math.cos(t)]); v = np.array([-u[1], u[0]])
-        cxy = np.array([w["cx"], w["cy"]])
-        L, W = w["length"] / 2, w["width"] / 2
-        wing_polys.append(Polygon([cxy + s * L * u + r * W * v for s, r in ((-1, -1), (1, -1), (1, 1), (-1, 1))]))
-    house = unary_union(wing_polys)
+    house = unary_union([_wing_poly(w) for w in model["wings"] if not w.get("roof_only")])
     if a.house_extra:
         house = unary_union([house] + [Polygon(q).buffer(0) for q in json.load(open(a.house_extra))])
     imp = F.get("impervious", [])
