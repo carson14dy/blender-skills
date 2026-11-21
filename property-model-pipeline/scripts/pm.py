@@ -113,6 +113,19 @@ def cmd_init(a):
     print(json.dumps(site, indent=2))
 
 
+def cmd_gather(a):
+    """Address -> listing photos + facts (agent-reach web search/read; public pages only)."""
+    from propmodel.gather import gather
+    address = a.address
+    if not address:
+        site_path = os.path.join(a.project, "site.json")
+        address = json.load(open(site_path)).get("address") if os.path.exists(site_path) else None
+    if not address:
+        sys.exit("gather: give --address, or run init with --address first")
+    m = gather(address, a.project, max_photos=a.max_photos)
+    print(json.dumps({"photos": len(m["photos"]), "pages": [(p["site"], p.get("images_found"), p.get("facts")) for p in m["pages"]]}, indent=1))
+
+
 def cmd_fetch(a):
     from shapely.geometry import Polygon
     from propmodel import sources
@@ -178,8 +191,16 @@ def cmd_fetch(a):
     set_auto_obs(a.project, "auto:osm", [o for o in obs if "osm" in o["source"]])
     set_auto_obs(a.project, "auto:ms", [o for o in obs if "ms" in o["source"]])
     try:
-        meta = sources.ortho_image(frame, a.half, P(a.project, "data/ortho.png"), CACHE, a.imagery)
-        print("ortho:", meta["provider"], f"{meta['m_per_px']:.3f} m/px")
+        meta, errs = None, []
+        for prov in [a.imagery] + [p for p in sources.IMAGERY if p != a.imagery]:   # fall back when a service is down
+            try:
+                meta = sources.ortho_image(frame, a.half, P(a.project, "data/ortho.png"), CACHE, prov)
+                break
+            except Exception as e:  # noqa: BLE001
+                errs.append(f"{prov}: {e}")
+        if meta is None:
+            raise RuntimeError("; ".join(errs))
+        print("ortho:", meta["provider"], f"{meta['m_per_px']:.3f} m/px", *(f"(after {e.split(':')[0]} failed)" for e in errs))
     except Exception as e:
         print("orthophoto failed:", e)
     if site.get("parcel_url"):
@@ -619,6 +640,8 @@ def main():
     sp = ap.add_subparsers(dest="cmd", required=True)
     s = sp.add_parser("init"); s.add_argument("project"); s.add_argument("--address"); s.add_argument("--latlon")
     s.add_argument("--parcel-url", help="ArcGIS REST parcel layer URL (…/FeatureServer/0)"); s.set_defaults(fn=cmd_init)
+    s = sp.add_parser("gather"); s.add_argument("project"); s.add_argument("--address"); s.add_argument("--max-photos", type=int, default=120)
+    s.set_defaults(fn=cmd_gather)
     s = sp.add_parser("fetch"); s.add_argument("project"); s.add_argument("--radius", type=float, default=60)
     s.add_argument("--half", type=float, default=40, help="orthophoto half-size (m)")
     s.add_argument("--imagery", default="esri", choices=["esri", "naip"]); s.add_argument("--no-ms", action="store_true")

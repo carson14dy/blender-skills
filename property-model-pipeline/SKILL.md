@@ -77,6 +77,26 @@ Trees: `pm.py lidar` drops vegetation classes and every non-last return of multi
 pulses (canopy), the robust fit down-weights stragglers, and the Blender scene contains only
 the building. Never trace roof edges under canopy in imagery.
 
+## Starting from just an address
+
+```bash
+python3 $PM init   JOB --address "123 Main St, Ames, IA 50010"   # Census geocoder
+python3 $PM gather JOB      # listing photos + facts (needs the agent-reach CLI from the agent-reach skill)
+python3 $PM fetch  JOB      # MS/OSM footprints, aerial (Esri, falls back to USGS NAIP), DEM
+python3 $PM lidar  JOB      # USGS 3DEP point cloud -> roof planes
+python3 $PM plot   JOB      # then split wings in spec.json from the plane list and fit
+```
+`gather` searches the public web for listing pages of exactly that address (house number +
+street in the URL, same city), reads them with agent-reach, keeps only the listing's own gallery
+(the first run of photo links; later runs are "nearby homes"), downloads each photo at the largest
+size the host serves, drops duplicates by perceptual hash and writes `photos_manifest.json`,
+`photos_contact.jpg` and the page facts (beds, baths, sqft, year built, lot, roof material).
+Limits to expect: a home that was never listed publicly has no listing photos; sold listings in
+many MLS areas hide photos behind a login (left alone); public pages expose only the first few
+gallery photos. People-search sites are never read and no owner/resident names are stored.
+Listing photos are copyrighted: keep packs in the job directory, out of git, for internal use.
+Undocumented site APIs are not used.
+
 ## Photos from inspections
 
 `references/photo-measurement.md` has the full method. Short version:
