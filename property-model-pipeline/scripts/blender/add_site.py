@@ -16,17 +16,35 @@ rock-bed overlays, curb lines, subject parcel, point features). yard.json (model
              {"kind": "box", "name": "...", "xy": [x,y], "size": [w,d,h], "z": 0.0, "rotation": deg, "material": "concrete", "color": [r,g,b]},
              {"kind": "boulder", "polygon": [[x,y],...], "top_z": z, "color": [r,g,b]},          # rock rising from the terrain
              {"kind": "retaining_wall", "line": [[x,y],...], "top_z": z or "height": h, "thickness": 0.3,
-              "material": "stone|concrete|timber", "color": [r,g,b]},
+              "material": "stone|concrete|drystack|timber", "color": [r,g,b]},
+             #   "top_z": [z, z, ...] (one per segment) gives a stepped wall with level tops; the bottom goes
+             #   0.3 m under the lower of the two grades beside it (build_site.py --breaklines yard.json
+             #   makes the terrain step inside the wall)
+             {"kind": "pier", "xy": [x,y], "size": [w,d], "top_z": z, "rotation": deg, "material": "concrete",
+              "plaque": {"text": "...", "face": "-x|+x|-y|+y", "color": [r,g,b], "size": 0.18}},   # numerals on a face
+             {"kind": "steps", "line": [[x,y],[x,y]], "width": 1.2, "z0": z_bottom, "z1": z_top, "risers": n,
+              "color": [r,g,b]},                                    # landscape steps, each tread grounded
+             {"kind": "rock_scatter", "polygon": [[x,y],...], "count": 12, "size": [0.3, 0.7], "seed": 1},
+             {"kind": "path_light", "xy": [x,y], "height": 0.5},
+             {"kind": "grade_pad", "polygon": [[x,y],...], "z": z, "blend": 0.8, "surface": [[r,g,b],[r,g,b]]},
+             #   levelled by build_site.py --grade yard.json; here only its optional surface is draped
+             {"kind": "box", ..., "top_z": z}   # absolute top: the box stands on the lowest grade under it
              {"kind": "fence", "line": [[x,y],...], "height": 1.2, "style": "rail|picket|chain", "color": [r,g,b]},
              {"kind": "surface", "polygon": [[x,y],...], "color": [[r,g,b],[r,g,b]], "scale": 10, "lift": 0.025, "name": "..."},
              {"kind": "path", "line": [[x,y],...], "width": 0.9, "color": [[r,g,b],[r,g,b]]},    # draped strip
              {"kind": "hot_tub", "xy": [x,y], "size": [2.1, 2.1, 0.9], "rotation": deg, "z": deck_z},
              {"kind": "mailbox" | "light_post", "xy": [x,y], "rotation": deg} ],
   # every item may carry "z" (absolute base, model frame) instead of sitting on the terrain
-  "materials": {"rock_bed": [[r,g,b],[r,g,b]], "lawn": [...], "street": [...], "concrete": [...]},   # two-tone overrides
+  "materials": {"rock_bed": [[r,g,b],[r,g,b]], "ground": [...], "rock": [...], "street": [...], "concrete": [...]},
+                                      # two-tone overrides ("lawn" is accepted for "ground")
   "show_parcel": true,
   "keep_wall_bottoms": ["M"]          # wing ids whose walls stand on another storey: not extended to the terrain
 }
+
+Terrain faces carry build_site.py's surface class: "ground" (soil / grass) or "rock" (boulders and
+outcrops the LiDAR rock merge raised, or traced rock outlines). With the scene's per-vertex "vertex_rock"
+weight the terrain gets one material that blends the two (soft, noise-broken boulder edges); without
+it, rock faces get the rock material slot. Terrain and draped overlays are smooth-shaded.
 
 Grounding: walls and foundation strips are extended to 0.3 m below the terrain under them
 (terrain is the LiDAR ground, so the house sits exactly as surveyed), deck posts, stair
@@ -84,6 +102,44 @@ def textured(name, rgb_a, rgb_b, scale, bump=0.2, rough=0.9):
     nt.links.new(ramp.outputs["Color"], b.inputs["Base Color"])
     nt.links.new(noise.outputs["Fac"], bp.inputs["Height"])
     nt.links.new(bp.outputs["Normal"], b.inputs["Normal"])
+    return m
+
+
+def blend_by_attribute(name, ground, rock, attr, edge=0.5, soft=0.18):
+    """Terrain material: two-tone noise `ground` (rgb_a, rgb_b, scale) where the point attribute `attr` is
+    low, `rock` where it is high, with a noise-broken transition around `edge`."""
+    m = mat(name, ground[0], 0.9)
+    nt = m.node_tree
+    b = nt.nodes.get("Principled BSDF")
+    geo = nt.nodes.new("ShaderNodeNewGeometry")
+
+    def tone(rgb_a, rgb_b, scale):
+        nz = nt.nodes.new("ShaderNodeTexNoise"); nz.inputs["Scale"].default_value = scale
+        nz.inputs["Detail"].default_value = 4.0
+        nt.links.new(geo.outputs["Position"], nz.inputs["Vector"])
+        rp = nt.nodes.new("ShaderNodeValToRGB")
+        rp.color_ramp.elements[0].color = (*rgb_a, 1); rp.color_ramp.elements[1].color = (*rgb_b, 1)
+        nt.links.new(nz.outputs["Fac"], rp.inputs["Fac"])
+        return nz, rp
+    nz_g, rp_g = tone(*ground)
+    nz_r, rp_r = tone(*rock)
+    att = nt.nodes.new("ShaderNodeAttribute"); att.attribute_type = "GEOMETRY"; att.attribute_name = attr
+    brk = nt.nodes.new("ShaderNodeTexNoise"); brk.inputs["Scale"].default_value = 1.5
+    nt.links.new(geo.outputs["Position"], brk.inputs["Vector"])
+    sub = nt.nodes.new("ShaderNodeMath"); sub.operation = "SUBTRACT"; sub.inputs[1].default_value = 0.5
+    nt.links.new(brk.outputs["Fac"], sub.inputs[0])
+    add = nt.nodes.new("ShaderNodeMath"); add.operation = "MULTIPLY_ADD"; add.inputs[1].default_value = 0.35
+    nt.links.new(sub.outputs[0], add.inputs[0]); nt.links.new(att.outputs["Fac"], add.inputs[2])
+    mr = nt.nodes.new("ShaderNodeMapRange"); mr.clamp = True
+    mr.inputs["From Min"].default_value = edge - soft; mr.inputs["From Max"].default_value = edge + soft
+    nt.links.new(add.outputs[0], mr.inputs["Value"])
+    mix = nt.nodes.new("ShaderNodeMix"); mix.data_type = "RGBA"
+    nt.links.new(mr.outputs["Result"], mix.inputs["Factor"])
+    nt.links.new(rp_g.outputs["Color"], mix.inputs[6]); nt.links.new(rp_r.outputs["Color"], mix.inputs[7])
+    nt.links.new(mix.outputs[2], b.inputs["Base Color"])
+    bp = nt.nodes.new("ShaderNodeBump"); bp.inputs["Strength"].default_value = 0.4
+    nt.links.new(nz_r.outputs["Fac"], bp.inputs["Height"]); nt.links.new(bp.outputs["Normal"], b.inputs["Normal"])
+    m.diffuse_color = (*[0.5 * (x + y) for x, y in zip(ground[0], rock[0])], 1)
     return m
 
 
@@ -227,22 +283,172 @@ def k_boulder(it, G, c, M, i):
     mesh(it.get("name", f"boulder {i}"), verts, faces, c, rock)
 
 
+def drystack(name, rgb_a, rgb_b, course=0.12):
+    """Dry-stacked flat stone (ledgestone): dark horizontal joints every ~`course` m with irregular
+    vertical joints, two-tone stone faces."""
+    m = textured(name, rgb_a, rgb_b, 6.0, 0.4)
+    nt = m.node_tree
+    b = nt.nodes.get("Principled BSDF")
+    geo = nt.nodes.new("ShaderNodeNewGeometry")
+    # horizontal courses: wave bands in z, distorted a little so joints are not ruler-straight
+    wave = nt.nodes.new("ShaderNodeTexWave"); wave.wave_type = "BANDS"; wave.bands_direction = "Z"
+    wave.inputs["Scale"].default_value = (2 * math.pi / 20.0) / course     # Z bands: sin(20 * scale * z)
+    wave.inputs["Distortion"].default_value = 1.5; wave.inputs["Detail"].default_value = 2.0
+    nt.links.new(geo.outputs["Position"], wave.inputs["Vector"])
+    ramp = nt.nodes.new("ShaderNodeValToRGB")
+    ramp.color_ramp.elements[0].position = 0.02; ramp.color_ramp.elements[0].color = (0.12, 0.10, 0.08, 1)
+    ramp.color_ramp.elements[1].position = 0.07; ramp.color_ramp.elements[1].color = (1, 1, 1, 1)
+    nt.links.new(wave.outputs["Fac"], ramp.inputs["Fac"])
+    mix = nt.nodes.new("ShaderNodeMix"); mix.data_type = "RGBA"; mix.blend_type = "MULTIPLY"
+    mix.inputs["Factor"].default_value = 1.0
+    stone = b.inputs["Base Color"].links[0].from_socket
+    nt.links.new(stone, mix.inputs[6]); nt.links.new(ramp.outputs["Color"], mix.inputs[7])
+    nt.links.new(mix.outputs[2], b.inputs["Base Color"])
+    return m
+
+
+def _wall_material(it, i):
+    kind = it.get("material", "stone")
+    if kind == "drystack":
+        return drystack(f"Dry-stack stone {i}", *_two(it, (0.42, 0.36, 0.27), (0.56, 0.49, 0.38)))
+    if kind == "concrete":
+        return textured(f"Retaining wall (concrete) {i}", *_two(it, (0.40, 0.39, 0.36), (0.47, 0.46, 0.43)), 3.0, 0.08)
+    if kind == "timber":
+        return textured(f"Retaining wall (timber) {i}", *_two(it, (0.25, 0.18, 0.12), (0.33, 0.25, 0.17)), 5.0, 0.3)
+    return textured(f"Retaining wall {i}", *_two(it, (0.45, 0.43, 0.40), (0.58, 0.56, 0.52)), 4.0, 0.5)
+
+
 def k_retaining_wall(it, G, c, M, i):
-    line = it["line"]
+    """Wall along a polyline: mitred joints (no overlapping boxes), one level top per segment when
+    top_z is a list (a stepped wall), foot 0.3 m under the lower of the two grades beside it."""
+    line = [Vector((p[0], p[1], 0)) for p in it["line"]]
     th = it.get("thickness", 0.3)
-    m_ = textured(f"Retaining wall {i}", *_two(it, (0.45, 0.43, 0.40), (0.58, 0.56, 0.52)), 4.0, 0.5)
+    m_ = _wall_material(it, i)
+    tops = it.get("top_z")
+    nseg = len(line) - 1
+    if nseg < 1:
+        return
+    nrm = []
     for a, b in zip(line[:-1], line[1:]):
-        d = Vector((b[0] - a[0], b[1] - a[1], 0))
-        L = d.length
-        if L < 1e-3:
+        d = (b - a); d.z = 0
+        d = d.normalized() if d.length > 1e-6 else Vector((1, 0, 0))
+        nrm.append(Vector((-d.y, d.x, 0)))
+    off = []
+    for k in range(len(line)):
+        if k == 0 or k == nseg:
+            off.append(nrm[min(k, nseg - 1)] * (th / 2))
+        else:
+            m = nrm[k - 1] + nrm[k]
+            m = m.normalized() if m.length > 1e-6 else nrm[k]
+            off.append(m * ((th / 2) / max(m.dot(nrm[k]), 0.35)))
+    side = [o * (1 + 0.1 / max(th / 2, 1e-3)) for o in off]
+    foot = [min(G.z(p.x + sx * o.x, p.y + sx * o.y, 0) for sx in (-1, 1)) - 0.3 for p, o in zip(line, side)]
+    high = [max(G.z(p.x + sx * o.x, p.y + sx * o.y, 0) for sx in (-1, 1)) for p, o in zip(line, side)]
+    for k in range(nseg):
+        A, B = line[k], line[k + 1]
+        if (B - A).length < 1e-3:
             continue
-        d.normalize(); nrm = Vector((-d.y, d.x, 0)) * (th / 2)
-        za, zb = G.z(a[0], a[1], 0) - 0.3, G.z(b[0], b[1], 0) - 0.3
-        ta = it.get("top_z", (za + 0.3) + it.get("height", 0.6)); tb = it.get("top_z_end", ta if "top_z" in it else (zb + 0.3) + it.get("height", 0.6))
-        A, B = Vector((a[0], a[1], 0)), Vector((b[0], b[1], 0))
-        ring = [A - nrm, B - nrm, B + nrm, A + nrm]
+        if isinstance(tops, (list, tuple)):
+            ta = tb = tops[min(k, len(tops) - 1)]
+        elif tops is not None:
+            ta = tops; tb = it.get("top_z_end", tops) if k == nseg - 1 else tops
+        else:
+            ta, tb = high[k] + it.get("height", 0.6), high[k + 1] + it.get("height", 0.6)
+        za, zb = foot[k], foot[k + 1]
+        ring = [A - off[k], B - off[k + 1], B + off[k + 1], A + off[k]]
         v = [(p.x, p.y, z) for p, z in zip(ring, (za, zb, zb, za))] + [(p.x, p.y, z) for p, z in zip(ring, (ta, tb, tb, ta))]
-        mesh(f"retaining wall {i}", v, [[0, 3, 2, 1], [4, 5, 6, 7], [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]], c, m_)
+        mesh(it.get("name", f"retaining wall {i}"), v, [[0, 3, 2, 1], [4, 5, 6, 7], [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]], c, m_)
+
+
+def k_pier(it, G, c, M, i):
+    """Square pier (gate / address pier) standing on the lowest grade under it, with an optional plaque
+    of raised numerals on one face."""
+    x, y = it["xy"]; w, d = it.get("size", [0.6, 0.6]); rot = it.get("rotation", 0.0)
+    t = math.radians(rot)
+    ex, ey = Vector((math.cos(t), math.sin(t), 0)), Vector((-math.sin(t), math.cos(t), 0))
+    corners = [Vector((x, y, 0)) + ex * (sx * w / 2) + ey * (sy * d / 2) for sx in (-1, 1) for sy in (-1, 1)]
+    zb = min(G.z(p.x, p.y, 0) for p in corners) - 0.1
+    top = it.get("top_z", zb + 0.1 + it.get("height", 1.2))
+    m_ = _wall_material(dict(it, material=it.get("material", "concrete")), i)
+    obox(it.get("name", f"pier {i}"), (x, y), (w, d), zb, top, rot, c, m_)
+    pl = it.get("plaque")
+    if pl and pl.get("text"):
+        face = pl.get("face", "-y")
+        nrm = {"+x": ex, "-x": -ex, "+y": ey, "-y": -ey}[face]
+        half = (w if face[1] == "x" else d) / 2
+        cur = bpy.data.curves.new(f"pier {i} numerals", type="FONT")
+        cur.body = str(pl["text"]); cur.size = pl.get("size", 0.18); cur.extrude = 0.008
+        cur.align_x = "CENTER"; cur.align_y = "CENTER"
+        ob = bpy.data.objects.new(it.get("name", f"pier {i}") + " numerals", cur)
+        c.objects.link(ob)
+        zc = pl.get("z", top - pl.get("below_top", 0.35))
+        ob.location = Vector((x, y, zc)) + nrm * (half + 0.01)
+        # text lies in its local XY plane: stand it up and turn it to face along nrm
+        ob.rotation_euler = (math.radians(90), 0, math.atan2(nrm.y, nrm.x) + math.radians(90))
+        ob.data.materials.append(mat(f"Pier numerals {i}", tuple(pl.get("color", (0.75, 0.22, 0.06))), 0.5))
+
+
+def k_steps(it, G, c, M, i):
+    """Landscape steps from line[0] (z0) up to line[1] (z1): `risers` treads, each a block from the grade
+    under it (or a little below its own nose) to its tread height."""
+    (ax_, ay_), (bx_, by_) = it["line"][:2]
+    n = int(it.get("risers", 6)); w = it.get("width", 1.2)
+    z0, z1 = it["z0"], it["z1"]
+    L = math.hypot(bx_ - ax_, by_ - ay_)
+    rot = math.degrees(math.atan2(by_ - ay_, bx_ - ax_))
+    m_ = textured(f"Steps {i}", *_two(it, (0.42, 0.30, 0.22), (0.52, 0.40, 0.30)), 6.0, 0.3)
+    for k in range(n):
+        s0, s1 = k / n, (k + 1) / n
+        cx, cy = ax_ + (bx_ - ax_) * (s0 + s1) / 2, ay_ + (by_ - ay_) * (s0 + s1) / 2
+        top = z0 + (z1 - z0) * (k + 1) / n
+        base = min(G.z(cx, cy, top), top - 0.15) - 0.1
+        obox(f"{it.get('name', 'steps')} {i} tread {k}", (cx, cy), (L / n + 0.03, w), base, top, rot, c, m_)
+
+
+def k_rock_scatter(it, G, c, M, i):
+    """Loose landscape rocks scattered in a bed (seeded, so rebuilds are identical)."""
+    import random
+    from shapely.geometry import Polygon, Point
+    P = Polygon(it["polygon"]).buffer(-0.2)
+    if P.is_empty:
+        return
+    rnd = random.Random(it.get("seed", 1))
+    lo, hi = it.get("size", [0.3, 0.7])
+    x0, y0, x1, y1 = P.bounds
+    placed = []
+    for _ in range(int(it.get("count", 10)) * 30):
+        if len(placed) >= int(it.get("count", 10)):
+            break
+        x, y = rnd.uniform(x0, x1), rnd.uniform(y0, y1)
+        r = rnd.uniform(lo, hi) / 2
+        if not P.contains(Point(x, y)) or any(math.hypot(x - px, y - py) < r + pr + 0.1 for px, py, pr in placed):
+            continue
+        placed.append((x, y, r))
+        nv = 9; ph = rnd.uniform(0, math.pi)
+        poly = [(x + r * rnd.uniform(0.75, 1.15) * math.cos(ph + 2 * math.pi * q / nv) * (1.0 if q % 2 else 1.15),
+                 y + r * rnd.uniform(0.75, 1.15) * math.sin(ph + 2 * math.pi * q / nv)) for q in range(nv)]
+        zg = G.z(x, y, 0)
+        k_boulder({"polygon": poly, "top_z": zg + 2 * r * rnd.uniform(0.45, 0.7), "color": it.get("color"),
+                   "name": f"{it.get('name', 'rock')} {len(placed)}"}, G, c, M, f"{i}.{len(placed)}")
+
+
+def k_path_light(it, G, c, M, i):
+    x, y = it["xy"]; z = _base(it, G, x, y)
+    h = it.get("height", 0.5)
+    m_ = mat("Path light (black)", tuple(it.get("color", (0.03, 0.03, 0.03))), 0.4, 0.3)
+    cylinder(f"path light {i} post", (x, y), 0.025, z - 0.1, z + h, c, m_, seg=12)
+    cylinder(f"path light {i} lens", (x, y), 0.05, z + h, z + h + 0.06, c, mat("Path light lens", (0.85, 0.82, 0.70), 0.3), seg=16)
+    # mushroom cap: flat cone
+    seg = 20; r = it.get("cap", 0.13)
+    v = [(x + r * math.cos(2 * math.pi * k / seg), y + r * math.sin(2 * math.pi * k / seg), z + h + 0.06) for k in range(seg)]
+    v.append((x, y, z + h + 0.13))
+    f = [[k, (k + 1) % seg, seg] for k in range(seg)] + [list(range(seg))[::-1]]
+    mesh(f"path light {i} cap", v, f, c, m_)
+
+
+def k_grade_pad(it, G, c, M, i):
+    if it.get("surface"):
+        k_surface(dict(it, color=it["surface"], name=it.get("name", "graded pad")), G, c, M, i)
 
 
 def k_fence(it, G, c, M, i):
@@ -338,7 +544,9 @@ def k_light_post(it, G, c, M, i):
 
 
 EXTRA_KINDS = {"boulder": k_boulder, "retaining_wall": k_retaining_wall, "fence": k_fence, "surface": k_surface,
-               "path": k_path, "hot_tub": k_hot_tub, "mailbox": k_mailbox, "light_post": k_light_post}
+               "path": k_path, "hot_tub": k_hot_tub, "mailbox": k_mailbox, "light_post": k_light_post,
+               "pier": k_pier, "steps": k_steps, "rock_scatter": k_rock_scatter, "path_light": k_path_light,
+               "grade_pad": k_grade_pad}
 
 
 def main():
@@ -349,12 +557,15 @@ def main():
     c = coll("Site")
     ov = Y.get("materials", {})
 
-    def two(key, a_, b_):
-        v = ov.get(key)
+    def two(key, a_, b_, alias=None):
+        v = ov.get(key) or (ov.get(alias) if alias else None)
         return (tuple(v[0]), tuple(v[1])) if v else (a_, b_)
     M = {
-        "lawn": textured("Lawn", *two("lawn", (0.10, 0.22, 0.05), (0.18, 0.30, 0.08)), 6.0, 0.15),
-        "street": textured("Street (red concrete)", *two("street", (0.33, 0.20, 0.17), (0.40, 0.26, 0.22)), 3.0, 0.05),
+        "ground": textured("Ground (LiDAR terrain)", *two("ground", (0.10, 0.22, 0.05), (0.18, 0.30, 0.08), "lawn"), 6.0, 0.15),
+        "rock": textured("Rock (boulders, outcrops)", *two("rock", (0.40, 0.37, 0.31), (0.56, 0.52, 0.45)), 2.5, 0.7),
+        "_tones": {"ground": (*two("ground", (0.10, 0.22, 0.05), (0.18, 0.30, 0.08), "lawn"), 6.0),
+                   "rock": (*two("rock", (0.40, 0.37, 0.31), (0.56, 0.52, 0.45)), 2.5)},
+        "street": textured("Street (asphalt)", *two("street", (0.27, 0.27, 0.25), (0.33, 0.33, 0.31)), 3.0, 0.05),
         "concrete": textured("Concrete", *two("concrete", (0.55, 0.55, 0.52), (0.62, 0.62, 0.59)), 2.0, 0.05),
         "rock_bed": textured("Rock mulch", *two("rock_bed", (0.30, 0.27, 0.23), (0.48, 0.44, 0.38)), 14.0, 0.8),
         "curb": mat("Curb", (0.5, 0.48, 0.45), 0.9),
@@ -364,11 +575,32 @@ def main():
         "ac": mat("AC unit", (0.75, 0.75, 0.73), 0.5, 0.3),
         "parcel": mat("Lot line", (0.95, 0.2, 0.2), 0.5),
     }
-    # terrain (lawn) + draped overlays
-    terrain = mesh("Terrain (LiDAR ground, lawn)", S["verts"], S["faces"], c, M["lawn"])
+    M["lawn"] = M["ground"]
+    # terrain (ground / rock faces) + draped overlays
+    terrain = mesh("Terrain (LiDAR ground)", S["verts"], S["faces"], c, M["ground"])
+    terrain.data.polygons.foreach_set("use_smooth", [True] * len(terrain.data.polygons))   # LiDAR relief, not facets
+    classes = S.get("classes", [])
+    fc = S.get("face_class") or []
+    if S.get("vertex_rock") and len(S["vertex_rock"]) == len(S["verts"]) and any(v > 0 for v in S["vertex_rock"]):
+        # one material blending ground and rock by the per-vertex rock weight (soft boulder edges)
+        at = terrain.data.attributes.new("rock", "FLOAT", "POINT")
+        at.data.foreach_set("value", S["vertex_rock"])
+        terrain.data.materials.clear()
+        terrain.data.materials.append(blend_by_attribute("Terrain (ground / rock)", M["_tones"]["ground"],
+                                                         M["_tones"]["rock"], "rock"))
+    elif "rock" in classes and any(v == classes.index("rock") for v in fc):
+        terrain.data.materials.append(M["rock"])
+        rk = classes.index("rock")
+        terrain.data.polygons.foreach_set("material_index", [1 if v == rk else 0 for v in fc])
+        terrain.data.update()
     for k, ovl in S.get("overlays", {}).items():
         if ovl["tris"]:
-            mesh(f"{k.replace('_', ' ')} (draped)", ovl["verts"], ovl["tris"], c, M.get(k, M["concrete"]))
+            ob_ = mesh(f"{k.replace('_', ' ')} (draped)", ovl["verts"], ovl["tris"], c, M.get(k, M["concrete"]))
+            # the drape is a triangle soup: weld it so smooth shading follows the ground instead of facets
+            bm = bmesh.new(); bm.from_mesh(ob_.data)
+            bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-4)
+            bm.to_mesh(ob_.data); bm.free()
+            ob_.data.polygons.foreach_set("use_smooth", [True] * len(ob_.data.polygons))
     G = Ground(terrain)
     # landscape edging: 0.1 m wide, 0.07 m tall strip along rock-bed / lawn boundaries
     for i, line in enumerate(S.get("edging", [])):
@@ -408,7 +640,7 @@ def main():
         for k in range(n):
             a0, a1 = 2 * k, 2 * ((k + 1) % n)
             faces.append([a0, a1, a1 + 1, a0 + 1])
-        lot = mesh("Lot line (parcel 74475)", verts, faces, c, M["parcel"])
+        lot = mesh("Lot line (subject parcel)", verts, faces, c, M["parcel"])
         lot.hide_render = not Y.get("show_parcel", False)
     # point features
     for p in S.get("points", []):
@@ -460,7 +692,14 @@ def main():
             box("utility meter", (x - 0.15, y - 0.08, z + zz), (x + 0.15, y + 0.08, z + zz + 0.35), c, M["metal"])
         else:
             w, d, h = it.get("size", [0.5, 0.5, 0.5])
-            z += it.get("z", 0.0)
+            if "top_z" in it:      # absolute top: stand on the lowest grade under the footprint
+                t_ = math.radians(it.get("rotation", 0.0))
+                z = min(G.z(x + sx * w / 2 * math.cos(t_) - sy * d / 2 * math.sin(t_),
+                            y + sx * w / 2 * math.sin(t_) + sy * d / 2 * math.cos(t_), z)
+                        for sx in (-1, 1) for sy in (-1, 1)) - 0.05
+                h = it["top_z"] - z
+            else:
+                z += it.get("z", 0.0)
             m_ = mat(f"{it.get('name', 'item')} colour", tuple(it["color"]), 0.6) if it.get("color") else M.get(it.get("material", "concrete"), M["concrete"])
             obox(it.get("name", f"item {i}"), (x, y), (w, d), z, z + h, it.get("rotation", 0.0), c, m_)
     # ---- ground the house -----------------------------------------------------

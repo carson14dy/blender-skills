@@ -15,9 +15,20 @@ city_features.json (model frame, metres) — as written by the job's GIS step:
    "sidewalk":   [{"geoms": [[x,y],...] (lines), "props": {"WIDTH": 4 (ft)}}],
    "parcels":    [{"geoms": [[outer]], "props": {"ADDRESS": ...}}],
    "hydrants":   [{"geoms": [[x,y]]}]}
+   "curbs":      [{"geoms": [[x,y],...] (lines)}]   optional: only these edges get a curb (default: every
+                 street edge; a bank meeting the asphalt has none). No curb within --curb-cut of a driveway.
+   "rocks":      [{"geoms": [[outer]]}]              optional traced boulder / outcrop outlines (rock faces)
 Extra keys in the project's details.json-style file can add rock beds (--beds beds.json).
 --cutouts cuts pits (window wells) out of the ground and every surface; the grid cells they touch are
 dropped and the draped overlays around them close the hole exactly at the polygon edge.
+
+Hillside terrain (--ground filtered --keep-rocks): ground = morphological filter on the last returns
+(median of each ground cell's lowest returns), then max(ground, solid surface) where the solid surface is
+the top of single-return, locally planar returns (bare ground, boulders, outcrops; never canopy), so
+boulders keep their measured height. Faces the merge raises (or inside "rocks" outlines) get class
+"rock". --grade yard.json levels grade_pad items (areaways, patios cut into the slope) and --breaklines
+yard.json makes the terrain step inside every retaining_wall item instead of ramping through it.
+Use --cell 0.25 near a house (QL1 LiDAR has ~2 returns per 0.25 m cell).
 """
 import argparse
 import json
@@ -83,10 +94,46 @@ def wall_lines(data):
             if isinstance(it, dict) and it.get("line") and it.get("kind", "retaining_wall") == "retaining_wall"]
 
 
-def apply_breaklines(Z, xs, ys, walls, c, reach=0.35):
+def grade_pads(data):
+    """Flat pads: a list of {polygon, z[, blend]} or a yard.json dict (items of kind grade_pad)."""
+    items = data.get("items", []) if isinstance(data, dict) else data
+    return [it for it in items if isinstance(it, dict) and it.get("polygon") and "z" in it
+            and it.get("kind", "grade_pad") == "grade_pad"]
+
+
+def align_apron(drive, front, reach=2.5):
+    """Make the driveway meet a garage front line exactly: the part of the driveway within `reach` of the
+    front is extended up to the line (hull of its near vertices and the line) and anything beyond the
+    line (under the garage) is cut off. `drive` is a shapely (Multi)Polygon, `front` [[x,y],[x,y]]."""
+    from shapely.geometry import MultiPoint
+    (ax_, ay_), (bx_, by_) = front
+    F = LineString(front)
+    d = np.array([bx_ - ax_, by_ - ay_], float); d /= np.linalg.norm(d); n = np.array([-d[1], d[0]])
+    cen = np.array(drive.centroid.coords[0])
+    if (cen - [ax_, ay_]) @ n > 0:
+        n = -n                                     # n points from the line into the building
+    near = [pt for g_ in getattr(drive, "geoms", [drive]) for pt in g_.exterior.coords if F.distance(Point(pt)) < reach]
+    if not near:
+        return drive
+    fill = MultiPoint(near + list(front)).convex_hull
+    big = 200.0
+    beyond = Polygon([(ax_ - d[0] * big, ay_ - d[1] * big), (bx_ + d[0] * big, by_ + d[1] * big),
+                      (bx_ + d[0] * big + n[0] * big, by_ + d[1] * big + n[1] * big),
+                      (ax_ - d[0] * big + n[0] * big, ay_ - d[1] * big + n[1] * big)])
+    # only clip what lies within the front's own span (+ reach), so the rest of the driveway is untouched
+    span = F.buffer(reach, cap_style="flat")
+    return unary_union([drive, fill.intersection(span)]).difference(beyond.intersection(span))
+
+
+def apply_breaklines(Z, xs, ys, walls, c, reach=0.35, snap=None):
     """Grid nodes within half a wall thickness + 1.5 cells of a wall segment take the grade sampled
     `reach` m beyond that band on their own side (from the unmodified surface): the step happens
-    inside the wall instead of as a ramp poking out of its faces."""
+    inside the wall instead of as a ramp poking out of its faces.
+
+    ``snap`` (a pair of node-coordinate arrays [X, Y], modified in place): nodes within half a thickness
+    + one cell of the wall line are also moved onto the wall face on their side, so every terrain
+    triangle that crosses the wall runs from one face to the other, inside the wall (a grid cell is as
+    wide as a wall is thick, so without it a ramp would stand out of the face)."""
     Z0 = Z.copy()
     X, Y = np.meshgrid(xs, ys)
     x0, y0 = xs[0], ys[0]
@@ -100,7 +147,7 @@ def apply_breaklines(Z, xs, ys, walls, c, reach=0.35):
     for line, th in walls:
         band = th / 2 + 1.5 * c
         for (ax_, ay_), (bx_, by_) in zip(line[:-1], line[1:]):
-            d = np.array([bx_ - ax_, by_ - ay_]); ln = float(np.hypot(*d))
+            d = np.array([bx_ - ax_, by_ - ay_], float); ln = float(np.hypot(*d))
             if ln < 1e-6:
                 continue
             d /= ln; n = np.array([-d[1], d[0]])
@@ -113,6 +160,11 @@ def apply_breaklines(Z, xs, ys, walls, c, reach=0.35):
             px = ax_ + s[m] * d[0] + sg * (band + reach) * n[0]
             py = ay_ + s[m] * d[1] + sg * (band + reach) * n[1]
             Z[m] = zb(px, py)
+            if snap is not None:
+                ms = (s >= 0) & (s <= ln) & (np.abs(t) < th / 2 + c)
+                sg = np.sign(t[ms]); sg[sg == 0] = 1
+                snap[0][ms] = ax_ + s[ms] * d[0] + sg * (th / 2) * n[0]
+                snap[1][ms] = ay_ + s[ms] * d[1] + sg * (th / 2) * n[1]
     return Z
 
 
@@ -147,6 +199,8 @@ def main():
     ap.add_argument("--curb-cut", type=float, default=0.6,
                     help="no curb within this distance of a driveway polygon (curb cut at the driveway mouth); 0 = off")
     ap.add_argument("--curb-cut-uses", default="Driveway", help="comma list of SurfaceUse values that cut the curb")
+    ap.add_argument("--garage-front", help='json {"front": [[x,y],[x,y]]}: the driveway apron is extended to / cut at this '
+                                           "garage-door line (the measured wall face)")
     ap.add_argument("--paving-like", help="json polygons where returns are not terrain (street with cars, driveways)")
     ap.add_argument("--house-extra", help="json list of polygons treated as building (no lawn/beds; e.g. a garage under a deck)")
     ap.add_argument("project"); ap.add_argument("features"); ap.add_argument("out")
@@ -236,8 +290,9 @@ def main():
         Z = median_filter(Z, size=3, mode="nearest")      # (the solid merge filtered its ground part already)
 
     # ---- grade pads and retaining-wall breaklines ------------------------------
-    if a.grade:
-        for pad in json.load(open(a.grade)):
+    pads = grade_pads(json.load(open(a.grade))) if a.grade else []
+    if pads:
+        for pad in pads:
             pp = Polygon(pad["polygon"]).buffer(0)
             bl = float(pad.get("blend", 0.0))
             dist = shapely.distance(pp, shapely.points(X.ravel(), Y.ravel())).reshape(X.shape)
@@ -245,8 +300,9 @@ def main():
             Z = w * float(pad["z"]) + (1 - w) * Z
             print(f"terrain: grade pad z={pad['z']} over {pp.area:.1f} m2")
     walls = wall_lines(json.load(open(a.breaklines))) if a.breaklines else []
+    node_xy = [X.copy(), Y.copy()]          # mesh vertex positions (nodes next to walls move onto the faces)
     if walls:
-        Z = apply_breaklines(Z, xs, ys, walls, c)
+        Z = apply_breaklines(Z, xs, ys, walls, c, snap=node_xy)
         print(f"terrain: {len(walls)} retaining-wall breaklines")
 
     # ---- surface classes --------------------------------------------------
@@ -274,6 +330,13 @@ def main():
         concrete = unary_union([concrete, unary_union(sw_lines).difference(street)])
     if a.paving:
         concrete = unary_union([concrete] + [Polygon(p).buffer(0) for p in json.load(open(a.paving))])
+    if a.garage_front and os.path.exists(a.garage_front):
+        gf = json.load(open(a.garage_front))
+        gf = gf.get("front", gf) if isinstance(gf, dict) else gf
+        before = concrete.area
+        concrete = align_apron(concrete, gf[:2])
+        print(f"paving: apron aligned to the garage front {gf[:2]} ({concrete.area - before:+.1f} m2)")
+    rocks = polys_of(F.get("rocks", []))       # traced boulder / outcrop outlines (faces inside get the rock class)
     window = Polygon([(-h, -h), (h, -h), (h, h), (-h, h)])
     street, concrete = street.intersection(window), concrete.intersection(window)
     beds = house.buffer(a.bed_width, join_style="mitre").difference(house) if a.bed_width > 0 else Polygon()
@@ -303,9 +366,22 @@ def main():
     for k, geom in ((1, beds), (2, concrete), (3, street), (4, house.buffer(-c * 0.75))):
         if not geom.is_empty:
             cls[shapely.contains_xy(geom, fx, fy)] = k
+    in_rock = shapely.contains_xy(rocks, fx, fy) if not rocks.is_empty else np.zeros(fx.shape, bool)
+    # rock faces: raised by the rock merge, or inside a traced rock outline; plus the steep flanks next to them
+    # (> 45 deg within two faces), so a boulder is stone down to its foot instead of only on its top
+    nyf, nxf = Z.shape[0] - 1, Z.shape[1] - 1
+    rrf = rock_rise[:-1, :-1] + rock_rise[:-1, 1:] + rock_rise[1:, :-1] + rock_rise[1:, 1:]
+    rockf = (rrf > 4 * a.rock_face) if a.rock_face > 0 else np.zeros((nyf, nxf), bool)
+    rockf |= (in_rock & (cls == 0)).reshape(nyf, nxf)
+    if rockf.any():
+        from scipy.ndimage import binary_dilation as _bd
+        gzx = (Z[:-1, 1:] + Z[1:, 1:] - Z[:-1, :-1] - Z[1:, :-1]) / (2 * c)
+        gzy = (Z[1:, :-1] + Z[1:, 1:] - Z[:-1, :-1] - Z[:-1, 1:]) / (2 * c)
+        rockf |= _bd(rockf, iterations=2) & (np.hypot(gzx, gzy) > 1.0)
+    rockf = rockf.ravel()
     # paved surfaces are planar-ish: smooth them more (curb faces come separately)
     ny, nx = Z.shape
-    verts = np.column_stack([X.ravel(), Y.ravel(), Z.ravel()])
+    verts = np.column_stack([node_xy[0].ravel(), node_xy[1].ravel(), Z.ravel()])
     faces, fcls = [], []
     for j in range(ny - 1):
         for i in range(nx - 1):
@@ -319,19 +395,40 @@ def main():
             faces.append([a0, a0 + 1, a0 + nx + 1, a0 + nx])
             # ground everywhere (paving and beds are crisp draped overlays), except boulders / outcrops the
             # rock merge raised: those get the rock class (add_site gives them a lighter stone material)
-            rr = rock_rise[j, i] + rock_rise[j, i + 1] + rock_rise[j + 1, i] + rock_rise[j + 1, i + 1]
-            fcls.append(5 if a.rock_face > 0 and rr > 4 * a.rock_face else 0)
+            fcls.append(5 if rockf[k] else 0)
 
     # ---- crisp draped overlays (exact polygon edges, z from the terrain) -----------
     x0g, y0g = xs[0], ys[0]
 
     def zbil(x, y):
+        """Bilinear terrain height, raised by half the cell's twist: a non-planar grid cell is rendered as two
+        triangles that can stand up to |twist| / 4 above the bilinear surface, and a draped overlay must
+        not let the terrain poke through it on rough ground (rock gardens, boulder feet)."""
         fi = np.clip((np.asarray(x) - x0g) / c, 0, nx - 1.001)
         fj = np.clip((np.asarray(y) - y0g) / c, 0, ny - 1.001)
         i, j = fi.astype(int), fj.astype(int)
         tx, ty = fi - i, fj - j
-        return (Z[j, i] * (1 - tx) * (1 - ty) + Z[j, i + 1] * tx * (1 - ty)
-                + Z[j + 1, i] * (1 - tx) * ty + Z[j + 1, i + 1] * tx * ty)
+        z00, z10, z01, z11 = Z[j, i], Z[j, i + 1], Z[j + 1, i], Z[j + 1, i + 1]
+        twist = np.abs(z00 + z11 - z10 - z01)
+        return (z00 * (1 - tx) * (1 - ty) + z10 * tx * (1 - ty) + z01 * (1 - tx) * ty + z11 * tx * ty) + np.minimum(0.5 * twist, 0.15)
+
+    # near a retaining wall the grid cell straddling it mixes the two grades: sample an overlay vertex at the
+    # edge of the breakline band on its own side, so paving and beds meet the wall face at their own level
+    segs = []
+    for line, th in walls:
+        for (ax_, ay_), (bx_, by_) in zip(line[:-1], line[1:]):
+            ln = float(np.hypot(bx_ - ax_, by_ - ay_))
+            if ln > 1e-6:
+                segs.append((ax_, ay_, (bx_ - ax_) / ln, (by_ - ay_) / ln, ln, th / 2 + 1.5 * c))
+
+    def zside(x, y):
+        for ax_, ay_, dx, dy, ln, band in segs:
+            s_ = (x - ax_) * dx + (y - ay_) * dy
+            t_ = -(x - ax_) * dy + (y - ay_) * dx
+            if -0.05 <= s_ <= ln + 0.05 and abs(t_) < band:
+                tt = band if t_ >= 0 else -band
+                return zbil(ax_ + s_ * dx - tt * dy, ay_ + s_ * dy + tt * dx)
+        return zbil(x, y)
 
     def drape(geom, lift, step=None):
         step = step or max(c, 0.25)     # same cells as the terrain grid, so the lawn never pokes through
@@ -351,13 +448,14 @@ def main():
                     cs = list(t.exterior.coords)[:3]
                     base = len(verts)
                     for x, y in cs:
-                        verts.append([round(x, 4), round(y, 4), round(float(zbil(x, y)) + lift, 4)])
+                        verts.append([round(x, 4), round(y, 4), round(float(zside(x, y)) + lift, 4)])
                     tris.append([base, base + 1, base + 2])
         return verts, tris
 
     overlays = {}
-    for name, geom, lift in (("street", street, 0.015), ("concrete", concrete.difference(house), 0.03),
-                             ("rock_bed", beds.difference(house), 0.02)):
+    wallpoly = unary_union([LineString(l_).buffer(th / 2, cap_style="flat") for l_, th in walls]) if walls else Polygon()
+    for name, geom, lift in (("street", street, 0.015), ("concrete", concrete.difference(house).difference(wallpoly), 0.03),
+                             ("rock_bed", beds.difference(house).difference(wallpoly), 0.02)):
         v, t = drape(geom.buffer(0), lift)
         overlays[name] = {"verts": v, "tris": t}
 
@@ -366,8 +464,15 @@ def main():
 
     # ---- curbs along street edges -------------------------------------------
     curbs = []
-    if not street.is_empty:
+    if F.get("curbs") is not None:
+        # explicit curb lines (a street edge with no raised curb, e.g. a bank meeting the asphalt, gets none)
+        lines_ = [LineString(gl) for fe in F["curbs"] for gl in fe["geoms"] if len(gl) >= 2]
+        edge = unary_union(lines_).intersection(window.buffer(-0.5)) if lines_ else LineString()
+    elif not street.is_empty:
         edge = street.boundary.intersection(window.buffer(-0.5))
+    else:
+        edge = LineString()
+    if not edge.is_empty:
         if a.curb_cut > 0:
             # curb cut: no curb across a driveway mouth (the driveway meets the street flush)
             uses = {u.strip() for u in a.curb_cut_uses.split(",") if u.strip()}
@@ -403,12 +508,24 @@ def main():
             parcel = [[x, y] for x, y in ring]
     points = [{"kind": "hydrant", "xy": fe["geoms"][0]} for fe in F.get("hydrants", [])]
 
+    # per-vertex rock weight (share of the rock faces around each vertex, smoothed once): add_site blends the
+    # ground and rock materials with it, so a boulder's edge is a soft transition rather than a sawtooth
+    from scipy.ndimage import uniform_filter as _uf
+    rk = rockf.reshape(nyf, nxf).astype(float)
+    vw = np.zeros((ny, nx)); vn = np.zeros((ny, nx))
+    for dj in (0, 1):
+        for di in (0, 1):
+            vw[dj:dj + nyf, di:di + nxf] += rk; vn[dj:dj + nyf, di:di + nxf] += 1
+    vrock = _uf(vw / np.maximum(vn, 1), 5, mode="nearest")
     out = {"cell": c, "classes": CLASSES, "verts": np.round(verts, 4).tolist(), "faces": faces, "face_class": fcls,
+           "vertex_rock": np.round(vrock.ravel(), 2).tolist(),
            "grid": {"x0": float(xs[0]), "y0": float(ys[0]), "nx": int(nx), "ny": int(ny), "cell": c,
                     "z": np.round(Z, 4).ravel().tolist()},
            "overlays": overlays, "curbs": curbs, "edging": edging, "parcel": parcel, "points": points,
            "cutouts": [[[round(x, 3), round(y, 3)] for x, y in g_.exterior.coords] for g_ in getattr(cut, "geoms", [cut]) if not g_.is_empty],
            "stats": {"ground_points": int(len(g)), "z_min": float(np.nanmin(Z)), "z_max": float(np.nanmax(Z)),
+                     "cell": c, "nodes": int(Z.size), "rock_faces": int(sum(1 for v in fcls if v == 5)),
+                     "rock_raised_nodes": int((rock_rise > 0.05).sum()), "curb_lines": len(curbs),
                      "street_m2": street.area, "concrete_m2": concrete.area, "bed_m2": beds.area}}
     json.dump(out, open(a.out, "w"))
     print(json.dumps(out["stats"], indent=1), len(faces), "faces")
