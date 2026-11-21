@@ -29,7 +29,7 @@ from shapely.geometry import Polygon, LineString, Point, MultiPolygon
 from shapely.ops import unary_union
 import shapely
 
-CLASSES = ["lawn", "rock_bed", "concrete", "street", "house"]
+CLASSES = ["ground", "rock_bed", "concrete", "street", "house", "rock"]   # face_class indexes this ("ground": soil / grass)
 
 
 def polys_of(feats, pred=lambda p: True):
@@ -75,14 +75,78 @@ def _wing_union(model):
     return unary_union(polys)
 
 
+def wall_lines(data):
+    """Retaining-wall lines for breaklines: a yard.json dict (items of kind retaining_wall) or a list of
+    {"line": [[x,y],...], "thickness": t} -> [(line, thickness)]."""
+    items = data.get("items", []) if isinstance(data, dict) else data
+    return [(it["line"], float(it.get("thickness", 0.3))) for it in items
+            if isinstance(it, dict) and it.get("line") and it.get("kind", "retaining_wall") == "retaining_wall"]
+
+
+def apply_breaklines(Z, xs, ys, walls, c, reach=0.35):
+    """Grid nodes within half a wall thickness + 1.5 cells of a wall segment take the grade sampled
+    `reach` m beyond that band on their own side (from the unmodified surface): the step happens
+    inside the wall instead of as a ramp poking out of its faces."""
+    Z0 = Z.copy()
+    X, Y = np.meshgrid(xs, ys)
+    x0, y0 = xs[0], ys[0]
+    ny, nx = Z.shape
+
+    def zb(x, y):
+        fi = np.clip((x - x0) / c, 0, nx - 1.001); fj = np.clip((y - y0) / c, 0, ny - 1.001)
+        i, j = fi.astype(int), fj.astype(int); tx, ty = fi - i, fj - j
+        return (Z0[j, i] * (1 - tx) * (1 - ty) + Z0[j, i + 1] * tx * (1 - ty)
+                + Z0[j + 1, i] * (1 - tx) * ty + Z0[j + 1, i + 1] * tx * ty)
+    for line, th in walls:
+        band = th / 2 + 1.5 * c
+        for (ax_, ay_), (bx_, by_) in zip(line[:-1], line[1:]):
+            d = np.array([bx_ - ax_, by_ - ay_]); ln = float(np.hypot(*d))
+            if ln < 1e-6:
+                continue
+            d /= ln; n = np.array([-d[1], d[0]])
+            s = (X - ax_) * d[0] + (Y - ay_) * d[1]
+            t = (X - ax_) * n[0] + (Y - ay_) * n[1]
+            m = (s >= 0) & (s <= ln) & (np.abs(t) <= band)
+            if not m.any():
+                continue
+            sg = np.sign(t[m]); sg[sg == 0] = 1
+            px = ax_ + s[m] * d[0] + sg * (band + reach) * n[0]
+            py = ay_ + s[m] * d[1] + sg * (band + reach) * n[1]
+            Z[m] = zb(px, py)
+    return Z
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--ground", default="auto", choices=["auto", "class2", "filtered"],
                     help="terrain from class-2 returns, or a filtered ground surface (auto: filtered when <10%% are class 2)")
     ap.add_argument("--ground-exclude", help="json list of polygons that are never ground (decks, a garage under a deck)")
     ap.add_argument("--keep-rocks", action="store_true", help="filtered terrain: keep boulders/outcrops from no-canopy last returns")
+    ap.add_argument("--rocks", default="solid", choices=["solid", "lowest"],
+                    help="--keep-rocks method. solid (default): terrain = max(ground, solid surface) where solid = cells whose "
+                         "neighbourhood is single-return and planar (lidar.solid_surface); lowest: lowest last return of "
+                         "every no-canopy cell (older, noisier: shrub tops become ground)")
     ap.add_argument("--rock-max", type=float, default=4.5, help="max height of a kept rock above the filtered ground (m)")
     ap.add_argument("--canopy-frac", type=float, default=0.2, help="cells with more multi-return pulses than this are canopy")
+    ap.add_argument("--solid-single", type=float, default=0.9, help="solid surface: min single-return fraction within --solid-radius")
+    ap.add_argument("--solid-rms", type=float, default=0.2, help="solid surface: max plane-fit RMS within --solid-radius (m)")
+    ap.add_argument("--solid-radius", type=float, default=0.6, help="solid surface: neighbourhood half-size (m)")
+    ap.add_argument("--solid-rise", type=float, default=1.0,
+                    help="solid cells more than this above the ground surface must form a patch of --solid-patch m^2")
+    ap.add_argument("--solid-patch", type=float, default=0.75, help="min area (m^2) of a tall solid patch (boulder)")
+    ap.add_argument("--rock-face", type=float, default=0.3,
+                    help="terrain faces raised more than this by the rock merge get surface class 'rock' (0 = off)")
+    ap.add_argument("--ground-cell", type=float, help="cell of the morphological ground filter (default max(--cell, 0.5))")
+    ap.add_argument("--ground-stat", default="median", choices=["min", "median"],
+                    help="height of a filtered ground cell: lowest return, or median of returns within 0.25 m of it")
+    ap.add_argument("--breaklines", help="json with retaining walls (a yard.json: items of kind retaining_wall, or a list of "
+                                         "{line, thickness}): grid nodes next to a wall take the grade of their own side, so "
+                                         "the terrain steps inside the wall instead of ramping across it")
+    ap.add_argument("--grade", help="json list of flat pads {polygon, z[, blend]}: terrain inside set to z (areaways, patios "
+                                    "cut into a slope), blended back to the surface over `blend` m outside")
+    ap.add_argument("--curb-cut", type=float, default=0.6,
+                    help="no curb within this distance of a driveway polygon (curb cut at the driveway mouth); 0 = off")
+    ap.add_argument("--curb-cut-uses", default="Driveway", help="comma list of SurfaceUse values that cut the curb")
     ap.add_argument("--paving-like", help="json polygons where returns are not terrain (street with cars, driveways)")
     ap.add_argument("--house-extra", help="json list of polygons treated as building (no lawn/beds; e.g. a garage under a deck)")
     ap.add_argument("project"); ap.add_argument("features"); ap.add_argument("out")
@@ -115,6 +179,7 @@ def main():
     xs = np.arange(-h, h + 1e-9, c)
     ys = np.arange(-h, h + 1e-9, c)
     X, Y = np.meshgrid(xs, ys)
+    rock_rise = np.zeros(X.shape)          # how far the rock merge raised each node above the filtered ground
     if a.ground == "filtered" or (a.ground == "auto" and len(g) < 0.1 * len(pts)):
         # LiDAR delivered with few class-2 points (e.g. Montana statewide QL1): find the ground with the
         # progressive morphological filter on last returns; the house, decks and anything listed in
@@ -125,10 +190,25 @@ def main():
         if a.ground_exclude:
             ex += [Polygon(q).buffer(0) for q in json.load(open(a.ground_exclude))]
         exu = unary_union(ex)
-        surf = L.ground_surface(pts, cell=c, exclude=exu)
+        surf = L.ground_surface(pts, cell=a.ground_cell or max(c, 0.5), exclude=exu, zstat=a.ground_stat)
         Z = L.surface_z(surf, X.ravel(), Y.ravel()).reshape(X.shape) - datum
-        print(f"terrain: filtered ground surface ({int(surf['ground'].sum())} ground cells)")
-        if a.keep_rocks:
+        print(f"terrain: filtered ground surface ({int(surf['ground'].sum())} ground cells, {a.ground_stat} per cell)")
+        if a.keep_rocks and a.rocks == "solid":
+            # boulders and outcrops are real terrain the morphological filter shaves off: take the max of the
+            # ground and the solid surface (single-return, planar neighbourhood), never on the building, decks,
+            # paving with cars (--paving-like) or rising more than --rock-max
+            Zg = median_filter(Z, size=3, mode="nearest")
+            sol = L.solid_surface(np.column_stack([pts[:, :2], pts[:, 2] - datum, pts[:, 3:]]),
+                                  xs[0] - c / 2, ys[0] - c / 2, len(xs), len(ys), cell=c, radius=a.solid_radius,
+                                  min_single=a.solid_single, max_rms=a.solid_rms)
+            Zs = sol["Z"]
+            nog = unary_union([exu.buffer(0.5)] + [Polygon(q).buffer(0) for q in (json.load(open(a.paving_like)) if a.paving_like else [])])
+            Zs[shapely.contains_xy(nog, X, Y)] = np.nan
+            Z, acc = L.merge_solid(Zg, Zs, c, rise=a.solid_rise, min_patch=a.solid_patch, max_rise=a.rock_max)
+            rock_rise = Z - Zg
+            print(f"terrain: solid surface raises {int((rock_rise > 0.05).sum())} nodes "
+                  f"({int((rock_rise > a.rock_face).sum())} by > {a.rock_face} m, max {rock_rise.max():.2f} m)")
+        elif a.keep_rocks:
             # the morphological filter shaves boulders and rock outcrops (real terrain). Where no pulse split
             # (no canopy), take the lowest last return of each cell instead, unless the cell is building, deck,
             # paving/street (cars) or rises implausibly high above the filtered ground.
@@ -152,7 +232,22 @@ def main():
         Z = griddata((gx, gy), gz, (X, Y), method="linear")
         Zn = griddata((gx, gy), gz, (X, Y), method="nearest")
         Z = np.where(np.isnan(Z), Zn, Z)
-    Z = median_filter(Z, size=3, mode="nearest")
+    if not (a.keep_rocks and a.rocks == "solid"):
+        Z = median_filter(Z, size=3, mode="nearest")      # (the solid merge filtered its ground part already)
+
+    # ---- grade pads and retaining-wall breaklines ------------------------------
+    if a.grade:
+        for pad in json.load(open(a.grade)):
+            pp = Polygon(pad["polygon"]).buffer(0)
+            bl = float(pad.get("blend", 0.0))
+            dist = shapely.distance(pp, shapely.points(X.ravel(), Y.ravel())).reshape(X.shape)
+            w = np.clip(1.0 - dist / bl, 0.0, 1.0) if bl > 0 else (dist <= 0).astype(float)
+            Z = w * float(pad["z"]) + (1 - w) * Z
+            print(f"terrain: grade pad z={pad['z']} over {pp.area:.1f} m2")
+    walls = wall_lines(json.load(open(a.breaklines))) if a.breaklines else []
+    if walls:
+        Z = apply_breaklines(Z, xs, ys, walls, c)
+        print(f"terrain: {len(walls)} retaining-wall breaklines")
 
     # ---- surface classes --------------------------------------------------
     house = unary_union([_wing_poly(w) for w in model["wings"] if not w.get("roof_only")])
@@ -222,7 +317,10 @@ def main():
                 continue   # the hole is closed by the overlays around it and by what add_site.py puts in it
             a0 = j * nx + i
             faces.append([a0, a0 + 1, a0 + nx + 1, a0 + nx])
-            fcls.append(0)   # lawn everywhere; paving and beds are crisp draped overlays
+            # ground everywhere (paving and beds are crisp draped overlays), except boulders / outcrops the
+            # rock merge raised: those get the rock class (add_site gives them a lighter stone material)
+            rr = rock_rise[j, i] + rock_rise[j, i + 1] + rock_rise[j + 1, i] + rock_rise[j + 1, i + 1]
+            fcls.append(5 if a.rock_face > 0 and rr > 4 * a.rock_face else 0)
 
     # ---- crisp draped overlays (exact polygon edges, z from the terrain) -----------
     x0g, y0g = xs[0], ys[0]
@@ -270,6 +368,13 @@ def main():
     curbs = []
     if not street.is_empty:
         edge = street.boundary.intersection(window.buffer(-0.5))
+        if a.curb_cut > 0:
+            # curb cut: no curb across a driveway mouth (the driveway meets the street flush)
+            uses = {u.strip() for u in a.curb_cut_uses.split(",") if u.strip()}
+            mouths = polys_of(imp, lambda p: p.get("SurfaceUse") in uses)
+            if not mouths.is_empty:
+                edge = edge.difference(mouths.buffer(a.curb_cut))
+        edge = shapely.line_merge(edge) if edge.geom_type == "MultiLineString" else edge
         lines = list(edge.geoms) if hasattr(edge, "geoms") else [edge]
         for ln in lines:
             if ln.length < 1:

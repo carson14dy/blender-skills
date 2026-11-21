@@ -276,7 +276,26 @@ def suggest_wing(planes, roof_outline, ground_eave_hint=None, wing_id="M"):
 # hillside / class-1-only LiDAR: a ground SURFACE, plane acceptance, canopy removal
 # ---------------------------------------------------------------------------
 
-def ground_surface(local, cell=0.5, windows=(1.5, 3.0, 6.0, 12.0), slope=0.6, dh0=0.3, dh_max=3.0, exclude=None):
+def _cell_median_near_min(iy, ix, z, zmin, band):
+    """Per-cell median of the values within ``band`` of the cell minimum (nan where a cell has none)."""
+    ny, nx = zmin.shape
+    keep = z <= zmin[iy, ix] + band
+    cid = (iy * nx + ix)[keep]
+    zz = z[keep]
+    order = np.lexsort((zz, cid))
+    cid, zz = cid[order], zz[order]
+    cnt = np.bincount(cid, minlength=ny * nx)
+    start = np.concatenate([[0], np.cumsum(cnt)[:-1]])
+    out = np.full(ny * nx, np.nan)
+    has = cnt > 0
+    lo = start[has] + (cnt[has] - 1) // 2
+    hi = start[has] + cnt[has] // 2
+    out[has] = 0.5 * (zz[lo] + zz[hi])
+    return out.reshape(ny, nx)
+
+
+def ground_surface(local, cell=0.5, windows=(1.5, 3.0, 6.0, 12.0), slope=0.6, dh0=0.3, dh_max=3.0, exclude=None,
+                   zstat="min", band=0.25):
     """Progressive morphological ground filter (Zhang et al. 2003) on the lowest LAST return per cell.
 
     Steep lots break a single ground plane (heights above it tilt with the hill) and many 3DEP sets
@@ -284,6 +303,11 @@ def ground_surface(local, cell=0.5, windows=(1.5, 3.0, 6.0, 12.0), slope=0.6, dh
     lowest return is within dh(w) = min(dh0 + slope * w, dh_max) of the opened surface. Class 2
     points are always ground. ``exclude`` (shapely polygon) masks cells that cannot be ground
     (a building). Returns {x0, y0, cell, nx, ny, Z (filled), ground (bool grid)}.
+
+    ``zstat="median"``: a ground cell's height is the median of its last returns within ``band`` of
+    the cell minimum instead of the minimum itself. The minimum of n noisy returns on a slope sits
+    low by ~slope * cell / 2 plus the low tail of the noise (about 0.1 m on a 0.5 m cell of a steep
+    lot); the band keeps grass tops and low shrubs out of the median.
     """
     from scipy import ndimage
     from scipy.interpolate import griddata
@@ -294,6 +318,7 @@ def ground_surface(local, cell=0.5, windows=(1.5, 3.0, 6.0, 12.0), slope=0.6, dh
     zmin = np.full((ny, nx), np.inf)
     ix = ((last[:, 0] - x0) / cell).astype(int); iy = ((last[:, 1] - y0) / cell).astype(int)
     np.minimum.at(zmin, (iy, ix), last[:, 2])
+    zval = _cell_median_near_min(iy, ix, last[:, 2], zmin, band) if zstat == "median" else None
     has = np.isfinite(zmin)
     if not has.any():
         raise ValueError("no points")
@@ -319,9 +344,12 @@ def ground_surface(local, cell=0.5, windows=(1.5, 3.0, 6.0, 12.0), slope=0.6, dh
         jx = ((cls2[:, 0] - x0) / cell).astype(int); jy = ((cls2[:, 1] - y0) / cell).astype(int)
         ground[jy, jx] = True
         np.minimum.at(zmin, (jy, jx), cls2[:, 2])
+        if zval is not None:
+            fresh = np.isnan(zval[jy, jx])
+            zval[jy[fresh], jx[fresh]] = zmin[jy[fresh], jx[fresh]]
     gy_, gx_ = np.nonzero(ground & np.isfinite(zmin))
     pts = np.column_stack([x0 + (gx_ + 0.5) * cell, y0 + (gy_ + 0.5) * cell])
-    vals = zmin[gy_, gx_]
+    vals = zmin[gy_, gx_] if zval is None else np.where(np.isnan(zval[gy_, gx_]), zmin[gy_, gx_], zval[gy_, gx_])
     X, Y = np.meshgrid(x0 + (np.arange(nx) + 0.5) * cell, y0 + (np.arange(ny) + 0.5) * cell)
     Z = griddata(pts, vals, (X, Y), method="linear")
     Zn = griddata(pts, vals, (X, Y), method="nearest")
@@ -338,6 +366,85 @@ def surface_z(surf, x, y):
     tx, ty = fx - i, fy - j
     Z = surf["Z"]
     return (Z[j, i] * (1 - tx) * (1 - ty) + Z[j, i + 1] * tx * (1 - ty) + Z[j + 1, i] * (1 - tx) * ty + Z[j + 1, i + 1] * tx * ty)
+
+
+def solid_surface(local, x0, y0, nx, ny, cell=0.25, radius=0.6, min_single=0.9, max_rms=0.2):
+    """Top of hard, smooth surfaces (bare ground, boulders, rock outcrops, paving, roofs) on a grid.
+
+    A cell is *solid* when, in the (2k+1)^2-cell window around it (k = radius / cell), at least
+    ``min_single`` of all returns come from single-return pulses (canopy and shrubs split pulses) and a
+    plane through the window's last returns fits with RMS < ``max_rms``. Its height is the highest
+    single return in the cell, so a boulder keeps its full height where a ground filter shaves it off.
+    Cell (i, j) spans x0 + i*cell .. x0 + (i+1)*cell (same for y). Returns {Z (nan = not solid),
+    single_frac, rms, count}. Mask buildings, decks and cars yourself (they are solid too).
+    """
+    from scipy import ndimage
+    x, y, z = local[:, 0], local[:, 1], local[:, 2]
+    nret = local[:, 5] if local.shape[1] >= 6 else np.ones(len(local))
+    last = local[:, 4] >= nret if local.shape[1] >= 6 else np.ones(len(local), bool)
+    i = np.floor((x - x0) / cell).astype(int); j = np.floor((y - y0) / cell).astype(int)
+    ok = (i >= 0) & (i < nx) & (j >= 0) & (j < ny)
+    k = max(1, int(round(radius / cell)))
+    size = 2 * k + 1
+
+    def acc(w, sel):
+        g = np.zeros((ny, nx))
+        np.add.at(g, (j[sel], i[sel]), w[sel])
+        return ndimage.uniform_filter(g, size, mode="constant") * size * size
+
+    allp = ok
+    n_all = acc(np.ones(len(x)), allp)
+    n_single = acc((nret == 1).astype(float), allp)
+    sel = ok & last
+    # plane moments in coordinates relative to the grid origin (keeps the sums well conditioned)
+    xr, yr = x - x0, y - y0
+    one = np.ones(len(x))
+    S = {n: acc(v, sel) for n, v in (("n", one), ("x", xr), ("y", yr), ("z", z), ("xx", xr * xr), ("xy", xr * yr),
+                                    ("yy", yr * yr), ("xz", xr * z), ("yz", yr * z), ("zz", z * z))}
+    A = np.stack([np.stack([S["xx"], S["xy"], S["x"]], -1), np.stack([S["xy"], S["yy"], S["y"]], -1),
+                  np.stack([S["x"], S["y"], S["n"]], -1)], -2)
+    b = np.stack([S["xz"], S["yz"], S["z"]], -1)
+    good = S["n"] >= 6
+    coef = np.zeros(b.shape)
+    A_ = A[good] + np.eye(3) * 1e-9
+    coef[good] = np.linalg.solve(A_, b[good][..., None])[..., 0]
+    sse = S["zz"] - np.einsum("...i,...i->...", coef, b)        # sum r^2 = zz - c . b at the LS optimum
+    rms = np.where(good, np.sqrt(np.maximum(sse, 0) / np.maximum(S["n"], 1)), np.inf)
+    frac = n_single / np.maximum(n_all, 1)
+    top = np.full((ny, nx), -np.inf)
+    s1 = ok & (nret == 1)
+    np.maximum.at(top, (j[s1], i[s1]), z[s1])
+    solid = np.isfinite(top) & good & (frac >= min_single) & (rms < max_rms)
+    return {"Z": np.where(solid, top, np.nan), "single_frac": frac, "rms": rms, "count": n_all}
+
+
+def merge_solid(Zg, Zs, cell, rise=1.0, min_patch=0.75, max_rise=None):
+    """Terrain = max(ground surface, solid surface). Solid cells that stand more than ``rise`` above the
+    ground are kept only in 8-connected patches of at least ``min_patch`` m^2 (a lone tall cell is a
+    post, a sign or a bird, a boulder is a patch); ``max_rise`` drops anything taller. Returns
+    (Z, accepted mask)."""
+    from scipy import ndimage
+    d = Zs - Zg
+    acc = np.isfinite(d) & (d > 0)
+    if max_rise is not None:
+        acc &= d < max_rise
+    tall = acc & (d > rise)
+    lab, n = ndimage.label(tall, np.ones((3, 3)))
+    if n:
+        area = ndimage.sum(tall, lab, range(1, n + 1)) * cell * cell
+        small = np.isin(lab, [q + 1 for q, a in enumerate(area) if a < min_patch])
+        acc &= ~small
+    # sampling holes inside an accepted patch (an empty cell, one rough window on a boulder top) would
+    # drop to the ground below as a pit: fill cells the closing of the patch covers from their neighbours
+    Zm = np.where(acc, Zs, Zg)
+    holes = ndimage.binary_closing(acc, np.ones((3, 3)), iterations=2) & ~acc
+    if holes.any():
+        w = ndimage.uniform_filter(acc.astype(float), 3)
+        v = ndimage.uniform_filter(np.where(acc, Zs, 0.0), 3) / np.maximum(w, 1e-9)
+        fill = holes & (w > 0.3) & (v > Zg)
+        Zm = np.where(fill, v, Zm)
+        acc = acc | fill
+    return Zm, acc
 
 
 def accept_planes(planes, xyz, min_pts=150, max_rms=0.06, max_slope=1.0, min_area=8.0, cell=0.5):
