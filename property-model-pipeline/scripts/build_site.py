@@ -67,6 +67,10 @@ def main():
     ap.add_argument("--ground", default="auto", choices=["auto", "class2", "filtered"],
                     help="terrain from class-2 returns, or a filtered ground surface (auto: filtered when <10%% are class 2)")
     ap.add_argument("--ground-exclude", help="json list of polygons that are never ground (decks, a garage under a deck)")
+    ap.add_argument("--keep-rocks", action="store_true", help="filtered terrain: keep boulders/outcrops from no-canopy last returns")
+    ap.add_argument("--rock-max", type=float, default=4.5, help="max height of a kept rock above the filtered ground (m)")
+    ap.add_argument("--canopy-frac", type=float, default=0.2, help="cells with more multi-return pulses than this are canopy")
+    ap.add_argument("--paving-like", help="json polygons where returns are not terrain (street with cars, driveways)")
     ap.add_argument("--house-extra", help="json list of polygons treated as building (no lawn/beds; e.g. a garage under a deck)")
     ap.add_argument("project"); ap.add_argument("features"); ap.add_argument("out")
     ap.add_argument("--half", type=float, default=34.0); ap.add_argument("--cell", type=float, default=0.5)
@@ -107,9 +111,30 @@ def main():
         ex = [_wing_union(model).buffer(1.0)]
         if a.ground_exclude:
             ex += [Polygon(q).buffer(0) for q in json.load(open(a.ground_exclude))]
-        surf = L.ground_surface(pts, cell=c, exclude=unary_union(ex))
+        exu = unary_union(ex)
+        surf = L.ground_surface(pts, cell=c, exclude=exu)
         Z = L.surface_z(surf, X.ravel(), Y.ravel()).reshape(X.shape) - datum
         print(f"terrain: filtered ground surface ({int(surf['ground'].sum())} ground cells)")
+        if a.keep_rocks:
+            # the morphological filter shaves boulders and rock outcrops (real terrain). Where no pulse split
+            # (no canopy), take the lowest last return of each cell instead, unless the cell is building, deck,
+            # paving/street (cars) or rises implausibly high above the filtered ground.
+            last = pts[:, 4] >= pts[:, 5]
+            ii = np.floor((pts[:, 0] - (xs[0] - c / 2)) / c).astype(int)
+            jj = np.floor((pts[:, 1] - (ys[0] - c / 2)) / c).astype(int)
+            ok = (ii >= 0) & (ii < len(xs)) & (jj >= 0) & (jj < len(ys))
+            zmin = np.full(X.shape, np.inf); cnt = np.zeros(X.shape); multi = np.zeros(X.shape)
+            np.minimum.at(zmin, (jj[ok & last], ii[ok & last]), pts[ok & last, 2] - datum)
+            np.add.at(cnt, (jj[ok], ii[ok]), 1.0)
+            np.add.at(multi, (jj[ok], ii[ok]), (pts[ok, 5] > 1).astype(float))
+            canopy = multi / np.maximum(cnt, 1) > a.canopy_frac
+            from scipy.ndimage import binary_dilation
+            canopy = binary_dilation(canopy, iterations=1)       # trunks and branch edges next to canopy cells
+            keep = np.isfinite(zmin) & ~canopy & (zmin - Z < a.rock_max) & (zmin - Z > -0.5)
+            nog = unary_union([exu.buffer(0.5)] + [Polygon(q).buffer(0) for q in (json.load(open(a.paving_like)) if a.paving_like else [])])
+            keep &= ~shapely.contains_xy(nog, X, Y)
+            Z = np.where(keep, zmin, Z)
+            print(f"terrain: {int(keep.sum())} cells keep their rock/grade returns ({100 * keep.mean():.0f} %)")
     else:
         Z = griddata((gx, gy), gz, (X, Y), method="linear")
         Zn = griddata((gx, gy), gz, (X, Y), method="nearest")

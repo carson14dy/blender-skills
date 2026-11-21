@@ -13,7 +13,16 @@ rock-bed overlays, curb lines, subject parcel, point features). yard.json (model
               "corner": 0.25, "rim_z": z or "rim": 0.10 above grade, "floor_z": z or "pit": 0.6 below grade},
              # cut the pit out of the ground with build_site.py --cutouts (well_outline() gives the polygon)
              {"kind": "meter", "xy": [x,y], "z": 1.0},
-             {"kind": "box", "name": "...", "xy": [x,y], "size": [w,d,h], "z": 0.0, "material": "concrete", "color": [r,g,b]} ],
+             {"kind": "box", "name": "...", "xy": [x,y], "size": [w,d,h], "z": 0.0, "rotation": deg, "material": "concrete", "color": [r,g,b]},
+             {"kind": "boulder", "polygon": [[x,y],...], "top_z": z, "color": [r,g,b]},          # rock rising from the terrain
+             {"kind": "retaining_wall", "line": [[x,y],...], "top_z": z or "height": h, "thickness": 0.3,
+              "material": "stone|concrete|timber", "color": [r,g,b]},
+             {"kind": "fence", "line": [[x,y],...], "height": 1.2, "style": "rail|picket|chain", "color": [r,g,b]},
+             {"kind": "surface", "polygon": [[x,y],...], "color": [[r,g,b],[r,g,b]], "scale": 10, "lift": 0.025, "name": "..."},
+             {"kind": "path", "line": [[x,y],...], "width": 0.9, "color": [[r,g,b],[r,g,b]]},    # draped strip
+             {"kind": "hot_tub", "xy": [x,y], "size": [2.1, 2.1, 0.9], "rotation": deg, "z": deck_z},
+             {"kind": "mailbox" | "light_post", "xy": [x,y], "rotation": deg} ],
+  # every item may carry "z" (absolute base, model frame) instead of sitting on the terrain
   "materials": {"rock_bed": [[r,g,b],[r,g,b]], "lawn": [...], "street": [...], "concrete": [...]},   # two-tone overrides
   "show_parcel": true
 }
@@ -168,6 +177,169 @@ def snap_bottoms(objs, ground, below=0.0, tol=0.06):
     return n
 
 
+def obox(name, xy, wd, z0, z1, rot, c, m):
+    """Box centred on xy, w along the rotated x axis (rot: degrees counter-clockwise)."""
+    t = math.radians(rot)
+    ex, ey = Vector((math.cos(t), math.sin(t), 0)), Vector((-math.sin(t), math.cos(t), 0))
+    o = Vector((xy[0], xy[1], 0))
+    w, d = wd
+    ring = [o + ex * (sx * w / 2) + ey * (sy * d / 2) for sx, sy in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
+    v = [(p.x, p.y, z0) for p in ring] + [(p.x, p.y, z1) for p in ring]
+    f = [[0, 3, 2, 1], [4, 5, 6, 7], [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]]
+    return mesh(name, v, f, c, m)
+
+
+def _base(it, G, x, y):
+    return it["z"] if "z" in it else G.z(x, y, 0)
+
+
+def _two(it, a, b):
+    col = it.get("color")
+    if col and isinstance(col[0], (list, tuple)):
+        return tuple(col[0]), tuple(col[1])
+    if col:
+        return tuple(col), tuple(min(1.0, v * 1.25) for v in col)
+    return a, b
+
+
+def k_boulder(it, G, c, M, i):
+    """Rock: the outline at grade, shrinking in rings to a rounded top at top_z (the LiDAR height)."""
+    from shapely.geometry import Polygon
+    P = Polygon(it["polygon"]).buffer(0)
+    if P.is_empty:
+        return
+    cx, cy = P.centroid.x, P.centroid.y
+    ring0 = list(P.exterior.coords)[:-1]
+    zg = min(G.z(x, y, 0) for x, y in ring0) - 0.15
+    top = it.get("top_z", zg + it.get("height", 1.0))
+    fr = [(0.0, 0.0), (0.15, 0.55), (0.45, 0.88), (0.75, 1.0)]    # (inset fraction, height fraction): a domed rock
+    verts, faces, n = [], [], len(ring0)
+    for f, hz in fr:
+        for x, y in ring0:
+            verts.append((x + (cx - x) * f, y + (cy - y) * f, zg + (top - zg) * hz))
+    for r in range(len(fr) - 1):
+        for k in range(n):
+            a, b = r * n + k, r * n + (k + 1) % n
+            faces.append([a, b, b + n, a + n])
+    faces.append(list(range((len(fr) - 1) * n, len(fr) * n)))
+    rock = textured(f"Rock {i}", *_two(it, (0.42, 0.39, 0.35), (0.58, 0.55, 0.50)), 3.0, 0.6)
+    mesh(it.get("name", f"boulder {i}"), verts, faces, c, rock)
+
+
+def k_retaining_wall(it, G, c, M, i):
+    line = it["line"]
+    th = it.get("thickness", 0.3)
+    m_ = textured(f"Retaining wall {i}", *_two(it, (0.45, 0.43, 0.40), (0.58, 0.56, 0.52)), 4.0, 0.5)
+    for a, b in zip(line[:-1], line[1:]):
+        d = Vector((b[0] - a[0], b[1] - a[1], 0))
+        L = d.length
+        if L < 1e-3:
+            continue
+        d.normalize(); nrm = Vector((-d.y, d.x, 0)) * (th / 2)
+        za, zb = G.z(a[0], a[1], 0) - 0.3, G.z(b[0], b[1], 0) - 0.3
+        ta = it.get("top_z", (za + 0.3) + it.get("height", 0.6)); tb = it.get("top_z_end", ta if "top_z" in it else (zb + 0.3) + it.get("height", 0.6))
+        A, B = Vector((a[0], a[1], 0)), Vector((b[0], b[1], 0))
+        ring = [A - nrm, B - nrm, B + nrm, A + nrm]
+        v = [(p.x, p.y, z) for p, z in zip(ring, (za, zb, zb, za))] + [(p.x, p.y, z) for p, z in zip(ring, (ta, tb, tb, ta))]
+        mesh(f"retaining wall {i}", v, [[0, 3, 2, 1], [4, 5, 6, 7], [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]], c, m_)
+
+
+def k_fence(it, G, c, M, i):
+    H = it.get("height", 1.2)
+    m_ = mat(f"Fence {i}", tuple(it.get("color", (0.35, 0.27, 0.2))), 0.8)
+    style = it.get("style", "rail")
+    line = it["line"]
+    for a, b in zip(line[:-1], line[1:]):
+        d = Vector((b[0] - a[0], b[1] - a[1], 0)); L = d.length
+        if L < 1e-3:
+            continue
+        npost = max(1, int(math.ceil(L / 2.4)))
+        for k in range(npost + 1):
+            p = Vector((a[0], a[1], 0)) + d * (k / npost)
+            z = G.z(p.x, p.y, 0)
+            box(f"fence {i} post", (p.x - 0.045, p.y - 0.045, z - 0.1), (p.x + 0.045, p.y + 0.045, z + H), c, m_)
+        za, zb = G.z(a[0], a[1], 0), G.z(b[0], b[1], 0)
+        dn = d.normalized(); side = Vector((-dn.y, dn.x, 0)) * 0.02
+        for hz in ((0.25, H - 0.08) if style != "picket" else (0.2, H - 0.25)):
+            A, B = Vector((a[0], a[1], za + hz)), Vector((b[0], b[1], zb + hz))
+            v = [A - side, B - side, B + side, A + side]
+            vv = [(p.x, p.y, p.z) for p in v] + [(p.x, p.y, p.z + 0.07) for p in v]
+            mesh(f"fence {i} rail", vv, [[0, 3, 2, 1], [4, 5, 6, 7], [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]], c, m_)
+        if style == "picket":
+            np_ = int(L / 0.14)
+            for k in range(np_):
+                p = Vector((a[0], a[1], 0)) + d * ((k + 0.5) / np_)
+                z = za + (zb - za) * (k + 0.5) / np_
+                box(f"fence {i} picket", (p.x - 0.03, p.y - 0.03, z + 0.05), (p.x + 0.03, p.y + 0.03, z + H - 0.05), c, m_)
+
+
+def _drape(P, G, lift, step=0.5):
+    import shapely
+    from shapely.geometry import Polygon as SP
+    verts, tris = [], []
+    bx0, by0, bx1, by1 = P.bounds
+    gx = math.floor(bx0 / step) * step
+    while gx < bx1:
+        gy = math.floor(by0 / step) * step
+        while gy < by1:
+            cp = P.intersection(SP([(gx, gy), (gx + step, gy), (gx + step, gy + step), (gx, gy + step)]))
+            if not cp.is_empty and cp.area > 1e-4:
+                for t in shapely.constrained_delaunay_triangles(cp).geoms:
+                    if t.area < 1e-6:
+                        continue
+                    b0 = len(verts)
+                    for x, y in list(t.exterior.coords)[:3]:
+                        verts.append((x, y, G.z(x, y, 0) + lift))
+                    tris.append([b0, b0 + 1, b0 + 2])
+            gy += step
+        gx += step
+    return verts, tris
+
+
+def k_surface(it, G, c, M, i):
+    from shapely.geometry import Polygon
+    P = Polygon(it["polygon"]).buffer(0)
+    v, t = _drape(P, G, it.get("lift", 0.025))
+    m_ = textured(f"{it.get('name', 'surface')} {i}", *_two(it, (0.30, 0.27, 0.23), (0.48, 0.44, 0.38)), it.get("scale", 10.0), 0.6)
+    if t:
+        mesh(it.get("name", f"surface {i}"), v, t, c, m_)
+
+
+def k_path(it, G, c, M, i):
+    from shapely.geometry import LineString
+    P = LineString(it["line"]).buffer(it.get("width", 0.9) / 2, cap_style="flat")
+    v, t = _drape(P, G, it.get("lift", 0.03))
+    m_ = textured(f"{it.get('name', 'path')} {i}", *_two(it, (0.55, 0.55, 0.52), (0.62, 0.62, 0.59)), it.get("scale", 4.0), 0.3)
+    if t:
+        mesh(it.get("name", f"path {i}"), v, t, c, m_)
+
+
+def k_hot_tub(it, G, c, M, i):
+    x, y = it["xy"]; z = _base(it, G, x, y)
+    w, d, h = it.get("size", [2.1, 2.1, 0.9])
+    obox("hot tub cabinet", (x, y), (w, d), z, z + h - 0.08, it.get("rotation", 0), c, mat("Hot tub cabinet", tuple(it.get("color", (0.30, 0.22, 0.16))), 0.7))
+    obox("hot tub cover", (x, y), (w - 0.04, d - 0.04), z + h - 0.08, z + h, it.get("rotation", 0), c, mat("Hot tub cover", tuple(it.get("cover_color", (0.22, 0.24, 0.25))), 0.6))
+
+
+def k_mailbox(it, G, c, M, i):
+    x, y = it["xy"]; z = _base(it, G, x, y)
+    m_ = mat("Mailbox", tuple(it.get("color", (0.08, 0.08, 0.08))), 0.4, 0.4)
+    box("mailbox post", (x - 0.05, y - 0.05, z), (x + 0.05, y + 0.05, z + 1.05), c, mat("Mailbox post", (0.25, 0.2, 0.15), 0.8))
+    obox("mailbox", (x, y), (0.48, 0.2), z + 1.05, z + 1.28, it.get("rotation", 0), c, m_)
+
+
+def k_light_post(it, G, c, M, i):
+    x, y = it["xy"]; z = _base(it, G, x, y)
+    m_ = mat("Lamp post", (0.05, 0.05, 0.05), 0.4, 0.5)
+    cylinder("lamp post", (x, y), 0.05, z, z + it.get("height", 1.8), c, m_, seg=12)
+    box("lamp head", (x - 0.13, y - 0.13, z + it.get("height", 1.8)), (x + 0.13, y + 0.13, z + it.get("height", 1.8) + 0.3), c,
+        mat("Lamp glass", (0.85, 0.82, 0.7), 0.3))
+
+
+EXTRA_KINDS = {"boulder": k_boulder, "retaining_wall": k_retaining_wall, "fence": k_fence, "surface": k_surface,
+               "path": k_path, "hot_tub": k_hot_tub, "mailbox": k_mailbox, "light_post": k_light_post}
+
+
 def main():
     blend, scene_path, yard_path, out = args()[:4]
     bpy.ops.wm.open_mainfile(filepath=blend)
@@ -245,8 +417,11 @@ def main():
             cylinder("fire hydrant bonnet", (x, y), 0.13, z + 0.62, z + 0.72, c, M["hydrant"])
             box("fire hydrant nozzle", (x - 0.2, y - 0.05, z + 0.42), (x + 0.2, y + 0.05, z + 0.52), c, M["hydrant"])
     for i, it in enumerate(Y.get("items", [])):
-        x, y = it["xy"]; z = G.z(x, y, 0)
         k = it["kind"]
+        if k in EXTRA_KINDS:
+            EXTRA_KINDS[k](it, G, c, M, i)
+            continue
+        x, y = it["xy"]; z = G.z(x, y, 0)
         if k == "ac_unit":
             w, d, h = it.get("size", [0.75, 0.75, 0.8])
             box("pad (AC)", (x - w / 2 - 0.08, y - d / 2 - 0.08, z - 0.05), (x + w / 2 + 0.08, y + d / 2 + 0.08, z + 0.06), c, M["concrete"])
@@ -286,7 +461,7 @@ def main():
             w, d, h = it.get("size", [0.5, 0.5, 0.5])
             z += it.get("z", 0.0)
             m_ = mat(f"{it.get('name', 'item')} colour", tuple(it["color"]), 0.6) if it.get("color") else M.get(it.get("material", "concrete"), M["concrete"])
-            box(it.get("name", f"item {i}"), (x - w / 2, y - d / 2, z), (x + w / 2, y + d / 2, z + h), c, m_)
+            obox(it.get("name", f"item {i}"), (x, y), (w, d), z, z + h, it.get("rotation", 0.0), c, m_)
     # ---- ground the house -----------------------------------------------------
     walls = list(bpy.data.collections["Walls"].objects)
     n = snap_bottoms(walls, G, below=0.3, tol=0.6)
