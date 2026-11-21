@@ -140,6 +140,14 @@ features come in the city's datum — apply the per-source shift the fit estimat
 `export_studio_glb.py ... --with-site` includes the site; procedural colours are baked to flat
 glTF colours on export.
 
+Hillside lots and new cities: find the local parcel, assessor, LiDAR-inventory and planimetric
+layers first (`references/data-sources.md`, "A new city or state"). For a house cut into a slope run
+`pm.py lidar --ground-mode surface --footprint-file <city outline> --footprint-shift dx,dy --accept
+--flat-z lo,hi` (filtered ground surface, real roof planes only, decks listed with their heights) and
+`build_site.py --ground filtered --ground-exclude decks.json --house-extra garage.json`. In
+`details.json`, `extra_walls` carry a garage under a deck (with its door), `skylights` and
+`chimneys` sit on the fitted roof, and `post_edges` keeps posts off deck edges that walls carry.
+
 ## Web viewers / Roof Layer Studio
 
 `scripts/blender/export_studio_glb.py OUT/model.blend house.glb` writes a viewer-ready model:

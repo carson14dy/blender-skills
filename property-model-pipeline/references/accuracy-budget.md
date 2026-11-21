@@ -57,6 +57,14 @@ whether the σ's are realistic overall.
 12. **Pitch from far away.** Pitch read off a photo taken at an angle to the gable is biased
     (foreshortening). Rectify the gable wall first, or use LiDAR/gauge.
 
+13. **Using national data in a new city.** The first pass of a hillside house built from national
+    footprints and a plane-ground LiDAR filter let trees over the eaves into the roof and put
+    the house on one level: 12 % too much roof area and the wrong shape. The local parcel,
+    assessor, LiDAR-inventory and planimetric layers (see data-sources.md) fixed both.
+14. **Over-eager canopy removal.** "Points above a roof plane" must mean above the plane's own
+    inlier patch, not its convex hull, or a lower roof sitting in a notch of a higher one is
+    deleted as canopy.
+
 ## Reading the fit
 
 * `roof_z` RMS ≲ 0.10 m on QL1 data = the wing layout matches the real roof. 0.2–0.5 m means a

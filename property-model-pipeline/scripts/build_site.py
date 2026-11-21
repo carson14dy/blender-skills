@@ -48,8 +48,26 @@ def polys_of(feats, pred=lambda p: True):
     return unary_union(out) if out else Polygon()
 
 
+def _wing_union(model):
+    import math
+    polys = []
+    for w in model["wings"]:
+        if w.get("roof_only"):
+            continue
+        t = math.radians(w["azimuth"])
+        u = np.array([math.sin(t), math.cos(t)]); v = np.array([-u[1], u[0]])
+        cxy = np.array([w["cx"], w["cy"]])
+        L, W = w["length"] / 2, w["width"] / 2
+        polys.append(Polygon([cxy + s * L * u + r * W * v for s, r in ((-1, -1), (1, -1), (1, 1), (-1, 1))]))
+    return unary_union(polys)
+
+
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--ground", default="auto", choices=["auto", "class2", "filtered"],
+                    help="terrain from class-2 returns, or a filtered ground surface (auto: filtered when <10%% are class 2)")
+    ap.add_argument("--ground-exclude", help="json list of polygons that are never ground (decks, a garage under a deck)")
+    ap.add_argument("--house-extra", help="json list of polygons treated as building (no lawn/beds; e.g. a garage under a deck)")
     ap.add_argument("project"); ap.add_argument("features"); ap.add_argument("out")
     ap.add_argument("--half", type=float, default=34.0); ap.add_argument("--cell", type=float, default=0.5)
     ap.add_argument("--bed-width", type=float, default=0.9, help="rock bed band around the walls (m)")
@@ -80,9 +98,22 @@ def main():
     xs = np.arange(-h, h + 1e-9, c)
     ys = np.arange(-h, h + 1e-9, c)
     X, Y = np.meshgrid(xs, ys)
-    Z = griddata((gx, gy), gz, (X, Y), method="linear")
-    Zn = griddata((gx, gy), gz, (X, Y), method="nearest")
-    Z = np.where(np.isnan(Z), Zn, Z)
+    if a.ground == "filtered" or (a.ground == "auto" and len(g) < 0.1 * len(pts)):
+        # LiDAR delivered with few class-2 points (e.g. Montana statewide QL1): find the ground with the
+        # progressive morphological filter on last returns; the house, decks and anything listed in
+        # --ground-exclude can never be ground (they are bridged from the grade around them)
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+        from propmodel import lidar as L
+        ex = [_wing_union(model).buffer(1.0)]
+        if a.ground_exclude:
+            ex += [Polygon(q).buffer(0) for q in json.load(open(a.ground_exclude))]
+        surf = L.ground_surface(pts, cell=c, exclude=unary_union(ex))
+        Z = L.surface_z(surf, X.ravel(), Y.ravel()).reshape(X.shape) - datum
+        print(f"terrain: filtered ground surface ({int(surf['ground'].sum())} ground cells)")
+    else:
+        Z = griddata((gx, gy), gz, (X, Y), method="linear")
+        Zn = griddata((gx, gy), gz, (X, Y), method="nearest")
+        Z = np.where(np.isnan(Z), Zn, Z)
     Z = median_filter(Z, size=3, mode="nearest")
 
     # ---- surface classes --------------------------------------------------
@@ -97,6 +128,8 @@ def main():
         L, W = w["length"] / 2, w["width"] / 2
         wing_polys.append(Polygon([cxy + s * L * u + r * W * v for s, r in ((-1, -1), (1, -1), (1, 1), (-1, 1))]))
     house = unary_union(wing_polys)
+    if a.house_extra:
+        house = unary_union([house] + [Polygon(q).buffer(0) for q in json.load(open(a.house_extra))])
     imp = F.get("impervious", [])
     street = polys_of(imp, lambda p: p.get("SurfaceUse") == "Street" or p.get("SurfaceType") == "Paved Street")
     concrete = polys_of(imp, lambda p: not (p.get("SurfaceUse") == "Street" or p.get("SurfaceType") == "Paved Street"))

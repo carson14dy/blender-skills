@@ -20,7 +20,7 @@ geometry, placed from photo measurements. details.json (metres, model frame):
                  # leaf_color: door colour; mullions: vertical bars at these width fractions (default: one at 0.5
                  # for a 2-lite slider); panels: raised panels on a door / garage door (default 4x8 garage, 3x2 door)
   "decks": [ {"polygon": [[x,y],...], "top_z": 0.95, "rail_edges": [[i,j],...], "rail_gaps": [[x0,y0,x1,y1]],
-              "rail_height": 0.9, "post_spacing": 2.0} ],
+              "rail_height": 0.9, "post_spacing": 2.0, "post_edges": [i,...]} ],   # post_edges: edge i = vertex i -> i+1
   "stairs": [ {"top": [x,y], "dir": [dx,dy], "width": 1.0, "top_z": 0.95, "bottom_z": 0.2, "risers": 4,
                "rails": ["left", "right"]} ],                       # sloped handrails (left/right looking down the stairs)
   "ceilings": [ {"polygon": [[x,y],...], "z": 3.19} ],
@@ -30,6 +30,11 @@ geometry, placed from photo measurements. details.json (metres, model frame):
                    "path": [[x,y,z],...]} ],     # optional leader from the gutter outlet to the top of the drop
   "corner_board_color": [r,g,b], "fascia_color": [r,g,b], "soffit_color": [r,g,b],   # default: trim / soffit white
   "roof_vents": [ {"xy": [x,y], "size": 0.32} ],        # placed on the roof surface; ridge caps are automatic
+  "skylights": [ {"xy": [x,y], "size": [across, along_slope], "curb": 0.15, "label": "..."} ],   # on the top facet at xy
+  "chimneys": [ {"center": [x,y], "size": [a,b], "azimuth": deg_of_a, "top_z": 7.9, "material": "siding|brick|stone",
+                 "label": "..."} ],                       # chase from below the roof to top_z, with a cap
+  "extra_walls": [ {"name": "GAR:-v", "bottom": [[x,y,z],[x,y,z]], "top_z": -0.55, "bearing": 214} ],
+                 # presentation-only walls (e.g. a garage under a deck) that openings can name like model walls
   "corner_boards": true,
   "lights": [ {"wall": "M:-v", "u": 5.4, "z": 2.9} ],
   "text": [ {"wall": "G:+u", "u": 0.5, "z": 0.9, "text": "1601", "size": 0.16, "material": "fixture"} ]   # "\n" stacks lines
@@ -339,7 +344,7 @@ def add_deck(dk, c, mats, idx):
         a, b = poly[i], poly[(i + 1) % n]
         oriented_box(f"deck {idx} rim {i}", a + Vector((0, 0, z - t - 0.24)), b - a, Vector((0, 0, 0)) + (b - a).cross(Vector((0, 0, 1))).normalized() * -0.04, Vector((0, 0, 0.24)), c, mats["deck"])
     sp = dk.get("post_spacing", 2.0)
-    for i in range(n):
+    for i in dk.get("post_edges", range(n)):      # edges carried by walls below (a garage) need no posts
         a, b = poly[i], poly[(i + 1) % n]
         L = (b - a).length
         for s in range(int(L // sp) + 1):
@@ -452,6 +457,83 @@ def add_roof_extras(model, D, c, mats):
         box(f"roof vent {i}", (x - w / 2, y - w / 2, z - 0.05), (x + w / 2, y + w / 2, z + v.get("height", 0.16)), c, mats["vent"])
 
 
+def facet_plane(model, x, y):
+    """(a, b, c) of the top facet at (x, y), or None."""
+    best, top = None, None
+    for f in model["facets"]:
+        a, b, c0 = f["plane"]
+        z = a * x + b * y + c0
+        if facet_z_one(f, x, y) and (top is None or z > top):
+            best, top = (a, b, c0), z
+    return best
+
+
+def facet_z_one(f, x, y):
+    for poly in f["polygons"]:
+        ring, inside = poly["outer"], False
+        for i in range(len(ring)):
+            x1, y1 = ring[i][:2]; x2, y2 = ring[(i + 1) % len(ring)][:2]
+            if (y1 > y) != (y2 > y) and x < (x2 - x1) * (y - y1) / (y2 - y1 + 1e-12) + x1:
+                inside = not inside
+        if inside:
+            return True
+    return False
+
+
+def add_skylights_chimneys(model, D, c, mats):
+    for i, s in enumerate(D.get("skylights", [])):
+        x, y = s["xy"]
+        pl = facet_plane(model, x, y)
+        if pl is None:
+            continue
+        a, b, c0 = pl
+        g = math.hypot(a, b)
+        down = Vector((-a / g, -b / g, 0)) if g > 1e-6 else Vector((0, -1, 0))
+        across = Vector((-down.y, down.x, 0))
+        along = Vector((down.x, down.y, -g)).normalized()          # down the slope, in the roof plane
+        nrm = across.cross(along).normalized()
+        if nrm.z < 0:
+            nrm = -nrm
+        w, l = s.get("size", (0.6, 1.2))
+        h = s.get("curb", 0.15)
+        ctr = Vector((x, y, a * x + b * y + c0))
+        o = ctr - across * (w / 2) - along * (l / 2)
+        nm = s.get("label", f"skylight {i}")[:40]
+        oriented_box(f"{nm} curb", o - nrm * 0.03, across * w, along * l, nrm * (h + 0.03), c, mats["trim"])
+        oriented_box(f"{nm} glass", o + across * 0.05 + along * 0.05 + nrm * h, across * (w - 0.1), along * (l - 0.1),
+                     nrm * 0.02, c, mats["glass"])
+    for i, ch in enumerate(D.get("chimneys", [])):
+        x, y = ch["center"]
+        A, B = ch.get("size", (0.9, 0.9))
+        t = math.radians(ch.get("azimuth", 0.0))
+        ea = Vector((math.sin(t), math.cos(t), 0))
+        eb = Vector((-ea.y, ea.x, 0))
+        corners = [Vector((x, y, 0)) + ea * (sa * A / 2) + eb * (sb * B / 2) for sa in (-1, 1) for sb in (-1, 1)]
+        zs = [facet_z(model, p.x, p.y) for p in corners]
+        zs = [z for z in zs if z is not None]
+        z0 = (min(zs) if zs else ch["top_z"] - 1.5) - 0.3
+        o = Vector((x, y, z0)) - ea * (A / 2) - eb * (B / 2)
+        m = mats.get(ch.get("material", "siding"), mats["siding"])
+        nm = ch.get("label", f"chimney {i}")[:40]
+        oriented_box(nm, o, ea * A, eb * B, Vector((0, 0, ch["top_z"] - 0.08 - z0)), c, m)
+        oriented_box(f"{nm} cap", o - ea * 0.05 - eb * 0.05 + Vector((0, 0, ch["top_z"] - 0.08 - z0)), ea * (A + 0.1),
+                     eb * (B + 0.1), Vector((0, 0, 0.08)), c, mats["metal"])
+
+
+def add_extra_walls(D, frames, c, mats):
+    for w in D.get("extra_walls", []):
+        (x0, y0, z0), (x1, y1, z1) = w["bottom"]
+        top = w["top_z"]
+        mesh(f"wall {w['name']}", [(x0, y0, z0), (x1, y1, z1), (x1, y1, top), (x0, y0, top)], [[0, 1, 2, 3]], c,
+             mats.get(w.get("material", "siding"), mats["siding"]))
+        d = Vector((x1 - x0, y1 - y0, 0))
+        L = d.length
+        d.normalize()
+        t = math.radians(w["bearing"]) if "bearing" in w else math.atan2(d.y, -d.x)   # outward = right of travel by default
+        n = Vector((math.sin(t), math.cos(t), 0)) if "bearing" in w else Vector((d.y, -d.x, 0))
+        frames[w["name"]] = (Vector((x0, y0, 0)), d, n, L, lambda u, za=z0, zb=z1, L=L: za + (zb - za) * u / max(L, 1e-9))
+
+
 def add_corner_boards(model, frames, fnd, c, mats, width=0.1):
     for w in model["walls"]:
         key = f'{w["wing"]}:{w["side"]}'
@@ -530,9 +612,11 @@ def main():
             ob.data.materials.append(rm)
     add_foundation(frames, D.get("foundation", {}), c, mats, D.get("openings", []))
     add_trim(model, frames, c, mats, D.get("fascia_height", 0.2), D.get("gutters", True), D.get("soffits", True))
+    add_extra_walls(D, frames, c, mats)
     for o in D.get("openings", []):
         add_opening(o, frames, c, mats)
     add_roof_extras(model, D, c, mats)
+    add_skylights_chimneys(model, D, c, mats)
     if D.get("corner_boards", True):
         add_corner_boards(model, frames, D.get("foundation", {}), c, mats)
     add_lights_and_text(D, frames, c, mats)

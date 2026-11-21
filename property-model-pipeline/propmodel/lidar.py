@@ -270,3 +270,170 @@ def suggest_wing(planes, roof_outline, ground_eave_hint=None, wing_id="M"):
     if eave is not None:
         wing["eave_height"] = eave + ov * pitch  # drip edge -> plate line
     return wing, {"ridge_hag": rid, "drip_hag": eave}
+
+
+# ---------------------------------------------------------------------------
+# hillside / class-1-only LiDAR: a ground SURFACE, plane acceptance, canopy removal
+# ---------------------------------------------------------------------------
+
+def ground_surface(local, cell=0.5, windows=(1.5, 3.0, 6.0, 12.0), slope=0.6, dh0=0.3, dh_max=3.0, exclude=None):
+    """Progressive morphological ground filter (Zhang et al. 2003) on the lowest LAST return per cell.
+
+    Steep lots break a single ground plane (heights above it tilt with the hill) and many 3DEP sets
+    classify little or no ground. Each window opens the minimum grid; a cell is ground while its
+    lowest return is within dh(w) = min(dh0 + slope * w, dh_max) of the opened surface. Class 2
+    points are always ground. ``exclude`` (shapely polygon) masks cells that cannot be ground
+    (a building). Returns {x0, y0, cell, nx, ny, Z (filled), ground (bool grid)}.
+    """
+    from scipy import ndimage
+    from scipy.interpolate import griddata
+    last = local[(local.shape[1] < 6) | (local[:, 4] >= local[:, 5])] if local.shape[1] >= 6 else local
+    x0, y0 = float(local[:, 0].min()), float(local[:, 1].min())
+    nx = int((local[:, 0].max() - x0) / cell) + 1
+    ny = int((local[:, 1].max() - y0) / cell) + 1
+    zmin = np.full((ny, nx), np.inf)
+    ix = ((last[:, 0] - x0) / cell).astype(int); iy = ((last[:, 1] - y0) / cell).astype(int)
+    np.minimum.at(zmin, (iy, ix), last[:, 2])
+    has = np.isfinite(zmin)
+    if not has.any():
+        raise ValueError("no points")
+    # fill empty cells with the nearest value so the morphology sees a continuous surface
+    filled = zmin.copy()
+    if (~has).any():
+        idx = ndimage.distance_transform_edt(~has, return_distances=False, return_indices=True)
+        filled = zmin[tuple(idx)]
+    ground = has.copy()
+    surf = filled.copy()
+    for w in windows:
+        k = max(3, int(round(w / cell)) | 1)
+        opened = ndimage.grey_opening(surf, size=(k, k))
+        dh = min(dh0 + slope * w, dh_max)
+        ground &= (filled - opened) <= dh
+        surf = opened
+    if exclude is not None and not exclude.is_empty:
+        gx = x0 + (np.arange(nx) + 0.5) * cell; gy = y0 + (np.arange(ny) + 0.5) * cell
+        X, Y = np.meshgrid(gx, gy)
+        ground &= ~shapely.contains_xy(exclude, X, Y)
+    cls2 = local[local[:, 3] == 2]
+    if len(cls2):
+        jx = ((cls2[:, 0] - x0) / cell).astype(int); jy = ((cls2[:, 1] - y0) / cell).astype(int)
+        ground[jy, jx] = True
+        np.minimum.at(zmin, (jy, jx), cls2[:, 2])
+    gy_, gx_ = np.nonzero(ground & np.isfinite(zmin))
+    pts = np.column_stack([x0 + (gx_ + 0.5) * cell, y0 + (gy_ + 0.5) * cell])
+    vals = zmin[gy_, gx_]
+    X, Y = np.meshgrid(x0 + (np.arange(nx) + 0.5) * cell, y0 + (np.arange(ny) + 0.5) * cell)
+    Z = griddata(pts, vals, (X, Y), method="linear")
+    Zn = griddata(pts, vals, (X, Y), method="nearest")
+    Z = np.where(np.isnan(Z), Zn, Z)
+    return {"x0": x0, "y0": y0, "cell": cell, "nx": nx, "ny": ny, "Z": Z, "ground": ground}
+
+
+def surface_z(surf, x, y):
+    """Bilinear height of a ground_surface() grid at points x, y."""
+    c = surf["cell"]
+    fx = np.clip((np.asarray(x) - surf["x0"]) / c - 0.5, 0, surf["nx"] - 1.001)
+    fy = np.clip((np.asarray(y) - surf["y0"]) / c - 0.5, 0, surf["ny"] - 1.001)
+    i, j = fx.astype(int), fy.astype(int)
+    tx, ty = fx - i, fy - j
+    Z = surf["Z"]
+    return (Z[j, i] * (1 - tx) * (1 - ty) + Z[j, i + 1] * tx * (1 - ty) + Z[j + 1, i] * (1 - tx) * ty + Z[j + 1, i + 1] * tx * ty)
+
+
+def accept_planes(planes, xyz, min_pts=150, max_rms=0.06, max_slope=1.0, min_area=8.0, cell=0.5):
+    """Keep roof planes only: enough points, flat enough fit, not steeper than 12/12, real area.
+    Area is the occupied-cell area of the inliers (trees and rocks give small or rough patches).
+    Rejected planes come back separately (chimney tops, skylight curbs, canopy, boulders)."""
+    keep, reject = [], []
+    for p in planes:
+        idx = main_patch(xyz, np.asarray(p["indices"], int), cell=cell, min_area=min_area)
+        if len(idx) < len(p["indices"]):
+            # thin strips that happen to lie on the plane (hillside grade, a fence line) are cut off
+            a, b, c = p["coef"]
+            r = xyz[idx, 2] - (a * xyz[idx, 0] + b * xyz[idx, 1] + c)
+            p.update(indices=idx, n=int(len(idx)), rms=float(np.sqrt(np.mean(r ** 2))) if len(idx) else 9.9,
+                     z_min=float(xyz[idx, 2].min()) if len(idx) else 0.0, z_max=float(xyz[idx, 2].max()) if len(idx) else 0.0)
+        cells = {(int(x // cell), int(y // cell)) for x, y in xyz[idx, :2]}
+        area = len(cells) * cell * cell
+        p["area_cells_m2"] = area
+        ok = p["n"] >= min_pts and p["rms"] <= max_rms and p["slope"] <= max_slope and area >= min_area
+        (keep if ok else reject).append(p)
+    return keep, reject
+
+
+def _cells(xy, x0, y0, cell, shape):
+    i = np.clip(((xy[:, 0] - x0) // cell).astype(int), 0, shape[0] - 1)
+    j = np.clip(((xy[:, 1] - y0) // cell).astype(int), 0, shape[1] - 1)
+    return i, j
+
+
+def main_patch(xyz, idx, cell=0.5, min_area=8.0):
+    """Plane inliers that form real patches: occupancy raster, opened by one cell (drops 1-2 cell
+    wide strips), components of at least ``min_area`` (and 20 % of the largest) kept, grown back
+    by one cell. Returns the surviving inlier indices."""
+    from scipy import ndimage
+    if len(idx) == 0:
+        return idx
+    xy = xyz[idx, :2]
+    x0, y0 = xy.min(axis=0) - 2 * cell
+    shape = (int((xy[:, 0].max() - x0) // cell) + 3, int((xy[:, 1].max() - y0) // cell) + 3)
+    i, j = _cells(xy, x0, y0, cell, shape)
+    occ = np.zeros(shape, bool)
+    occ[i, j] = True
+    occ = ndimage.binary_closing(occ, np.ones((3, 3)))          # fill sampling holes first
+    core = ndimage.binary_opening(occ, np.ones((3, 3)))
+    lab, n = ndimage.label(core, np.ones((3, 3)))
+    if n == 0:
+        return idx[:0]
+    areas = ndimage.sum(core, lab, range(1, n + 1)) * cell * cell
+    good = [k + 1 for k, a in enumerate(areas) if a >= min(min_area, areas.max()) and a >= 0.2 * areas.max()]
+    mask = ndimage.binary_dilation(np.isin(lab, good), np.ones((3, 3))) & occ
+    return idx[mask[i, j]]
+
+
+def remove_canopy(xyz, planes, near=0.6, above=0.15, cell=0.5):
+    """Points over / just outside a kept roof plane that sit more than ``above`` m over it are
+    branches overhanging the eaves: drop them. "Over the plane" means within ``near`` of the
+    plane's own inlier cells (not its convex hull, which would also swallow a lower roof that
+    sits in a notch of the plane). Returns a boolean keep-mask."""
+    from scipy import ndimage
+    keep = np.ones(len(xyz), bool)
+    for p in planes:
+        idx = np.asarray(p["indices"], int)
+        xy = xyz[idx, :2]
+        x0, y0 = xy.min(axis=0) - near - cell
+        shape = (int((xy[:, 0].max() + near - x0) // cell) + 2, int((xy[:, 1].max() + near - y0) // cell) + 2)
+        occ = np.zeros(shape, bool)
+        occ[_cells(xy, x0, y0, cell, shape)] = True
+        occ = ndimage.binary_dilation(ndimage.binary_closing(occ, np.ones((3, 3))), np.ones((3, 3)),
+                                      iterations=max(1, int(round(near / cell))))
+        a, b, c = p["coef"]
+        inb = (xyz[:, 0] >= x0) & (xyz[:, 1] >= y0) & (xyz[:, 0] < x0 + shape[0] * cell) & (xyz[:, 1] < y0 + shape[1] * cell)
+        inside = np.zeros(len(xyz), bool)
+        ii, jj = _cells(xyz[inb, :2], x0, y0, cell, shape)
+        inside[inb] = occ[ii, jj]
+        dz = xyz[:, 2] - (a * xyz[:, 0] + b * xyz[:, 1] + c)
+        keep &= ~(inside & (dz > above))
+    return keep
+
+
+def flat_clusters(xyz, z_lo, z_hi, max_slope=0.05, min_area=4.0, cell=0.5, thr=0.06):
+    """Level surfaces (decks, slabs, flat roofs) between two heights: plane segmentation restricted
+    to near-horizontal fits. Returns [{z, area_m2, outline, n}]."""
+    m = (xyz[:, 2] > z_lo) & (xyz[:, 2] < z_hi)
+    pts = xyz[m]
+    if len(pts) < 20:
+        return []
+    out = []
+    for p in segment_planes(pts, thr=thr, min_pts=20, max_planes=12):
+        if p["slope"] > max_slope:
+            continue
+        q = pts[np.asarray(p["indices"], int)]
+        cells = {(int(x // cell), int(y // cell)) for x, y in q[:, :2]}
+        area = len(cells) * cell * cell
+        if area < min_area:
+            continue
+        hull = shapely.concave_hull(MultiPoint([tuple(v) for v in q[:, :2]]), ratio=0.3)
+        out.append({"z": float(np.median(q[:, 2])), "area_m2": area, "n": len(q),
+                    "outline": [list(map(float, c)) for c in getattr(hull, "exterior", hull.convex_hull.exterior).coords]})
+    return out

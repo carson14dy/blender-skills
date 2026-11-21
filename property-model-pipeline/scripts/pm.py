@@ -197,6 +197,7 @@ def cmd_fetch(a):
 
 
 def cmd_lidar(a):
+    import shapely
     from shapely.geometry import Polygon
     from shapely.ops import unary_union
     from propmodel import ept, lidar
@@ -218,14 +219,60 @@ def cmd_lidar(a):
     dens, spacing = lidar.density(loc)
     fps = load(a.project, "data/footprints.json", {}).get("chosen", {})
     fp = unary_union([Polygon(v["ring"]) for v in fps.values()]) if fps else None
+    walls = fp
+    if a.footprint_file:
+        # an outside planimetric outline (e.g. city Ecopia) in the site frame, moved by its registration shift
+        F = json.load(open(a.footprint_file))
+        ring = F[a.footprint_key]["ring_enu"] if a.footprint_key else F["ring_enu"]
+        dx, dy = (map(float, a.footprint_shift.split(","))) if a.footprint_shift else (0.0, 0.0)
+        walls = Polygon([(x + dx, y + dy) for x, y in ring])
+        fp = walls.buffer(a.footprint_buffer - 1.2)   # building_points adds 1.2
     if a.seed_only:
         fp = None
-    b = lidar.building_points(loc, ground, footprint=fp, single_returns=not a.keep_multi_returns)
     # Model datum = ground elevation at the site origin (a LEVEL datum). Heights above a
     # tilted ground plane would tilt every roof plane by the lot slope and bias pitches.
-    datum = float(ground[2])
+    datum = float(site.get("datum_m") or ground[2]) if a.keep_datum else float(ground[2])
+    surf = None
+    if a.ground_mode == "surface":
+        # hillside / class-1-only LiDAR: heights above a filtered ground SURFACE, last returns only
+        # a house cut into a hill meets the grade at its uphill eave, so the filter would call that roof
+        # "ground": cells inside the walls can never be ground (they are filled from around the house)
+        inner = walls.buffer(a.walls_grow) if walls is not None else None
+        surf = lidar.ground_surface(loc, cell=0.5, exclude=inner)
+        hag = loc[:, 2] - lidar.surface_z(surf, loc[:, 0], loc[:, 1])
+        last = (loc[:, 4] >= loc[:, 5]) if loc.shape[1] >= 6 else np.ones(len(loc), bool)
+        # under the house the ground is only interpolated (from the uphill grade, decks...), so a low
+        # uphill eave can sit < 1.5 m above it: accept lower points inside the walls, planes sort them out
+        min_hag = np.full(len(loc), a.min_hag)
+        if inner is not None:
+            min_hag[shapely.contains_xy(inner, loc[:, 0], loc[:, 1])] = a.min_hag_inside
+        m = last & (hag > min_hag) & ~np.isin(loc[:, 3], list(lidar.NON_SURFACE))
+        if fp is not None:
+            m &= shapely.contains_xy(fp.buffer(1.2), loc[:, 0], loc[:, 1])
+        b = np.column_stack([loc[m], hag[m]])
+    else:
+        b = lidar.building_points(loc, ground, footprint=fp, single_returns=not a.keep_multi_returns)
     xyz = np.column_stack([b[:, 0], b[:, 1], b[:, 2] - datum])
     planes = lidar.segment_planes(xyz, thr=a.thr, min_pts=a.min_pts)
+    rejected = []
+    if a.accept:
+        planes, rejected = lidar.accept_planes(planes, xyz, min_pts=a.min_pts, max_rms=a.accept_max_rms, min_area=a.accept_min_area)
+        keep = lidar.remove_canopy(xyz, planes)
+        if (~keep).any():   # branches over the eaves out, then segment again on the clean cloud
+            print(f"canopy over the eaves: {(~keep).sum()} points removed")
+            b, xyz = b[keep], xyz[keep]
+            planes, rejected = lidar.accept_planes(lidar.segment_planes(xyz, thr=a.thr, min_pts=a.min_pts), xyz,
+                                                   min_pts=a.min_pts, max_rms=a.accept_max_rms, min_area=a.accept_min_area)
+        for p in rejected:
+            print(f"  rejected: n={p['n']} rms {p['rms'] * 100:.1f} cm slope {p['pitch_rise_per_12']:.1f}/12 area {p.get('area_cells_m2', 0):.1f} m2 z {p['z_min']:.2f}-{p['z_max']:.2f}")
+    low_flats = []
+    if a.accept:
+        # a level plane well below every pitched eave is a deck or a slab, not roof
+        pitched = [p for p in planes if p["pitch_rise_per_12"] >= 1.0]
+        if pitched:
+            eave = min(p["z_min"] for p in pitched)
+            low_flats = [p for p in planes if p["pitch_rise_per_12"] < 0.5 and p["z_max"] < eave - 1.0]
+            planes = [p for p in planes if not any(p is q for q in low_flats)]
     inl = np.zeros(len(xyz), bool)
     label = -np.ones(len(xyz))
     for i, p in enumerate(planes):
@@ -235,7 +282,31 @@ def cmd_lidar(a):
     roof_outline = lidar.outline(xyz[inl, :2] if inl.sum() > 20 else xyz[:, :2], spacing)
     np.save(P(a.project, "data/lidar_points.npy"), loc[:, :6])  # x, y, z_abs, class, return, n_returns
     np.save(P(a.project, "data/lidar_roof.npy"), np.column_stack([xyz, label]))
-    out = {"dataset": pick["name"], "year": pick.get("year"), "points": int(len(raw)),
+    if surf is not None:
+        np.savez_compressed(P(a.project, "data/ground_surface.npz"), Z=surf["Z"] - datum, ground=surf["ground"],
+                            x0=surf["x0"], y0=surf["y0"], cell=surf["cell"])
+    if a.flat_z:
+        # decks / slabs: level surfaces outside the roof, from last returns over the ground surface
+        lo, hi = map(float, a.flat_z.split(","))
+        allz = np.column_stack([loc[:, 0], loc[:, 1], loc[:, 2] - datum])
+        nonroof = ~shapely.contains_xy(roof_outline.buffer(0.3), allz[:, 0], allz[:, 1])
+        lastm = (loc[:, 4] >= loc[:, 5]) if loc.shape[1] >= 6 else np.ones(len(loc), bool)
+        near = np.hypot(allz[:, 0], allz[:, 1]) < 25
+        flats = lidar.flat_clusters(allz[lastm & near & nonroof], lo, hi)
+        for p in low_flats:   # decks the plane finder saw inside the footprint buffer (if not found already)
+            pts = xyz[p["indices"]]
+            zc, cxy = float(np.median(pts[:, 2])), pts[:, :2].mean(axis=0)
+            if any(abs(f["z"] - zc) < 0.1 and Polygon(f["outline"]).distance(
+                    __import__("shapely").geometry.Point(cxy)) < 1.0 for f in flats):
+                continue
+            ol = lidar.outline(pts[:, :2], spacing)
+            flats.append({"z": round(float(np.median(pts[:, 2])), 3), "area_m2": round(ol.area, 2), "n": int(p["n"]),
+                          "outline": [list(map(lambda v: round(v, 3), c)) for c in ol.exterior.coords[:-1]], "from": "plane"})
+        save(a.project, "data/flat_clusters.json", flats)
+        for f in flats:
+            c = np.mean(np.array(f["outline"]), axis=0)
+            print(f"  flat surface z {f['z']:.2f} m, {f['area_m2']:.1f} m2 ({f['area_m2'] / 0.0929:.0f} ft2), n={f['n']} at ({c[0]:.1f}, {c[1]:.1f})")
+    out = {"dataset": pick["name"], "year": a.year or pick.get("year"), "points": int(len(raw)),
            "density_pts_m2": dens, "spacing_m": spacing, "ground_plane": ground, "ground_points": ng,
            "ground_z_at_origin": ground[2], "datum_m": datum,
            "ground_local": [ground[0], ground[1], 0.0], "building_points": int(len(xyz)),
@@ -251,7 +322,7 @@ def cmd_lidar(a):
         idx = rng.choice(idx, a.max_obs_pts, replace=False)
     src = f"auto:lidar {pick['name']}"
     obs = [{"target": "roof_z", "points": xyz[idx].round(3).tolist(), "sigma": SIGMA["lidar_z"],
-            "source": src, "kind": "lidar", "dataset_year": pick.get("year")},
+            "source": src, "kind": "lidar", "dataset_year": a.year or pick.get("year")},
            {"target": "outline", "which": "roof_outline", "polygon": out["roof_outline"],
             "sigma": round(spacing / 2 + SIGMA["lidar_outline_extra"], 3), "source": src + " outline", "kind": "lidar"}]
     set_auto_obs(a.project, "auto:lidar", obs)
@@ -260,8 +331,8 @@ def cmd_lidar(a):
         print(f"  P{i + 1}: {p['pitch_rise_per_12']:.2f}/12 ±{p['slope_sigma'] * 12:.2f}  facing "
               f"{p['azimuth'] if p['azimuth'] is None else round(p['azimuth'])}°  n={p['n']}  "
               f"rms {p['rms'] * 100:.1f} cm  z {p['z_min']:.2f}-{p['z_max']:.2f} m")
-    if pick.get("year") and site:
-        print(f"NOTE: LiDAR flown {pick['year']} — renovations/additions after that are not in it.")
+    if (a.year or pick.get("year")) and site:
+        print(f"NOTE: LiDAR flown {a.year or pick['year']} — renovations/additions after that are not in it.")
 
 
 def cmd_suggest(a):
@@ -559,6 +630,19 @@ def main():
                    help="does that layer trace walls (footprint) or drip edges (roof_outline)?")
     s.set_defaults(fn=cmd_fetch)
     s = sp.add_parser("lidar"); s.add_argument("project"); s.add_argument("--dataset")
+    s.add_argument("--ground-mode", default="plane", choices=["plane", "surface"],
+                   help="surface: morphological ground surface + last returns (hillsides, class-1-only LiDAR)")
+    s.add_argument("--footprint-file", help="json with ring_enu outline(s) in the site frame (e.g. city planimetrics)")
+    s.add_argument("--footprint-key"); s.add_argument("--footprint-shift", help="dx,dy registration shift (m)")
+    s.add_argument("--footprint-buffer", type=float, default=2.5)
+    s.add_argument("--min-hag", type=float, default=1.5)
+    s.add_argument("--min-hag-inside", type=float, default=0.4, help="surface mode: min height inside the (grown) walls")
+    s.add_argument("--walls-grow", type=float, default=1.0, help="surface mode: grow the walls by this for the no-ground mask")
+    s.add_argument("--accept", action="store_true", help="keep only real roof planes (n, rms, slope, area) and drop canopy over eaves")
+    s.add_argument("--accept-max-rms", type=float, default=0.06); s.add_argument("--accept-min-area", type=float, default=8.0)
+    s.add_argument("--keep-datum", action="store_true", help="keep site.json datum_m (re-runs: numbers stay comparable)")
+    s.add_argument("--year", type=int, help="acquisition year when the EPT metadata lacks it")
+    s.add_argument("--flat-z", help="lo,hi: find level surfaces (decks, slabs) between these heights (model datum)")
     s.add_argument("--half", type=float, default=35); s.add_argument("--thr", type=float, default=0.12)
     s.add_argument("--min-pts", type=int, default=25); s.add_argument("--max-obs-pts", type=int, default=600)
     s.add_argument("--seed-only", action="store_true", help="ignore footprints; take the blob at the origin")
