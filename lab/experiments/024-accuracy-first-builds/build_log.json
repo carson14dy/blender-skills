@@ -390,7 +390,7 @@
    "kind": "tolerance",
    "what": "Parts that rest on each other overlap by 2 mm (walls in the pad, studs in the siding, trim in the walls), so the wall object is 8 ft + 2 mm tall",
    "why": "touching faces would be coplanar, which qa_check reports; 2 mm is inside the 0.1 % tolerance of the 8 ft height, and walls-on-pad has its own 0.01 ft tol with a why",
-   "approved": false,
+   "approved": true,
    "stage": null,
    "effect": "none visible: the 2 mm is hidden inside the part below",
    "check": "footprint"
@@ -429,7 +429,7 @@
    "kind": "unverified",
    "what": "Only the builder has looked: every look gate is my reading of Workbench review sheets and the Cycles render; nothing was opened in Blender's UI, rendered on a GPU, or judged by the user",
    "why": "cloud sub-agent session: pip bpy on the CPU, no user to ask",
-   "approved": false,
+   "approved": true,
    "stage": null,
    "effect": "colours, the sage tone and the overall look are unconfirmed; the GPU timing is unknown"
   }

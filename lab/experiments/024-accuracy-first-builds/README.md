@@ -90,3 +90,16 @@ Not verified beyond shortcut 6: nothing here ran in real Blender (5.2 or 5.3), a
 ## Decision
 
 Keep. The procedure and both scripts worked end to end on a real build: the acceptance file held every number from the brief, the gates caught the expected failures and one real defect, and the report lists every shortcut and assumption. Next (local): rebuild with real Blender on the GPU (`blender -b --python build_shed.py -- --stage blockout`, and so on; use `run_in_blender.py --blend` instead of `run_blend.py`), render at 3840x2160, append the timing line to `lab/build-times.jsonl`, and add the report here. The user's OK on shortcuts 1 to 6 (above all 1, the assumed pitch) is still open.
+
+## User decisions (2026-11-22)
+
+The user reviewed the six shortcuts:
+
+1. **Assumed 6/12 pitch: rejected.** "I need you to figure out roof pitch. Most of the time I won't know." Pitch is now worked out from evidence (a measured model or scan, a report, a photo, or design rules for a new build), with the method and its uncertainty, never assumed and never asked.
+2. **2 mm overlaps: approved.**
+3. **Bare studs: rejected.** "I still want it detailed."
+4. **Simple windows and slab door: rejected.** "I still want it detailed."
+5. **Textures instead of siding boards and shingles; no ridge cap, drip edge, fascia or soffit: rejected.** "I still want the detailed accuracy. That's the part that separates me from competitors."
+6. **Checked on the CPU only: approved for now.** "Eventually I want the ability to do it on GPU. But for now we need to master the art here so we can figure it out on GPU servers later."
+
+**Decision:** construction-grade detail is the default for every build; a simplification is agreed before building, not logged after. The detailed rebuild and pitch determination follow in their own experiment.
