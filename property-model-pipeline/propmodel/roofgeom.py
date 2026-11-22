@@ -11,7 +11,11 @@ Wings are combined like solids: where two wings overlap, the higher surface
 wins (valleys, cross-gables, dormers-as-wings and L/T/U plans all fall out
 automatically), with one exception: a lower roof that runs *under* the
 overhang of a taller wing (lower roof meeting an upper-storey wall) is kept,
-because it is real roofing even though it is hidden from above.
+because it is real roofing even though it is hidden from above. Likewise a
+pocket of a roof plane hidden under another wing's roof and enclosed by the
+plane's own roof (a lower eave under the corner of an upper roof) is kept: being
+overhung never opens a roof. Openings of a wing's own outline (``outline_holes``)
+and other wings' walls rising through a roof stay open.
 
 Everything is computed analytically with polygon clipping, so areas and edge
 lengths are exact for the model (no tessellation error). The measurement

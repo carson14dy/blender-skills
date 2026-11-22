@@ -3,6 +3,7 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import pytest
 from propmodel.roofgeom import Wing, build
+from shapely.geometry import Polygon
 
 SF = math.sqrt(1 + 0.25)  # 6/12 slope factor
 
@@ -145,3 +146,36 @@ def test_roof_only_patch_coplanar_is_merged_not_double_counted():
     assert len(m.facets) == 1
     assert m.roof_area() == pytest.approx(6 * 14 * SF, rel=2e-3)
     assert len(m.walls) == 4 and m.footprint().area == pytest.approx(60)
+
+
+def _upper_over_lower(lower_holes=None):
+    # flat lower roof: walls x -5..5, y -4..4, eave overhang 1 m all round (outline x -6..6, y -5..5); an upper
+    # storey (walls x -2..2, y -2..2, standing through the lower roof) whose gable rakes overhang 2.5 m north and
+    # south, i.e. 0.5 m past the lower walls over the lower eave strip, and stop 0.5 m short of the lower drip edge
+    lower = Wing("L", "flat", cx=0, cy=0, azimuth=90, length=10, width=8, eave_height=3.0, pitch=0,
+                 eave_overhang=1.0, outline_holes=lower_holes)
+    upper = Wing("U", "gable", cx=0, cy=0, azimuth=0, length=4, width=4, eave_height=6.0, pitch=0.5,
+                 eave_overhang=0.45, rake_overhang=2.5)
+    m = build([lower, upper])
+    return m, [f for f in m.facets if f.wings == ["L"]][0]
+
+
+def test_lower_eave_under_upper_roof_is_not_opened():
+    m, lo = _upper_over_lower()
+    # the lower eave strips under the upper rakes (2 x 4.9 m x 0.5 m, outside every wall) are kept as roofing
+    # hidden from above, not punched out as openings; the upper storey's walls still pass through the lower roof
+    assert lo.area_plan == pytest.approx(12 * 10 - 16, rel=1e-9)
+    assert lo.hidden_from_above
+    rings = [r for p in (lo.poly.geoms if hasattr(lo.poly, "geoms") else [lo.poly]) for r in p.interiors]
+    assert len(rings) == 1 and Polygon(rings[0]).area == pytest.approx(16, rel=1e-9)
+    # flashing only where the lower roof meets the upper walls (no wall-less "headwall" round the eave strips)
+    e = by_kind(m)
+    assert e["headwall"] + e["sidewall"] == pytest.approx(16, rel=1e-6)
+
+
+def test_own_outline_opening_under_upper_roof_stays_open():
+    hole = [[-1.0, -4.4], [1.0, -4.4], [1.0, -4.1], [-1.0, -4.1]]     # inside the overhung eave strip
+    m, lo = _upper_over_lower([hole])
+    assert lo.area_plan == pytest.approx(12 * 10 - 16 - 0.6, rel=1e-9)
+    rings = sorted(Polygon(r).area for p in (lo.poly.geoms if hasattr(lo.poly, "geoms") else [lo.poly]) for r in p.interiors)
+    assert rings == pytest.approx([0.6, 16], rel=1e-9)
