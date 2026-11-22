@@ -3,7 +3,8 @@ import importlib.util
 import os
 
 import numpy as np
-from shapely.geometry import Polygon
+from shapely.geometry import Polygon, LineString
+import shapely
 
 from propmodel import lidar
 
@@ -305,3 +306,118 @@ def test_bed_entries_accept_labelled_no_solid_beds():
             {"polygon": [[5, 5], [6, 5], [6, 6]], "label": "mulch"}]
     polys, veg = build_site.bed_entries(data)
     assert len(polys) == 3 and len(veg) == 1 and abs(veg[0].area - 4.0) < 1e-9
+
+
+def test_bed_entries_overlay_false_is_a_vegetation_mask_only():
+    data = [{"polygon": [[0, 0], [2, 0], [2, 2], [0, 2]], "no_solid": True},
+            {"polygon": [[0, 0], [3, 0], [3, 3], [0, 3]], "no_solid": True, "overlay": False}]
+    polys, veg = build_site.bed_entries(data)
+    assert len(polys) == 1 and abs(polys[0].area - 4.0) < 1e-9 and len(veg) == 2
+
+
+def test_paving_humps_drop_a_parked_car_and_keep_the_street_and_its_bank():
+    """A 4.5 x 1.8 m car, 1.3 m tall, parked on a 2 % street: its returns stand on the street, so the morphological
+    ground filter (dh >= 0.3 + 0.6 * 1.5 m) takes it as a 1.3 m asphalt mound. paving_humps drops every return on the
+    car and keeps the street and a 1 m bank the street outline laps onto; the ground under the car is then bridged
+    at the street height."""
+    rng = np.random.default_rng(21)
+    road = lambda x, y: 0.02 * x
+    street = Polygon([(-10, -5), (10, -5), (10, 4), (-10, 4)])
+    bank = lambda x, y: road(x, y) + np.clip((y - 2.5) / 2.0, 0, 1) * 1.0       # rises 1 m from y 2.5 to 4.5
+    pts = _pts(rng, -12, 12, -7, 6, 0.18, bank, noise=0.02)
+    car = (np.abs(pts[:, 0] - 1.0) <= 2.25) & (np.abs(pts[:, 1] + 1.0) <= 0.9)
+    pts[car, 2] = road(pts[car, 0], pts[car, 1]) + 1.3                           # a flat car roof (no ground under it)
+    drop = lidar.paving_humps(pts, street, above=0.3, window=3.0)
+    assert drop[car].all()
+    assert drop[~car].sum() == 0                                                  # street and bank all kept
+    plain = lidar.ground_surface(pts, cell=0.5, zstat="median")
+    clean = lidar.ground_surface(pts[~drop], cell=0.5, zstat="median")
+    q = np.array([1.0]), np.array([-1.0])
+    assert lidar.surface_z(plain, *q)[0] - road(*q)[0] > 1.0                      # the car is "ground" without it
+    assert abs(lidar.surface_z(clean, *q)[0] - road(*q)[0]) < 0.1
+
+
+def test_street_bank_takes_the_lapped_bank_out_of_the_street():
+    c = 0.25
+    X, Y = np.meshgrid(np.arange(-10, 10.001, c), np.arange(-6, 6.001, c))
+    Z = 0.03 * X + np.clip((Y - 2.0) / 2.0, 0, 1) * 1.5                          # road + a bank from y 2 (1.5 m by y 4)
+    street = Polygon([(-8, -4), (8, -4), (8, 4), (-8, 4)])                        # traced 2 m onto the bank
+    bank = build_site.street_bank(street, X, Y, Z, c, rise=0.4)
+    assert not bank.is_empty
+    kept = street.difference(bank)
+    assert kept.bounds[3] < 2.0 + 0.4 / 0.75 + c + 1e-6                          # asphalt ends at the bank foot
+    assert abs(kept.intersection(Polygon([(-8, -4), (8, -4), (8, 2), (-8, 2)])).area - 16 * 6) < 1e-6   # road kept
+    kerb = Polygon([(-8, 1), (8, 1), (8, 5), (-8, 5)])
+    assert build_site.street_bank(street, X, Y, Z, c, rise=0.4, keep=kerb).is_empty   # a kerbed edge is left alone
+
+
+def test_clamp_unsupported_lowers_an_unmeasured_crest_and_keeps_a_measured_one():
+    """A one-node crest line is its own 3x3 median, so the median clamp cannot see it. clamp_unsupported lowers it to
+    the mean of its 8 neighbours + 0.3 where no LiDAR return supports its height, and keeps a crest the returns show."""
+    c = 0.25
+    X, Y = np.meshgrid(np.arange(40) * c, np.arange(40) * c)
+    Z = 0.2 * Y
+    Z[10, 5:30] += 1.0                                                            # unmeasured crest line (TIN fold)
+    Z[30, 5:30] += 1.0                                                            # measured crest (a kerb top)
+    xs, ys = X[30, 5:30], Y[30, 5:30]
+    pxy = np.column_stack([np.r_[X.ravel(), xs], np.r_[Y.ravel(), ys]])
+    pz = np.r_[(0.2 * Y).ravel(), Z[30, 5:30]]
+    free = np.ones(Z.shape, bool)
+    D, n = lidar.clamp_unsupported(Z, c, free, pxy, pz, above=0.3, bump=None)
+    assert n >= 20 and np.all(D[10, 6:29] - 0.2 * Y[10, 6:29] < 0.75)            # crest cut down ...
+    assert np.allclose(D[30, 5:30], Z[30, 5:30])                                  # ... the measured one kept
+    skip = np.zeros(Z.shape, bool); skip[10, :] = True
+    D2, _ = lidar.clamp_unsupported(Z, c, ~skip, pxy, pz, above=0.3, bump=None)
+    assert np.allclose(D2[10], Z[10])                                             # skipped nodes untouched
+
+
+def _wall_scene(c=0.25, half=3.0, blend=0.5):
+    """A 1 m retaining wall (face along y = 0, uphill north, 0.25 m thick) on a grid whose surface smears the step
+    over ~`blend` m (a grade pad's blend reaching across the wall), plus LiDAR last returns of the true two levels."""
+    xs = np.arange(-half, half + 1e-9, c); ys = np.arange(-half, half + 1e-9, c)
+    X, Y = np.meshgrid(xs, ys)
+    true = lambda x, y: np.where(y > 0, 0.0, -1.0)
+    Z = np.clip(Y / blend + 0.5, 0, 1) - 1.0                     # 0 north of y = blend/2, -1 south of -blend/2
+    rng = np.random.default_rng(5)
+    px = rng.uniform(-half - 0.2, half + 0.2, 4000); py = rng.uniform(-half - 0.2, half + 0.2, 4000)
+    item = {"kind": "retaining_wall", "line": [[-half - 1, 0.0], [half + 1, 0.0]], "thickness": 0.25, "top_z": 0.1,
+            "line_is": "face", "uphill": "left"}
+    return xs, ys, X, Y, Z, px, py, true(px, py) + rng.normal(0, 0.02, px.size), item
+
+
+def test_wall_foot_nodes_drop_to_the_lower_level():
+    c = 0.25
+    xs, ys, X, Y, Z, px, py, pz, item = _wall_scene(c)
+    walls = build_site.wall_lines({"items": [item]})
+    faces = build_site.wall_faces({"items": [item]})
+    assert faces[0][1] == -1                                      # downhill = right of the +x line (south)
+    node = [X.copy(), Y.copy()]
+    Zb = build_site.apply_breaklines(Z.copy(), xs, ys, walls, c, snap=node)
+    low = build_site.cell_lowest(np.column_stack([px, py]), pz, xs[0], ys[0], c, Z.shape)
+    Zf, foot = build_site.wall_foot_lower(Zb, node[0], node[1], faces, low, xs[0], ys[0], c, walls=walls)
+    down = (node[1] <= 1e-6) & (node[1] >= -1.0)
+    assert foot[down & (node[1] > -0.5)].all() and not foot[node[1] > 1e-6].any()
+    assert (Zf[down] - (-1.0)).max() < 0.15                        # no foot node stands up on the lower level
+    assert np.all(Zf <= Zb + 1e-12)                                # never raises
+    assert np.allclose(Zf[Y > 0.5], Zb[Y > 0.5])                   # the upper level is left alone
+
+
+def test_overlay_lapping_over_a_wall_face_stays_on_the_lower_level():
+    c = 0.25
+    xs, ys, X, Y, Z, px, py, pz, item = _wall_scene(c, blend=0.75)
+    item = dict(item, thickness=0.06)                              # a thin edge: the 0.1 m lap reaches past its back
+    walls = build_site.wall_lines({"items": [item]})
+    faces = build_site.wall_faces({"items": [item]})
+    node = [X.copy(), Y.copy()]
+    Zb = build_site.apply_breaklines(Z.copy(), xs, ys, walls, c, snap=node)
+    # a paving polygon traced 0.1 m over the face (and running past the wall's end region)
+    pave = Polygon([(-2.0, -1.5), (2.0, -1.5), (2.0, 0.1), (-2.0, 0.1)])
+    wallpoly = shapely.unary_union([LineString(l_).buffer(th / 2, cap_style="flat") for l_, th in walls])
+    trimmed = pave.difference(shapely.unary_union([wallpoly, build_site.uphill_strips(faces, 0.15)]))
+    assert trimmed.bounds[3] <= 1e-9                               # cut back to the face
+    v, t = build_site.drape_on_mesh(trimmed, node[0], node[1], Zb, 0.0, alt=build_site.split_diagonals(Zb))
+    v = np.array(v)
+    assert len(t) and v[:, 2].max() < -1.0 + 0.1                    # nothing climbs the wall
+    # (untrimmed, the lap is draped on the upper level's triangles)
+    v0, _ = build_site.drape_on_mesh(pave.difference(wallpoly), node[0], node[1], Zb, 0.0)
+    assert np.array(v0)[:, 2].max() > -0.5

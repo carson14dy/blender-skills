@@ -14,7 +14,16 @@ geometry, placed from photo measurements. details.json (metres, model frame):
             # "vertical": grooves every `spacing` m (default 0.203, T1-11 / board siding) running up each wall,
             #   spaced along that wall's own tangent ("Siding (vertical)"); "groove": groove width (default 0.012);
             # "smooth": plain colour, no texture ("Siding (smooth)") - use it when a photo shows no lines
-  "roof": {"exposure": 0.1429, "color": [0.17, 0.17, 0.18]},          # shingle course lines
+  "roof": {"exposure": 0.1429, "color": [0.17, 0.17, 0.18], "label": "...",   # shingle course lines
+           "underside": true, "underside_color": null},
+            # underside: the roof sheet seen from BELOW (under a deep rake / eave overhang) renders as a light soffit
+            # (underside_color, default soffit_color) instead of bare dark shingle - a Mix Shader on the roof material
+            # switched by the viewer being under the plane (see underside_soffit); false keeps the bare sheet
+            # fit "color" to an orthophoto at a few points per slope (sun- and shade-side planes) with a top-down
+            # render under the ortho's sun: a grey sky and AgX shift a neutral base colour bluer, so a roof that
+            # reads warm brown-grey from above needs a clearly warm base (G-B gap ~20 in 8-bit sRGB)
+  "ridge_cap_color": [r,g,b],              # shingle cap folded over every ridge / hip (automatic, 0.30 m wide,
+            # 0.03 m proud of both planes); an orthophoto rarely shows the cap darker than the field by more than ~10%
   "trim_color": [0.85, 0.85, 0.82], "deck_color": [0.07, 0.12, 0.09],
   "window_frame_color": [80, 68, 52],                                  # window/slider frames (default: trim)
   "concrete_color": [215, 207, 192],                                   # material "concrete" (walls, boxes, ...)
@@ -71,7 +80,7 @@ geometry, placed from photo measurements. details.json (metres, model frame):
   "roof_vents": [ {"xy": [x,y], "size": 0.32, "height": 0.16,
                    "shape": "box|pipe", "color": [r,g,b], "label": "..."} ],
                  # placed on the roof surface; "pipe" = round stack of diameter `size` (plumbing vent); ridge caps
-                 # are automatic
+                 # are automatic (see ridge_cap_color)
   "skylights": [ {"xy": [x,y], "size": [across, along_slope], "curb": 0.15, "label": "...",   # on the top facet at xy
                   "curb_color": [r,g,b], "glass_color": [r,g,b], "glass_roughness": 0.2, "frame": 0.05, "dome": 0.0} ],
                  # curb: height of the curb top along the roof normal; frame: curb rim left visible around the glazing;
@@ -248,6 +257,39 @@ def shingle_material(rgb, exposure, slope):
     nt.links.new(div.outputs[0], fr.inputs[0])
     nt.links.new(fr.outputs[0], bump.inputs["Height"])
     nt.links.new(bump.outputs["Normal"], b.inputs["Normal"])
+    return m
+
+
+def underside_soffit(m, rgb, rough=0.6):
+    """Give a roof material a light soffit BSDF on its UNDERSIDE (the bare roof sheet seen from below, under a deep
+    rake or eave overhang, reads as a dark slot otherwise; real rakes show pale soffit boards / painted outlookers).
+
+    A Mix Shader picks the soffit BSDF where the viewer is below the roof plane. The factor is the Geometry node's
+    True Normal z < 0: Cycles turns the true normal toward the viewer, so it points down exactly when the underside is
+    seen, whatever the face winding (the same as Geometry.Backfacing for up-facing facets, which build_model writes).
+    Bump and shingle courses stay on the top side only. Idempotent: a material already patched is left alone."""
+    nt = m.node_tree
+    if nt.nodes.get("Roof underside"):
+        return m
+    out = next((n for n in nt.nodes if n.bl_idname == "ShaderNodeOutputMaterial"), None)
+    top = out.inputs["Surface"].links[0].from_socket if out and out.inputs["Surface"].links else None
+    if top is None:
+        return m
+    rgb = col(rgb)
+    sb = nt.nodes.new("ShaderNodeBsdfPrincipled"); sb.name = sb.label = "Roof underside"
+    sb.inputs["Base Color"].default_value = (*rgb, 1)
+    sb.inputs["Roughness"].default_value = rough
+    geo = nt.nodes.new("ShaderNodeNewGeometry"); geo.name = "Underside geometry"
+    sep = nt.nodes.new("ShaderNodeSeparateXYZ")
+    lt = nt.nodes.new("ShaderNodeMath"); lt.operation = "LESS_THAN"; lt.inputs[1].default_value = 0.0
+    lt.name = lt.label = "Underside factor (backfacing)"
+    mix = nt.nodes.new("ShaderNodeMixShader"); mix.name = mix.label = "Roof top / underside"
+    nt.links.new(geo.outputs["True Normal"], sep.inputs[0])
+    nt.links.new(sep.outputs["Z"], lt.inputs[0])
+    nt.links.new(lt.outputs[0], mix.inputs["Fac"])
+    nt.links.new(top, mix.inputs[1])                      # Fac 0: top side (shingles)
+    nt.links.new(sb.outputs["BSDF"], mix.inputs[2])       # Fac 1: underside (soffit)
+    nt.links.new(mix.outputs["Shader"], out.inputs["Surface"])
     return m
 
 
@@ -755,15 +797,50 @@ def facet_z(model, x, y):
     return best
 
 
-def add_roof_extras(model, D, c, mats):
+def ridge_cap_mesh(e, facets, half=0.15, t=0.03):
+    """(verts, faces) of a shingle cap folded over a ridge / hip edge: a strip `half` m wide (in plan, square to the
+    edge) down each adjacent facet, its top `t` m above that facet's plane, apex `t` above the edge. Following the
+    two planes it casts no false shadow strip (a flat board at ridge height shades a band of the lower-lit slope,
+    which reads as a dark ridge line that orthophotos do not show). A side with no facet named in e["facets"]
+    stays level with the edge. None for a vertical edge."""
     up = Vector((0, 0, 1))
+    p0, p1 = Vector(e["p0"]), Vector(e["p1"])
+    d = p1 - p0
+    side = Vector((d.x, d.y, 0)).cross(up)                  # right of p0 -> p1, seen from above
+    if side.length < 1e-6:
+        return None
+    side.normalize()
+    planes = {}
+    for fid in e.get("facets", []) or []:
+        f = facets.get(fid)
+        if not f:
+            continue
+        a, b, c0 = f["plane"]
+        s = 1 if (-a * side.x - b * side.y) > 0 else -1      # the facet lies on the side its slope falls towards
+        planes.setdefault(s, (a, b, c0))
+    verts = []
+    for p in (p0, p1):
+        row = {}
+        for s in (-1, 1):
+            q = p + side * (s * half)
+            pl = planes.get(s)
+            zq = pl[0] * q.x + pl[1] * q.y + pl[2] if pl else p.z
+            row[s] = (Vector((q.x, q.y, zq - 0.005)), Vector((q.x, q.y, zq + t)))
+        verts += [row[-1][0], row[-1][1], p + up * t, row[1][1], row[1][0]]   # L bottom, L top, apex, R top, R bottom
+    # 0..4 at p0, 5..9 at p1; windings give outward normals (top faces up)
+    faces = [[1, 2, 7, 6], [2, 3, 8, 7], [1, 6, 5, 0], [3, 4, 9, 8], [0, 4, 3, 2, 1], [5, 6, 7, 8, 9]]
+    return verts, faces
+
+
+def add_roof_extras(model, D, c, mats):
     tag()
+    facets = {f["id"]: f for f in model["facets"]}
     for i, e in enumerate(model["edges"]):
         if e["kind"] not in ("ridge", "hip") or e["length_m"] < 0.3:
             continue
-        p0, p1 = Vector(e["p0"]), Vector(e["p1"])
-        side = (p1 - p0).cross(up).normalized()
-        oriented_box(f"ridge cap {i}", p0 - side * 0.15 + up * 0.005, p1 - p0, side * 0.30, up * 0.05, c, mats["cap"])
+        rc = ridge_cap_mesh(e, facets)
+        if rc:
+            mesh(f"ridge cap {i}", rc[0], rc[1], c, mats["cap"])
     for i, v in enumerate(D.get("roof_vents", [])):
         tag(f"roof_vents[{i}]", v)
         x, y = v["xy"]
@@ -1127,6 +1204,11 @@ def main():
         for ob in bpy.data.collections["Roof facets"].objects:
             ob.data.materials.clear()
             ob.data.materials.append(rm)
+    if rf.get("underside", True):         # light soffit on the roof sheet seen from below (rakes, eaves, overhangs)
+        und = rf.get("underside_color") or D.get("soffit_color", (0.8, 0.8, 0.77))
+        for m in {s.material for ob in bpy.data.collections["Roof facets"].objects for s in ob.material_slots
+                  if s.material and s.material.node_tree is not None}:
+            underside_soffit(m, und)
     tag()
     add_foundation(frames, D.get("foundation", {}), c, mats, D.get("openings", []))
     add_trim(model, frames, c, mats, D.get("fascia_height", 0.2), D.get("gutters", True), D.get("soffits", True))

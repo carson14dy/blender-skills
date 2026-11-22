@@ -390,6 +390,47 @@ def surface_z(surf, x, y):
     return (Z[j, i] * (1 - tx) * (1 - ty) + Z[j, i + 1] * tx * (1 - ty) + Z[j + 1, i] * (1 - tx) * ty + Z[j + 1, i + 1] * tx * ty)
 
 
+def paving_humps(local, poly, above=0.3, window=3.0, cell=0.5):
+    """Returns on paving that are not the pavement: parked cars, trailers, bins standing on a street or driveway.
+
+    Inside ``poly`` (shapely (Multi)Polygon: street / driveway / walk outlines) the local lowest-return surface is
+    the grey opening, with a ``window`` m square, of the per-cell (``cell`` m) lowest return -- exact on planes and
+    on monotone slopes (a crowned or sloping street, a ramp, a bank the outline laps onto), while anything narrower
+    than the window (a car is ~1.8 m wide) is removed. Returns more than ``above`` over the highest envelope of their
+    own and the 8 neighbouring cells are flagged (so a steep bank inside the outline is kept).
+    Empty cells (under a car roof) take the nearest cell's lowest return before the opening.
+    Returns a bool mask over ``local`` (True = not pavement: drop before gridding the ground)."""
+    from scipy import ndimage
+    out = np.zeros(len(local), bool)
+    if poly is None or poly.is_empty or not len(local):
+        return out
+    inside = shapely.contains_xy(poly, local[:, 0], local[:, 1])
+    if not inside.any():
+        return out
+    # the envelope also sees the ground just outside the outline (a bank top beyond the edge keeps the bank face that
+    # the outline laps onto under the envelope); only returns inside the outline are flagged
+    near = shapely.contains_xy(poly.buffer(window), local[:, 0], local[:, 1])
+    P = local[near]
+    x0, y0 = float(P[:, 0].min()), float(P[:, 1].min())
+    nx = int((P[:, 0].max() - x0) / cell) + 1
+    ny = int((P[:, 1].max() - y0) / cell) + 1
+    ix = ((P[:, 0] - x0) / cell).astype(int); iy = ((P[:, 1] - y0) / cell).astype(int)
+    zmin = np.full((ny, nx), np.inf)
+    np.minimum.at(zmin, (iy, ix), P[:, 2])
+    has = np.isfinite(zmin)
+    if (~has).any():
+        idx = ndimage.distance_transform_edt(~has, return_distances=False, return_indices=True)
+        zmin = zmin[tuple(idx)]
+    k = max(3, int(round(window / cell)) | 1)
+    env = ndimage.grey_opening(zmin, size=(k, k), mode="nearest")
+    # compare with the highest envelope of the 3x3 cells around: a return on a steep bank (an outline lapping onto it)
+    # may stand more than `above` over the lowest corner of its own cell, never over the envelope uphill of it
+    env = ndimage.grey_dilation(env, size=(3, 3), mode="nearest")
+    ins = inside[near]
+    out[np.nonzero(near)[0][ins]] = P[ins, 2] > env[iy[ins], ix[ins]] + above
+    return out
+
+
 def solid_surface(local, x0, y0, nx, ny, cell=0.25, radius=0.6, min_single=0.9, max_rms=0.2):
     """Top of hard, smooth surfaces (bare ground, boulders, rock outcrops, paving, roofs) on a grid.
 
@@ -652,6 +693,41 @@ def clamp_spikes(Z, cell, skip=None, rock=None, above=0.3, below=0.3, passes=2, 
                 break
             Z = np.where(sel, m5, Z)
     return Z, rk
+
+
+def clamp_unsupported(Z, cell, free, pxy, pz, x0=0.0, y0=0.0, above=0.3, bump=0.4, radius=0.3, dz=0.25, passes=2):
+    """Lower spikes no LiDAR return supports. On ``free`` nodes (bool grid; e.g. off the rock and the breakline bands)
+    a node more than ``above`` over the mean of its 8 neighbours (a crest-line node, which is its own 3x3 median, or a
+    pyramid tip), or more than ``bump`` over its 5x5 median, is set to that level unless a return within ``radius`` m
+    in plan (``pxy`` [n, 2], heights ``pz``, the grid's frame) lies within ``dz`` of its height: measured terrain breaks
+    and crests keep their height, interpolation artefacts (a TIN fold over a sampling gap) go.
+    Grid node (j, i) is at (x0 + i * cell, y0 + j * cell). Returns (new grid, number of nodes lowered)."""
+    from scipy import ndimage
+    from scipy.spatial import cKDTree
+    Z = np.array(Z, float, copy=True)
+    free = np.asarray(free, bool).copy()
+    free[[0, -1], :] = False; free[:, [0, -1]] = False
+    tree = cKDTree(np.asarray(pxy, float))
+    k8 = np.ones((3, 3)); k8[1, 1] = 0
+    lowered = np.zeros(Z.shape, bool)
+    for _ in range(max(1, int(passes))):
+        mean8 = ndimage.convolve(Z, k8 / 8.0, mode="nearest")
+        target = np.where(free & (Z - mean8 > above), mean8 + above, np.inf)
+        if bump:
+            m5 = ndimage.median_filter(Z, size=5, mode="nearest")
+            target = np.where(free & (Z - m5 > bump), np.minimum(target, m5), target)
+        jj, ii = np.nonzero(np.isfinite(target))
+        if not len(jj):
+            break
+        q = np.column_stack([x0 + ii * cell, y0 + jj * cell])
+        hits = tree.query_ball_point(q, radius)
+        cut = np.array([not (len(h) and np.any(np.abs(np.asarray(pz)[h] - Z[j_, i_]) < dz))
+                        for h, j_, i_ in zip(hits, jj, ii)], bool)
+        if not cut.any():
+            break
+        Z[jj[cut], ii[cut]] = target[jj[cut], ii[cut]]
+        lowered[jj[cut], ii[cut]] = True
+    return Z, int(lowered.sum())
 
 
 def accept_planes(planes, xyz, min_pts=150, max_rms=0.06, max_slope=1.0, min_area=8.0, cell=0.5):

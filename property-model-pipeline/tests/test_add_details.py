@@ -259,3 +259,113 @@ def test_skylight_colours_curb_and_dome(scene, tmp_path):
     assert min(above(p) for p in dome["verts"]) == pytest.approx(0.2, abs=0.005)
     assert mats[o["dome unit curb"]["mat"]] != mats[flat_c["mat"]]                     # per-unit curb colour
     assert o["plain unit curb"]["mat"] == "Trim (white)" and o["plain unit glass"]["mat"] == "Glass"   # defaults
+
+
+def test_ridge_cap_follows_both_roof_planes(scene):
+    mj, _, sc = scene
+    caps = _objs(sc, "ridge cap")
+    ridges = [e for e in mj["edges"] if e["kind"] in ("ridge", "hip") and e["length_m"] >= 0.3]
+    assert len(caps) == len(ridges) >= 1
+    e = next(e for e in mj["edges"] if e["kind"] == "ridge")
+    zr = e["p0"][2]                                              # level ridge along x at y = 0
+    cap = next(v for v in caps.values() if v["n"] == 10)         # folded strip: 5 vertices per end, no flat board
+    top = max(p[2] for p in cap["verts"])
+    assert top == pytest.approx(zr + 0.03, abs=0.002)            # apex 0.03 m over the ridge line
+    for f in mj["facets"]:                                       # each half lies 0.03 m above its own plane
+        a, b, c = f["plane"]
+        s = -1 if b > 0 else 1                                    # south slope rises north: its half is at y < 0
+        edge = [p for p in cap["verts"] if abs(p[1] - s * 0.15) < 1e-3]
+        assert edge and max(p[2] for p in edge) == pytest.approx(a * edge[0][0] + b * s * 0.15 + c + 0.03, abs=0.002)
+    assert cap["max"][2] - cap["min"][2] < 0.15                  # follows the 6/12 slopes, about 0.11 m tall
+
+
+def test_ridge_cap_mesh_normals_and_one_sided_edge():
+    import ast
+    src = open(os.path.join(SCRIPTS, "add_details.py")).read()
+    node = next(n for n in ast.parse(src).body if isinstance(n, ast.FunctionDef) and n.name == "ridge_cap_mesh")
+    import bpy  # noqa: F401                                     # bpy ships mathutils
+    from mathutils import Vector
+    ns = {"Vector": Vector}
+    exec(compile(ast.Module([node], []), "ridge_cap_mesh", "exec"), ns)
+    planes = {"S": {"plane": [0.0, 0.5, 5.0]}, "N": {"plane": [0.0, -0.5, 5.0]}}
+    v, f = ns["ridge_cap_mesh"]({"p0": [0, 0, 5], "p1": [4, 0, 5], "facets": ["S", "N"]}, planes)
+    tops = [f[0], f[1]]
+    for face in tops:                                            # top faces point up (outward winding)
+        a, b, c = (v[i] for i in face[:3])
+        assert (b - a).cross(c - b).z > 0
+    v1, _ = ns["ridge_cap_mesh"]({"p0": [0, 0, 5], "p1": [4, 0, 5], "facets": ["S"]}, planes)
+    assert max(p.z for p in v1 if p.y > 0.1) == pytest.approx(5.03)          # no facet named: that side stays level
+    assert ns["ridge_cap_mesh"]({"p0": [0, 0, 5], "p1": [0, 0, 6], "facets": []}, planes) is None
+
+
+ROOF_INSPECT = r"""
+import bpy, json, sys
+from mathutils import Vector
+bpy.ops.wm.open_mainfile(filepath=sys.argv[1])
+out = {"mats": {}}
+for o in bpy.data.collections["Roof facets"].objects:
+    m = o.data.materials[0]
+    nt = m.node_tree
+    res = {"name": m.name}
+    surf = next(n for n in nt.nodes if n.bl_idname == "ShaderNodeOutputMaterial").inputs["Surface"].links[0].from_node
+    res["out"] = surf.bl_idname
+    if surf.bl_idname == "ShaderNodeMixShader":
+        fac = surf.inputs["Fac"].links[0].from_node
+        res["fac"] = [fac.bl_idname, getattr(fac, "operation", "")]
+        res["fac_src"] = fac.inputs[0].links[0].from_node.inputs[0].links[0].from_socket.name
+        res["top"] = surf.inputs[1].links[0].from_node.bl_idname
+        und = surf.inputs[2].links[0].from_node
+        res["under_rgb"] = list(und.inputs["Base Color"].default_value)[:3]
+        res["under_has_bump"] = bool(und.inputs["Normal"].links)
+    out["mats"][o.name] = res
+# functional check of the underside switch in Cycles: emission red on top, green underneath, seen from above and below
+m = bpy.data.collections["Roof facets"].objects[0].data.materials[0]
+mix = m.node_tree.nodes.get("Roof top / underside")
+if mix is not None:
+    nt = m.node_tree
+    for k, c in ((1, (1, 0, 0, 1)), (2, (0, 1, 0, 1))):
+        e = nt.nodes.new("ShaderNodeEmission"); e.inputs["Color"].default_value = c; e.inputs["Strength"].default_value = 1
+        nt.links.new(e.outputs[0], mix.inputs[k])
+    sc = bpy.context.scene
+    keep = set(bpy.data.collections["Roof facets"].objects[:1])
+    for o in sc.objects:
+        o.hide_render = o not in keep and o.type not in ("LIGHT", "CAMERA")   # the facet alone (no labels / curves)
+    roof = bpy.data.collections["Roof facets"].objects[0]
+    big = max(roof.data.polygons, key=lambda p: p.area)                # a point on the sheet (not in a roof opening)
+    ctr = roof.matrix_world @ big.center
+    cd = bpy.data.cameras.new("t"); cam = bpy.data.objects.new("t", cd); sc.collection.objects.link(cam); sc.camera = cam
+    cd.lens = 400
+    sc.render.engine = "CYCLES"; sc.cycles.samples = 1; sc.render.resolution_x = sc.render.resolution_y = 8
+    sc.view_settings.view_transform = "Standard"
+    for tag, dz in (("above", 6.0), ("below", -6.0)):
+        cam.location = ctr + Vector((0.3, 0.2, dz))
+        cam.rotation_euler = (ctr - cam.location).to_track_quat("-Z", "Y").to_euler()
+        sc.render.filepath = sys.argv[2] + f".{tag}.png"
+        bpy.ops.render.render(write_still=True)
+        im = bpy.data.images.load(sc.render.filepath)
+        px = list(im.pixels[:]); n = len(px) // 4
+        out[tag] = [sum(px[i * 4 + c] for i in range(n)) / n for c in range(3)]
+json.dump(out, open(sys.argv[2], "w"))
+"""
+
+
+def test_roof_underside_renders_as_soffit(scene, tmp_path):
+    """The roof sheet seen from below (deep rake / eave overhang) gets a light soffit BSDF, the top keeps shingles."""
+    mj, D, _ = scene
+    det = os.path.join(os.path.dirname(D["model_json"]), "detailed.blend")
+    (tmp_path / "roof.py").write_text(ROOF_INSPECT)
+    _run([str(tmp_path / "roof.py"), det, str(tmp_path / "roof.json")])
+    r = json.loads((tmp_path / "roof.json").read_text())
+    assert r["mats"]
+    for res in r["mats"].values():
+        assert res["out"] == "ShaderNodeMixShader"                     # top / underside branch on every roof facet
+        assert res["fac"] == ["ShaderNodeMath", "LESS_THAN"] and res["fac_src"] == "True Normal"
+        assert res["top"] == "ShaderNodeBsdfPrincipled" and not res["under_has_bump"]
+        assert res["under_rgb"] == pytest.approx([0.8, 0.8, 0.77], abs=0.005)   # default soffit colour
+    assert r["above"][0] > 0.9 and r["above"][1] < 0.1                  # seen from above: the shingle (top) branch
+    assert r["below"][1] > 0.9 and r["below"][0] < 0.1                  # seen from below: the soffit branch
+    # opt out: "roof": {"underside": false} leaves the bare sheet
+    _, _, _ = _details_run(scene, tmp_path, {"roof": {"underside": False}}, "no_under")
+    _run([str(tmp_path / "roof.py"), str(tmp_path / "no_under.blend"), str(tmp_path / "roof2.json")])
+    r2 = json.loads((tmp_path / "roof2.json").read_text())
+    assert all(res["out"] == "ShaderNodeBsdfPrincipled" for res in r2["mats"].values())

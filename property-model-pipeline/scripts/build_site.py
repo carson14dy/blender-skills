@@ -51,7 +51,24 @@ height of the node's own cell (--rock-smooth-floor); small off-rock bumps over t
 (--bump-clamp). Shrub / mulch beds: --beds entries may be {"polygon", "label", "no_solid": true} and --veg-mask lists
 more; there the single returns are shrub tops, not rock: no solid merge, no rock-outline quantile, and the terrain is
 capped at the grey opening of the ground (--veg-window, --veg-dh: lidar.veg_floor). Inside traced rock outlines no node
-stays below its cell's lowest last return (--rock-floor-last).
+stays below its cell's lowest last return (--rock-floor-last). A third pass (--spike-third) clamps once more to the 3x3
+median + 0.3 everywhere but the breakline bands, pads, cut-outs and tall rock (rock_rise >= --spike-third-rise), and
+lowers crest / bump nodes the median cannot see (a node on a one-cell crest is its own median) to the mean of its 8
+neighbours + 0.3 / its 5x5 median, unless a LiDAR return supports its height (lidar.clamp_unsupported).
+
+Wall feet and overlays at walls: after the breaklines, nodes within one cell of a retaining-wall face on its downhill side
+(also past the face's ends; nodes snapped onto the face count) take min(z, their cell's lowest last return), nodes out to
+--wall-foot m min(z, that + --wall-foot-tol), and the later despike passes skip them (wall_foot_lower: a grade pad's blend or
+the side grade of a smeared step otherwise leaves pale shards on the lower level). Draped street / paving / bed overlays are cut
+back from a --overlay-wall-gap strip on the uphill side of every face (uphill_strips), so a polygon lapping over a face is never
+draped on the upper level's triangles. A fourth despike pass (--spike-fourth) clamps the non-rock nodes once more, and nodes of
+street cells are kept within --street-clamp of the locally fitted road plane (road_plane).
+
+Vehicles: inside the street / paving outlines, returns more than --paving-hump over the local lowest-return surface (a
+3 m grey opening, exact on planes and slopes) are parked cars or trailers; they are dropped before any gridding
+(lidar.paving_humps), so the street is bridged under them instead of rising as an asphalt mound. Street cells more
+than --street-bank over the locally fitted road plane near the street edge (a street polygon lapping onto a bank) leave
+the street overlay and stay ground (street_bank; kerbed edges are kept).
 """
 import argparse
 import json
@@ -187,6 +204,122 @@ def wall_lines(data, zfun=None):
     return out
 
 
+def wall_faces(data, zfun=None):
+    """Exposed (downhill) faces of the retaining walls of a yard.json dict (or item list) -> [(face line, down, thickness)]:
+    ``down`` = +1 when the downhill side is left of the line direction, -1 when it is right. A ``"line_is": "face"`` item
+    gives its own line (downhill = the side opposite ``uphill``, or the lower terrain); a centre-line item gives its line
+    moved half a thickness to its downhill side (the lower ``zfun`` side; skipped without a terrain)."""
+    items = data.get("items", []) if isinstance(data, dict) else data
+    out = []
+    for it in items:
+        if not (isinstance(it, dict) and it.get("line") and len(it["line"]) >= 2
+                and it.get("kind", "retaining_wall") == "retaining_wall"):
+            continue
+        th = float(it.get("thickness", 0.3))
+        up = {"left": 1, "right": -1}.get(it.get("uphill"))
+        if up is None:
+            if zfun is None:
+                continue
+            up = uphill_side(it["line"], th, zfun)
+        line = it["line"] if it.get("line_is", "centre") == "face" else offset_line(it["line"], -up * th / 2)
+        out.append(([list(map(float, p[:2])) for p in line], -up, th))
+    return out
+
+
+def uphill_strips(faces, gap=0.15):
+    """Plan strips ``gap`` m wide on the uphill side of every wall face (the face line extended by ``gap`` past both
+    ends): draped paving / bed overlays are cut back to the face there. A paving polygon that laps a few centimetres over
+    a face (or past a wall end) onto the upper level would otherwise be draped on the upper level's terrain triangles and
+    stand up as a pale spike on the wall."""
+    polys = []
+    for line, down, _th in faces:
+        P = np.asarray(line, float)
+        d0 = P[1] - P[0]; d1 = P[-1] - P[-2]
+        n0, n1 = np.hypot(*d0), np.hypot(*d1)
+        if n0 < 1e-9 or n1 < 1e-9:
+            continue
+        P = P.copy(); P[0] = P[0] - gap * d0 / n0; P[-1] = P[-1] + gap * d1 / n1
+        # single-sided buffer: positive distance = left of the line direction; the uphill side is -down
+        pg = LineString(P).buffer(-down * gap, single_sided=True, join_style="mitre")
+        if not pg.is_empty:
+            polys.append(pg)
+    return unary_union(polys) if polys else Polygon()
+
+
+def cell_lowest(pxy, pz, x0, y0, c, shape):
+    """Lowest return of every grid node's cell (node (j, i) at (x0 + i c, y0 + j c), cell +-c/2); nan where empty."""
+    ny, nx = shape
+    i = np.floor((pxy[:, 0] - (x0 - c / 2)) / c).astype(int)
+    j = np.floor((pxy[:, 1] - (y0 - c / 2)) / c).astype(int)
+    ok = (i >= 0) & (i < nx) & (j >= 0) & (j < ny)
+    low = np.full(shape, np.inf)
+    np.minimum.at(low, (j[ok], i[ok]), pz[ok])
+    low[~np.isfinite(low)] = np.nan
+    return low
+
+
+def wall_foot_lower(Z, NX, NY, faces, low, x0, y0, c, reach=0.5, tol=0.3, walls=None):
+    """Foot of every retaining-wall face: grid nodes (at their mesh positions NX, NY: nodes snapped onto a face count)
+    within one cell of the face on its downhill side -- also past the face's ends -- take min(z, lowest last return of
+    their own cell; with none, of the nearest cell down the face normal, up to 3 cells); nodes one cell to ``reach`` m
+    out take min(z, that return + ``tol``). Grade-pad blends reach across a wall and the side grade of a smeared step can
+    leave the foot standing up as a pale terrain shard on the lower level. Nodes on the uphill side of another wall's
+    face (inside its band, ``walls`` = wall_lines output) are left to that wall. Never raises a node.
+    Returns (new grid, bool mask of the lowered foot nodes)."""
+    Z = np.array(Z, float, copy=True)
+    ny, nx = Z.shape
+    near = np.full(Z.shape, np.inf); tdn = np.zeros(Z.shape); ndir = np.zeros(Z.shape + (2,))
+    owner = np.full(Z.shape, -1)
+    uph = [np.zeros(Z.shape, bool) for _ in faces]
+    for k, (line, down, th) in enumerate(faces):
+        P = np.asarray(line, float)
+        bx0, by0 = P.min(0) - reach - c; bx1, by1 = P.max(0) + reach + c
+        cand = (NX >= bx0) & (NX <= bx1) & (NY >= by0) & (NY <= by1)
+        if not cand.any():
+            continue
+        dk = np.full(Z.shape, np.inf); tk = np.zeros(Z.shape); nk = np.zeros(Z.shape + (2,))
+        for a_, b_ in zip(P[:-1], P[1:]):
+            d = b_ - a_; ln = float(np.hypot(*d))
+            if ln < 1e-9:
+                continue
+            d = d / ln; n = down * np.array([-d[1], d[0]])         # n points downhill
+            s = (NX - a_[0]) * d[0] + (NY - a_[1]) * d[1]
+            t = (NX - a_[0]) * n[0] + (NY - a_[1]) * n[1]
+            dist = np.hypot(s - np.clip(s, 0, ln), t)
+            better = cand & (dist < dk)
+            dk = np.where(better, dist, dk); tk = np.where(better, t, tk)
+            nk[better] = n
+        uph[k] = cand & (tk < -1e-6) & (dk <= th + 1.5 * c)
+        mine = cand & (tk >= -1e-6) & (dk <= reach + 1e-6) & (dk < near)
+        near = np.where(mine, dk, near); tdn = np.where(mine, tk, tdn); ndir[mine] = nk[mine]
+        owner[mine] = k
+    foot = owner >= 0
+    for k in range(len(faces)):
+        others = np.zeros(Z.shape, bool)
+        for j in range(len(faces)):
+            if j != k:
+                others |= uph[j]
+        foot &= ~((owner == k) & others)
+    jj, ii = np.nonzero(foot)
+    lowered = np.zeros(Z.shape, bool)
+    for j_, i_ in zip(jj, ii):
+        lo = low[j_, i_]
+        step = 1
+        while not np.isfinite(lo) and step <= 3:
+            px = x0 + i_ * c + step * c * ndir[j_, i_, 0]; py = y0 + j_ * c + step * c * ndir[j_, i_, 1]
+            i2, j2 = int(round((px - x0) / c)), int(round((py - y0) / c))
+            if 0 <= i2 < nx and 0 <= j2 < ny:
+                lo = low[j2, i2]
+            step += 1
+        if not np.isfinite(lo):
+            continue
+        cap = lo if near[j_, i_] <= c + 1e-6 else lo + tol
+        if Z[j_, i_] > cap:
+            Z[j_, i_] = cap
+            lowered[j_, i_] = True
+    return Z, foot
+
+
 def rock_outlines(features, boulders=None):
     """Traced rock outlines: features "rocks" (props top_z optional) and yard boulder items
     ({"kind": "boulder", "polygon", "top_z"}) -> [(Polygon, top_z or None)]."""
@@ -212,7 +345,8 @@ def bed_entries(data):
     "no_solid": true}. Returns (all bed polygons, the no_solid ones). A no_solid bed (shrubs / mulch: dense evergreen
     shrubs return single, planar-looking pulses that pass the solid-surface test) is also a vegetation mask: no
     solid-surface merge, no rock-outline quantile and no rock edge growth inside it, so the terrain there is the
-    filtered ground (lowest last returns), not the shrub tops."""
+    filtered ground (lowest last returns), not the shrub tops. ``"overlay": false`` makes an entry a vegetation mask
+    only (no bed overlay): e.g. the shrub area round a bed whose drawn outline is kept clear of a boulder or a wall."""
     polys, veg = [], []
     for e in data or []:
         ring = e.get("polygon") if isinstance(e, dict) else e
@@ -221,10 +355,121 @@ def bed_entries(data):
         pg = Polygon(ring).buffer(0)
         if pg.is_empty:
             continue
-        polys.append(pg)
+        if not (isinstance(e, dict) and e.get("overlay") is False):
+            polys.append(pg)
         if isinstance(e, dict) and e.get("no_solid"):
             veg.append(pg)
     return polys, veg
+
+
+def paving_outlines(F, paving=None):
+    """Street + private paving outlines of a features dict (every "impervious" polygon, sidewalk lines buffered by
+    their width, extra --paving polygons): where returns standing on the pavement are vehicles, not ground."""
+    parts = [polys_of(F.get("impervious", []))]
+    for fe in F.get("sidewalk", []):
+        wid = float((fe.get("props") or {}).get("WIDTH") or 4) * 0.3048
+        parts += [LineString(gl).buffer(wid / 2, cap_style="flat") for gl in fe["geoms"] if len(gl) >= 2]
+    parts += [Polygon(p).buffer(0) for p in (paving or [])]
+    parts = [g_ for g_ in parts if not g_.is_empty]
+    return unary_union(parts) if parts else Polygon()
+
+
+def road_plane(street, X, Y, Z, radius=5.0, step=1.0, trim=0.15):
+    """Local road surface under a street outline: at every ``step`` m sample a plane through the street nodes within
+    ``radius`` m, started level at their median (the road is most of the disc) and refitted four times to the nodes within
+    ``trim`` of it (a bank strip along the edge neither lifts nor tilts it). Returns road_z(qx, qy) (nearest sample's
+    plane) or None when the street has too few nodes."""
+    from scipy.spatial import cKDTree
+    m = shapely.contains_xy(street, X, Y) if not street.is_empty else np.zeros(X.shape, bool)
+    if m.sum() < 10:
+        return None
+    P = np.column_stack([X[m], Y[m], Z[m]])
+    tree = cKDTree(P[:, :2])
+    bx0, by0, bx1, by1 = street.bounds
+    sx, sy = np.meshgrid(np.arange(bx0, bx1 + step, step), np.arange(by0, by1 + step, step))
+    S = np.column_stack([sx.ravel(), sy.ravel()])
+    near, _ = tree.query(S, distance_upper_bound=step)
+    S = S[np.isfinite(near)]
+    coef = np.full((len(S), 3), np.nan)
+    for k, idx in enumerate(tree.query_ball_point(S, radius)):
+        if len(idx) < 10:
+            continue
+        Q = P[idx]
+        A = np.column_stack([Q[:, 0] - S[k, 0], Q[:, 1] - S[k, 1], np.ones(len(Q))])
+        cf = np.array([0.0, 0.0, float(np.median(Q[:, 2]))])
+        for _ in range(4):
+            sel = np.abs(Q[:, 2] - A @ cf) <= trim
+            if sel.sum() < 6:
+                break
+            cf = np.linalg.lstsq(A[sel], Q[sel, 2], rcond=None)[0]
+        coef[k] = cf
+    ok = np.isfinite(coef[:, 0])
+    if not ok.any():
+        return None
+    S, coef = S[ok], coef[ok]
+    kd = cKDTree(S)
+
+    def road_z(qx, qy):
+        q = np.column_stack([np.ravel(qx), np.ravel(qy)])
+        _, si = kd.query(q)
+        z = coef[si, 2] + coef[si, 0] * (q[:, 0] - S[si, 0]) + coef[si, 1] * (q[:, 1] - S[si, 1])
+        return z.reshape(np.shape(qx))
+    return road_z
+
+
+def street_bank(street, X, Y, Z, c, rise=0.4, radius=5.0, step=1.0, trim=0.15, edge=3.0, keep=None):
+    """Parts of a street outline that lap onto a bank (the polygon traced a little wide of the asphalt): grid cells
+    the outline covers (centre or a corner inside), within ``edge`` m of its outline and outside ``keep`` (e.g. the kerb lines,
+    buffered: a kerbed edge keeps its asphalt up to the kerb), with any corner node more than ``rise`` over the road
+    surface. The road surface at each ``step`` m sample is a plane through the street nodes within ``radius`` m: it
+    starts level at their median (the road is most of the disc) and is refitted (least squares) four times to the
+    nodes within ``trim`` of it, so a bank strip along the edge neither lifts nor tilts it.
+    Returns the union of those cells (shapely), to take out of the street overlay (they stay ground)."""
+    from scipy.spatial import cKDTree
+    m = shapely.contains_xy(street, X, Y) if not street.is_empty else np.zeros(X.shape, bool)
+    if m.sum() < 10:
+        return Polygon()
+    P = np.column_stack([X[m], Y[m], Z[m]])
+    tree = cKDTree(P[:, :2])
+    bx0, by0, bx1, by1 = street.bounds
+    sx, sy = np.meshgrid(np.arange(bx0, bx1 + step, step), np.arange(by0, by1 + step, step))
+    S = np.column_stack([sx.ravel(), sy.ravel()])
+    near, _ = tree.query(S, distance_upper_bound=step)
+    S = S[np.isfinite(near)]
+    coef = np.full((len(S), 3), np.nan)
+    for k, idx in enumerate(tree.query_ball_point(S, radius)):
+        if len(idx) < 10:
+            continue
+        Q = P[idx]
+        A = np.column_stack([Q[:, 0] - S[k, 0], Q[:, 1] - S[k, 1], np.ones(len(Q))])
+        cf = np.array([0.0, 0.0, float(np.median(Q[:, 2]))])      # start level at the median: the road is most of it
+        for _ in range(4):
+            sel = np.abs(Q[:, 2] - A @ cf) <= trim
+            if sel.sum() < 6:
+                break
+            cf = np.linalg.lstsq(A[sel], Q[sel, 2], rcond=None)[0]
+        coef[k] = cf
+    ok = np.isfinite(coef[:, 0])
+    if not ok.any():
+        return Polygon()
+    S, coef = S[ok], coef[ok]
+    cx = (X[:-1, :-1] + X[1:, 1:]) / 2; cy = (Y[:-1, :-1] + Y[1:, 1:]) / 2
+    zmax = np.maximum.reduce([Z[:-1, :-1], Z[:-1, 1:], Z[1:, :-1], Z[1:, 1:]])
+    cand = shapely.contains_xy(street, cx, cy) | m[:-1, :-1] | m[:-1, 1:] | m[1:, :-1] | m[1:, 1:]   # cells it touches
+    cand &= shapely.distance(street.boundary, shapely.points(cx.ravel(), cy.ravel())).reshape(cx.shape) <= edge
+    if keep is not None and not keep.is_empty:
+        cand &= ~shapely.contains_xy(keep, cx, cy)
+    if not cand.any():
+        return Polygon()
+    q = np.column_stack([cx[cand], cy[cand]])
+    _, si = cKDTree(S).query(q)
+    road = coef[si, 2] + coef[si, 0] * (q[:, 0] - S[si, 0]) + coef[si, 1] * (q[:, 1] - S[si, 1])
+    bank = zmax[cand] - road > rise
+    if not bank.any():
+        return Polygon()
+    h_ = c / 2
+    cells = unary_union([Polygon([(x - h_, y - h_), (x + h_, y - h_), (x + h_, y + h_), (x - h_, y + h_)]) for x, y in q[bank]])
+    return cells.buffer(0.05, join_style="mitre").buffer(-0.05, join_style="mitre")
 
 
 def roof_plan(model, overhang=0.5):
@@ -562,6 +807,38 @@ def main():
     ap.add_argument("--garage-front", help='json {"front": [[x,y],[x,y]]}: the driveway apron is extended to / cut at this '
                                            "garage-door line (the measured wall face)")
     ap.add_argument("--paving-like", help="json polygons where returns are not terrain (street with cars, driveways)")
+    ap.add_argument("--paving-hump", type=float, default=0.3,
+                    help="inside the street / paving outlines, returns more than this over the local lowest-return surface "
+                         "(--paving-hump-window m grey opening: parked cars, trailers) are dropped before any gridding "
+                         "(filtered ground, solid merge, class-2 terrain); 0 = off")
+    ap.add_argument("--paving-hump-window", type=float, default=3.0, help="see --paving-hump (m; wider than a car)")
+    ap.add_argument("--street-bank", type=float, default=0.4,
+                    help="street nodes more than this above the locally fitted road plane, within 3 m of the street outline, "
+                         "are bank under a too-wide street polygon: they leave the street overlay (0 = off)")
+    ap.add_argument("--spike-third", type=float, default=0.3,
+                    help="third despike pass after the second stage: z = min(z, 3x3 median + this) on non-rock nodes outside "
+                         "breakline bands, pads and cut-outs, and on rock nodes the merge raised less than --spike-third-rise "
+                         "(0 = off)")
+    ap.add_argument("--spike-third-rise", type=float, default=1.0, help="see --spike-third (m)")
+    ap.add_argument("--support-radius", type=float, default=0.3,
+                    help="third despike pass: a non-rock node more than --spike-third over the mean of its 8 neighbours (or "
+                         "--bump-clamp over its 5x5 median) is lowered to that level unless a LiDAR return within this many m "
+                         "(plan) lies within --support-dz of its height")
+    ap.add_argument("--support-dz", type=float, default=0.25, help="see --support-radius (m)")
+    ap.add_argument("--wall-foot", type=float, default=0.5,
+                    help="after the breaklines, nodes within one cell of a retaining-wall face on its downhill side (past its "
+                         "ends too) take min(z, their cell's lowest last return), nodes up to this many m out min(z, that + "
+                         "--wall-foot-tol); they are skipped by the later despike passes (0 = off)")
+    ap.add_argument("--wall-foot-tol", type=float, default=0.3, help="see --wall-foot (m)")
+    ap.add_argument("--overlay-wall-gap", type=float, default=0.15,
+                    help="draped street / paving / bed overlays are cut back from a strip this wide on the uphill side of "
+                         "every wall face (and past its ends), so a polygon lapping over a face is not draped on the upper "
+                         "level (0 = off)")
+    ap.add_argument("--spike-fourth", type=float, default=0.3,
+                    help="fourth despike pass after the third: z = min(z, 3x3 median + this) on non-rock nodes outside the "
+                         "breakline bands, wall feet, pads and cut-outs (0 = off)")
+    ap.add_argument("--street-clamp", type=float, default=0.25,
+                    help="street-overlay nodes: z = min(z, locally fitted road plane + this) (0 = off)")
     ap.add_argument("--house-extra", help="json list of polygons treated as building (no lawn/beds; e.g. a garage under a deck)")
     ap.add_argument("project"); ap.add_argument("features"); ap.add_argument("out")
     ap.add_argument("--half", type=float, default=34.0); ap.add_argument("--cell", type=float, default=0.5)
@@ -584,6 +861,17 @@ def main():
     model = json.load(open(os.path.join(a.project, "model.json")))
     F = json.load(open(a.features))
     pts = np.load(os.path.join(a.project, "data/lidar_points.npy"))
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+    from propmodel import lidar as L
+    if a.paving_hump > 0:
+        # parked cars / trailers on the street or a driveway: not ground, and not "rock" for the solid merge
+        pav = paving_outlines(F, json.load(open(a.paving)) if a.paving else None)
+        hump = L.paving_humps(pts, pav, above=a.paving_hump, window=a.paving_hump_window)
+        if hump.any():
+            hp = pts[hump]
+            print(f"terrain: {int(hump.sum())} returns on paving more than {a.paving_hump} m over the local lowest-return "
+                  f"surface dropped (vehicles; x {hp[:, 0].min():.1f}..{hp[:, 0].max():.1f}, y {hp[:, 1].min():.1f}..{hp[:, 1].max():.1f})")
+        pts = pts[~hump]
     g = pts[pts[:, 3] == 2]
     gx, gy, gz = g[:, 0], g[:, 1], g[:, 2] - datum
 
@@ -764,10 +1052,21 @@ def main():
         return (_Zw[j_, i_] * (1 - tx) * (1 - ty) + _Zw[j_, i_ + 1] * tx * (1 - ty)
                 + _Zw[j_ + 1, i_] * (1 - tx) * ty + _Zw[j_ + 1, i_ + 1] * tx * ty)
     walls = wall_lines(json.load(open(a.breaklines)), zfun=_zw) if a.breaklines else []
+    wfaces = wall_faces(json.load(open(a.breaklines)), zfun=_zw) if a.breaklines else []
     node_xy = [X.copy(), Y.copy()]          # mesh vertex positions (nodes next to walls move onto the faces)
+    lastm = pts[:, 4] >= pts[:, 5]
+    low_last = cell_lowest(pts[lastm, :2], pts[lastm, 2] - datum, xs[0], ys[0], c, X.shape)
+    foot = np.zeros(X.shape, bool)
     if walls:
         Z = apply_breaklines(Z, xs, ys, walls, c, snap=node_xy)
         print(f"terrain: {len(walls)} retaining-wall breaklines")
+        if a.wall_foot > 0 and wfaces:
+            Zf, foot = wall_foot_lower(Z, node_xy[0], node_xy[1], wfaces, low_last, xs[0], ys[0], c, reach=a.wall_foot,
+                                       tol=a.wall_foot_tol, walls=walls)
+            dzf = Z - Zf
+            print(f"terrain: wall feet: {int(foot.sum())} nodes within {a.wall_foot} m downhill of a face, "
+                  f"{int((dzf > 0.01).sum())} lowered to their cell's lowest last return (max {dzf.max():.2f} m)")
+            Z = Zf
 
     # ---- surface classes --------------------------------------------------
     house = unary_union([_wing_poly(w) for w in model["wings"] if not w.get("roof_only")])
@@ -805,6 +1104,16 @@ def main():
     rocks = unary_union([pg for pg, _ in rock_outlines(F, json.load(open(a.boulders)) if a.boulders else None)] or [Polygon()])
     window = Polygon([(-h, -h), (h, -h), (h, h), (-h, h)])
     street, concrete = street.intersection(window), concrete.intersection(window)
+    if a.street_bank > 0 and not street.is_empty:
+        kerb = unary_union([LineString(gl).buffer(1.0) for fe in (F.get("curbs") or []) for gl in fe["geoms"] if len(gl) >= 2]
+                           or [Polygon()])
+        bank = street_bank(street, X, Y, Z, c, rise=a.street_bank, keep=kerb)
+        if not bank.is_empty:
+            before = street.area
+            street = street.difference(bank.intersection(street))
+            street = unary_union([g_ for g_ in getattr(street, "geoms", [street]) if g_.area > 0.05] or [Polygon()])
+            print(f"paving: street outline laps onto a bank (> {a.street_bank} m over the road plane): "
+                  f"{before - street.area:.1f} m2 left as ground")
     beds = house.buffer(a.bed_width, join_style="mitre").difference(house) if a.bed_width > 0 else Polygon()
     if bed_polys:
         beds = unary_union([beds] + bed_polys)
@@ -823,13 +1132,51 @@ def main():
                 Z = w * float(np.median(Z[ring])) + (1 - w) * Z
 
     # ---- final despike, second stage: what the pads, breaklines and cut-outs left (their own nodes keep their steps)
+    skip = padmask.copy() | foot
+    if walls:
+        skip |= _band_owner(walls, X, Y, c) != -1
+    if not cut.is_empty:
+        skip |= shapely.distance(cut, shapely.points(X.ravel(), Y.ravel())).reshape(X.shape) < 1.5
     if a.spike_clamp > 0:
-        skip = padmask.copy()
-        if walls:
-            skip |= _band_owner(walls, X, Y, c) != -1
-        if not cut.is_empty:
-            skip |= shapely.distance(cut, shapely.points(X.ravel(), Y.ravel())).reshape(X.shape) < 1.5
         Z, rock_rise = _despike(Z, rock_rise, skip, "after pads / breaklines")
+    # third pass: a plain 3x3-median clamp (no rock floor, no smoothing) on everything but the breakline bands, pads,
+    # cut-outs and the tall rock (cliffs and boulders the merge raised >= --spike-third-rise keep their measured edges)
+    if a.spike_third > 0:
+        sk3 = skip | (rock_rise >= a.spike_third_rise)
+        Zn, _ = L.clamp_spikes(Z, c, skip=sk3, rock=None, above=a.spike_third, below=None, passes=1, sigma=0,
+                               peak=a.peak_clamp if a.peak_clamp > 0 else None)
+        # crest and bump nodes the median clamp cannot see (a node on a crest line IS its 3x3 median) are lowered only
+        # where no LiDAR return supports their height (measured terrain breaks stay)
+        free3 = ~sk3 & ~(rock_rise > a.spike_rock)
+        Zn, nun = L.clamp_unsupported(Zn, c, free3, pts[:, :2], pts[:, 2] - datum, x0=xs[0], y0=ys[0], above=a.spike_third,
+                                      bump=a.bump_clamp if a.bump_clamp > 0 else None, radius=a.support_radius,
+                                      dz=a.support_dz)
+        dz = Zn - Z
+        print(f"terrain: despike (third pass) lowered {int((dz < -0.01).sum())} nodes (max {-dz.min():.2f} m; "
+              f"{nun} unsupported crest / bump nodes), {int(sk3.sum())} skipped")
+        Z, rock_rise = Zn, rock_rise + dz
+        if a.spike_fourth > 0:
+            # once more on the non-rock nodes: lowering the crests can leave the next node standing over its new median
+            Zn, _ = L.clamp_spikes(Z, c, skip=sk3 | (rock_rise > a.spike_rock), rock=None, above=a.spike_fourth, below=None,
+                                   passes=1, sigma=0, peak=a.peak_clamp if a.peak_clamp > 0 else None)
+            dz = Zn - Z
+            print(f"terrain: despike (fourth pass, non-rock) lowered {int((dz < -0.01).sum())} nodes (max {-dz.min():.2f} m)")
+            Z, rock_rise = Zn, rock_rise + dz
+    # street nodes: never more than --street-clamp over the locally fitted road plane (bank cells already left the street)
+    if a.street_clamp > 0 and not street.is_empty:
+        road_z = road_plane(street, X, Y, Z)
+        if road_z is not None:
+            # street-class nodes: every corner of a cell whose centre is on the street (the overlay's edge triangles
+            # reach the first node outside the outline; a bank node there would lift the overlay's edge)
+            scell = shapely.contains_xy(street, (X[:-1, :-1] + X[1:, 1:]) / 2, (Y[:-1, :-1] + Y[1:, 1:]) / 2)
+            sm_ = np.zeros(X.shape, bool)
+            sm_[:-1, :-1] |= scell; sm_[:-1, 1:] |= scell; sm_[1:, :-1] |= scell; sm_[1:, 1:] |= scell
+            sm_ &= ~skip
+            Zr = np.where(sm_, np.minimum(Z, road_z(X, Y) + a.street_clamp), Z)
+            dz = Zr - Z
+            print(f"terrain: street nodes clamped to the road plane + {a.street_clamp} m: {int((dz < -0.01).sum())} lowered "
+                  f"(max {-dz.min():.2f} m)")
+            Z = Zr
 
     # face centres
     cx = (X[:-1, :-1] + X[1:, 1:]) / 2
@@ -888,7 +1235,12 @@ def main():
     overlays = {}
     # overlays end at the wall faces (+ --wall-gap): the terrain under the wall is the hidden step
     wallpoly = unary_union([LineString(l_).buffer(th / 2 + a.wall_gap, cap_style="flat") for l_, th in walls]) if walls else Polygon()
-    for name, geom, lift in (("street", street, 0.015), ("concrete", concrete.difference(house).difference(wallpoly), 0.03),
+    if a.overlay_wall_gap > 0 and wfaces:
+        # nothing draped on the uphill side within --overlay-wall-gap of a face (or past its ends): it would take the
+        # upper level's triangles and stand up as a spike on the wall
+        wallpoly = unary_union([wallpoly, uphill_strips(wfaces, a.overlay_wall_gap)])
+    for name, geom, lift in (("street", street.difference(wallpoly), 0.015),
+                             ("concrete", concrete.difference(house).difference(wallpoly), 0.03),
                              ("rock_bed", beds.difference(house).difference(wallpoly), 0.02)):
         v, t = drape(geom.buffer(0), lift)
         overlays[name] = {"verts": v, "tris": t}
