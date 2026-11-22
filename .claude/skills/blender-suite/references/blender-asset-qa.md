@@ -2,11 +2,13 @@
 
 Never assume a generated or edited mesh is correct. Check it with numbers, then look at it.
 
+QA proves the mesh is clean. It does not prove it is the right mesh: sizes, counts, spacing and materials are checked against the brief by `acceptance_check.py` (`build-accuracy`).
+
 ## Procedure
 1. **Automated check**, passing one asset's objects together:
    `scripts/qa_check.py -- --objects Body Head Hat --profile game`
    Profiles: `game` (default), `render` (lenient), `print` (watertight required), `roblox` (20k tris/mesh, watertight, no n-gons, ≤4 influences).
-2. **Fix every `errors` entry** (table below), then re-run until `"pass": true`. Each warning must be either fixed or explicitly accepted, with the reason reported to the user.
+2. **Fix every `errors` entry** (table below), then re-run until `"pass": true`. A result with `"complete": false` is not a pass, whatever else it says. Each warning must be either fixed or explicitly accepted, with the reason reported to the user.
 3. **Visual check, always**:
    - Live: MCP `look` with `mode="angles"` on the targets, once in `material`/`solid` shading and once in `wireframe`. Use `xray` for internals.
    - Headless: `scripts/review_shots.py -- --objects ... --mode random` (one color per object, which makes detached pieces obvious), then `--mode wire` for topology. Open the returned PNG.
@@ -41,10 +43,10 @@ Never assume a generated or edited mesh is correct. Check it with numbers, then 
 - **Intersections that look wrong** (a leg clipping a seat), even though they're "attached".
 - **Interior/hidden geometry** that wastes tris (use `xray`).
 - **Deformation**: pose the rig at extremes (elbow 140°, knee 150°, shoulder raised) and look for collapsing volume.
-- **Material assignment**: slots and color spaces are checked automatically. Still look at whether each part got the *intended* material.
+- **Material assignment**: slots and color spaces are checked automatically. Still look at whether each part got the *intended* material. A `material` check in the acceptance file tests this by name.
 
 ## Tuning
 - `--eps` is the z-fight distance. Raise it to 0.005 for large environment scenes, and lower it to 0.0002 for tiny jewelry.
 - `--tol` is the contact tolerance for detached parts. Raise it for chunky kitbash.
 - `--no-modifiers` checks the base mesh. By default the evaluated (modifier) result is checked, which is what gets exported.
-- Above `--max-tris` (300k), the z-fight and floating checks are skipped. Check high-poly sources per part instead.
+- Above `--max-tris` (2 million) the z-fight and floating checks do not run, and the result is an error with `"complete": false`. Use `--max-tris 0` for no limit (about 15 s per million triangles on a CPU), or check per part.

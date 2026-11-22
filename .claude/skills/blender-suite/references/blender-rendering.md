@@ -8,7 +8,7 @@ scripts/render_batch.py -- --engine CYCLES --preset final --res 1920 1080 --out 
 scripts/render_batch.py -- --preset preview --frames 1-120 --format MP4 --out //render/turntable
 scripts/render_batch.py -- --cameras CamA CamB CamC --format EXR_MULTI --out //render/shots/
 ```
-Presets: `preview` (Cycles 64 spp, threshold 0.05, 50% res; EEVEE 16), `final` (512 spp, 0.01; EEVEE 128 + raytracing), `product` (1024 spp, transparent background). GPU is picked automatically (OptiX > CUDA > HIP > Metal > oneAPI), and the denoiser matches (OptiX or OpenImageDenoise).
+Presets: `preview` (Cycles 64 spp, threshold 0.05, **50 % size**; EEVEE 16) is the default and is for looking only. Its result says `"deliverable": false`. Deliver with `final` (512 spp, 0.01; EEVEE 128 + raytracing) or `product` (1024 spp, transparent background). GPU is picked automatically (OptiX > CUDA > HIP > Metal > oneAPI), and the denoiser matches (OptiX or OpenImageDenoise).
 
 ## Engine choice
 | Engine | Use | Notes |
@@ -61,3 +61,4 @@ There's no Composite node anymore: the group output is the final image. Many nod
 - `bpy.ops.render.render(write_still=True)` writes `render.filepath`. Without `write_still`, the result only lives in `Render Result`.
 - Noise in glass/caustics: enable caustics only if needed (`caustics_refractive`), raise transmission bounces, or fake it with Thin Wall (5.2) for windows.
 - Fireflies: clamp indirect, a filter glossy / blur glossy (`blur_glossy` 0.5–1), and bigger light sources.
+- A lower sample count than the preset is fine once an A/B at final size shows no visible difference (`long-renders`). The result lists it under `reduced`; log it with `build_log.py`.

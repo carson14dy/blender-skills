@@ -36,7 +36,7 @@ Poly Haven's file names are detected automatically, including the color spaces a
 1. Set up the shot first: camera, resolution and engine. The script uses them and needs a scene camera. `--samples` and `--engine` override them for the run.
 2. Keep previews cheap: 1k assets and a low `--samples` value, with the resolution at 960×540 or less.
 3. Read the result. `grid` is the comparison sheet, `cells` lists each cell's variant from left to right and top to bottom, and `files` holds the full-size renders.
-4. Show the grid to the user and let them pick. Then apply the winner properly and do the final render with `render_batch.py`.
+4. Show the grid to the user and let them pick. Then apply the winner properly and do the final render with `render_batch.py --preset final`.
 
 The script restores the world, the material slots, the engine, and the output settings afterward, even when a render fails. HDRIs are applied through a temporary world, so the scene's own world is never edited.
 

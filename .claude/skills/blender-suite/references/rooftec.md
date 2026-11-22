@@ -9,7 +9,10 @@ Roof geometry, the layer stack (deck to ridge cap), supplier materials at true s
 
 | Roof task | Use |
 |---|---|
+| Any roof or house build, start to finish | `build-accuracy`: acceptance file, `acceptance_check.py`, `build_log.py` |
 | Geometry gate after any change to the layers | `lab/tools/roof_qa.py`, which calls this skill's `qa_check.py`; then a close-up with `review_shots.py` |
+| A house against its measurement report (squares, edge lengths, within 2 %) | `lab/tools/roof_qa.py -- --expect report.json` |
+| Roof pitch and plane area of a house model | `acceptance_check.py` with `slope` and `area` checks (`unit` "sq") |
 | Check a house model or supplier asset that came from outside | `asset-safety`, `blend_audit.py` |
 | Marketing light: golden hour, overcast, dusk with lit windows | `blender-time-of-day`, `scene_mood.py --time golden` (or `sunset`, `blue_hour`) |
 | Storm, rain-wet or snow-covered roof | `blender-weather-fx`, `surface_weather.py`, `precipitation.py` |
@@ -18,6 +21,13 @@ Roof geometry, the layer stack (deck to ridge cap), supplier materials at true s
 | House to the web viewer or a phone | `blender-export-pipelines`, `export_asset.py --preset web`, then open `roof-visualizer` with `?glb=<url>`; `web_viewer.py` for a one-file preview |
 | GPU timings and overnight build videos on the Windows PC | `long-renders` |
 | HDRI skies with clear rights | `blender-polyhaven` (CC0) |
+
+## Accuracy rules for RoofTec
+- Numbers a contractor or homeowner reads come from the model or the store data, each with a hand-calculated test. Never from a guess.
+- A size the supplier does not state is marked assumed in the data and on screen (as experiments 019 and 020 do).
+- Unknown is shown as unknown, never as zero.
+- When a picture cannot show it (white trim on a white wall), measure it in the scene and report the number.
+- A geometry change lands in both apps with a parity test, or the lab log says which app is behind.
 
 ## Repo rules for anything made here
 - Metres inside code; inches and feet in anything a contractor reads.

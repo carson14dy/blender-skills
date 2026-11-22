@@ -57,6 +57,7 @@ Claude will ask you for these:
   - Commit after each step and push to `rooftec-lab`. Never force-push.
   - Images go in as JPG at most 1600 px wide. Renders, videos and `.blend` files go in `out/`, which is git-ignored.
 - **Blender work:** use the `blender-suite` skill (`.claude/skills/blender-suite/`; it loads by itself).
+- **Accuracy first:** a build is done when `acceptance_check.py` passes and `build_log.py close` says done, not when it looks right. Log every shortcut; ask the user about anything that needs eyes.
 - **Finding code:** use `graphify query "<question>"` before grepping.
 
 ---

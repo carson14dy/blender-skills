@@ -24,7 +24,7 @@ scripts/camera_move.py -- --objects Hero --move speed_ramp --frames 240 --faces 
 3. **Find the detail for a push-in.** `--focus-object` needs a separate object. A scanned or generated model is usually one mesh, so use `--focus X Y Z`. Estimate the point from the review shots and the object's bounds, render the last frame as a preview, then adjust. Ask the user where the detail is if you can't see it.
 4. **Light it.** This skill adds no lights. `turntable.py --objects Hero --rig studio --frames 1` gives a static light rig. Run it **before** the move, because it sets its own scene camera.
 5. Run the move and read the result: `warnings` must be empty. `frames_subject_in_frame` should equal `frames_checked`, except on a push-in, which leaves the frame on purpose after its opening.
-6. Preview before a full render: `render_batch.py -- --preset preview --frames 1,60,120`. Then render the range. For a transparent background, skip `--backdrop` and any floor, render PNG frames with `--transparent`, and encode them (`blender-rendering`).
+6. Preview before a full render: `render_batch.py -- --preset preview --frames 1,60,120`. Then render the range with `--preset final`. For a transparent background, skip `--backdrop` and any floor, render PNG frames with `--transparent`, and encode them (`blender-rendering`).
 
 ## How the rig works
 - `CM_Pivot` is an empty at the subject's center. `CM_Cam` is parented to it and aims at it with Track To. Orbit lives on the pivot's rotation, and distance and height live on the camera's local position, so a sweep follows an arc. Interpolating world positions directly would cut a chord and dip toward the asset.

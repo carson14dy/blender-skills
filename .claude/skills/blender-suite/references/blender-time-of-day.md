@@ -42,7 +42,7 @@ The script builds `ENV_World`, the `ENV_Mood` collection (sun or moon, fog box, 
 - Night is not "a blue tint": keep **contrast** (hard moon shadows, pools of warm practicals, dark silhouettes), lower saturation, and add practical sources. See [references/night-and-moods.md](night-and-moods.md).
 - Practicals use real color temperatures (`light.use_temperature=True`, `light.temperature`): sodium 2000 K, tungsten 2700 K, warm LED 3000 K, neutral LED 4000 K, neon as emissive tubes. Watts and conversions are in [references/light-values.md](light-values.md).
 - Keep the view transform AgX (the script sets it, along with a mood look like `AgX - Punchy`). `--keep-view` preserves yours.
-- Verify every mood with a render, not the viewport: fog, stars and bloom only show in rendered output. Use `blender-rendering` `render_batch.py --preset preview`.
+- Verify every mood with a render, not the viewport: fog, stars and bloom only show in rendered output. Use `blender-rendering` `render_batch.py --preset preview` (a preview is for looking, not delivery).
 
 ## Gotchas
 - Below the horizon the sky texture shows a dark "ground". Extend the ground plane or terrain to the horizon, or keep the horizon out of frame.

@@ -2,8 +2,10 @@
 
 Every `.py` is in `scripts/` and runs headless via `python scripts/run_in_blender.py --blend F.blend scripts/<x>.py -- ...`, or live via MCP import + `run()` (see `SKILL.md`). **Gate** = stop and fix before continuing. Save after every stage (`--save`).
 
-## 1. Game prop, mid-poly (fast, no bake)
-1. Blockout at real scale (`blender-hardsurface-modeling`). Gate: `ob.dimensions` vs reference.
+**Every recipe starts and ends the same way** (`build-accuracy`): first write `acceptance.json` from the brief and run `build_log.py start`. Last, `acceptance_check.py` passes and `build_log.py close` says done. A gate that fails is fixed, not skipped; a step you leave out is logged as a shortcut.
+
+## 1. Game prop, mid-poly (no bake)
+1. Blockout at real scale (`blender-hardsurface-modeling`). Gate: `acceptance_check.py --only <size ids>`.
 2. UV the blockout **before** beveling (the Bevel/Boolean modifiers carry UVs): `uv_pack.py --objects SM_X --method seams --seams-from-sharp 60` → `texel_density.py --res 2048 --set 512`
 3. `apply_stack.py --objects SM_X --preset midpoly [--cutters ...]` (keep it live; `--apply --triangulate` only on the export copy)
 4. Materials: `build_pbr_material.py --preset ...` or tiling/trim textures.
@@ -39,7 +41,7 @@ Every `.py` is in `scripts/` and runs headless via `python scripts/run_in_blende
 - Upload: Studio `AssetService:CreateAssetAsync` for batches.
 
 ## 5. Cleaning AI-generated / downloaded assets
-1. Import (`import_asset` / `generate_3d` / `import_generated.py` or `build_from_spec.py` from `blender-image-to-3d` / file). `import_generated.py` already welds, scales and grounds. Scale to real size (`world_bounding_box`), origin to the bottom, ground at z=0, `transform_apply`.
+1. Import (`import_asset` / `generate_3d` / `import_generated.py` or `build_from_spec.py` from `blender-image-to-3d` / file). `import_generated.py` already welds, scales and grounds. Scale to real size (the size comes from the brief, as a `size` check) with `world_bounding_box`, origin to the bottom, ground at z=0, `transform_apply`.
 2. `scene_audit.py --fix purge scale` → `qa_check.py --profile game`. Typical findings: non-manifold, duplicate verts, inverted islands, floating debris, z-fighting shells.
 3. Fix: `make_lods.py --cleanup` (merge/degenerate/loose), recalc normals, delete floating debris (or `remesh` via `sculpt_ops.py` for garbage topology), then `auto_retopo.py --method decimate` to budget.
 4. Re-UV if the UVs are fragmented (`uv_pack.py`) and re-bake from the original (`bake_maps.py --high original`).
@@ -48,7 +50,7 @@ Every `.py` is in `scripts/` and runs headless via `python scripts/run_in_blende
 ## 6. Procedural environment
 1. `terrain.py --size 400 --res 513 --type ridged --erosion 30 --material` (or `--heightmap`), then one `scatter.py` layer per biome element (trees by slope/height, rocks aligned, grass masked) (`blender-environment-kits`). Custom scatter logic: `gn_builder.py` (recipes in `references/recipes.md`). Modular buildings: `kit_check.py --grid 0.5 --fix` on every kit piece.
 2. Assets to scatter: optimized props with LODs (recipe 1). Keep instances (don't realize) for engines that support instancing (`export_gpu_instances`).
-3. Gate: `mesh_stats.py` on the evaluated result, plus `look` from the gameplay camera height.
+3. Gate: `mesh_stats.py` on the evaluated result, plus `look` from the gameplay camera height. Scatter counts: a `count` check with `"of": "instances"`.
 
 ## 7. Web / AR asset
 Recipe 1 or 2 with budgets `--budget web` (≤30k tris, 1–2 materials, 2k textures) → `export_asset.py --preset web` (meshopt + WebP) → optional `gltf-transform optimize --texture-compress ktx2` → `web_viewer.py --glb x.glb` for a shareable preview. USDZ for iOS AR: `--preset usd --out x.usdz`. Gate: GLB summary (size < 5 MB) and Khronos PBR Neutral look-dev match.
@@ -56,7 +58,7 @@ Recipe 1 or 2 with budgets `--budget web` (≤30k tris, 1–2 materials, 2k text
 ## 8. Product shot / turntable
 1. Materials with measured values (`build_pbr_material.py --preset`), and QA for z-fighting/floating parts (very visible in close-ups).
 2. Set the render resolution, then `turntable.py --objects Product --rig studio --backdrop --frames 120 --lens 85`
-3. `render_batch.py --preset preview --frames 1` → review → `--preset product --frames 1-120 --format PNG` → encode, or `--format MP4`.
+3. `render_batch.py --preset preview --frames 1` → review → `--preset product --frames 1-120 --format PNG` → encode. Gate: the result says `"deliverable": true`. A preview is never the delivery.
 4. Gate: no fireflies or clipped highlights (AgX / Khronos PBR Neutral), and the product sits on the backdrop (contact shadow).
 - Hero clip instead of an orbit: run step 2 with `--frames 1`, then `camera_move.py --objects Product --move push_in` before rendering (`blender-camera-moves`).
 - Transparent background: skip `--backdrop`, which would show in the alpha.
@@ -66,4 +68,4 @@ Recipe 1 or 2 with budgets `--budget web` (≤30k tris, 1–2 materials, 2k text
 1. Scene at real scale with a camera. QA the hero assets first (wet reflections and snow expose z-fighting and gaps).
 2. `scene_mood.py --time night --fog-visibility 250` (or `--mood cyberpunk|horror|underwater|desert`). Add practical lights (street, windows, neon) at real color temperatures.
 3. Weather: `precipitation.py --type rain --intensity heavy --ground <ground/roofs>` → `surface_weather.py --objects <surfaces> --wetness 0.7 --puddles 0.4 --ripples 1 --streaks 0.5` → `lightning.py --flashes 2`. Snow: `--type snow` + `--snow 0.8 --snow-depth 0.06`.
-4. Gate: `render_batch.py --preset preview --frames <mid>,<flash>` at the final aspect ratio. Rain must read (backlit), puddles must reflect a light, the night must keep contrast. Then render the full loop (frame range = the precipitation loop).
+4. Gate: `render_batch.py --preset preview --frames <mid>,<flash>` at the final aspect ratio. Rain must read (backlit), puddles must reflect a light, the night must keep contrast. Then render the full loop with `--preset final` (frame range = the precipitation loop).

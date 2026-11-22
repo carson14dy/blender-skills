@@ -8,6 +8,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "scripts"))
 
+import json  # noqa: E402
 import math  # noqa: E402
 
 import bpy  # noqa: E402
@@ -34,6 +35,8 @@ def main():
     check(abs(L["rake"] - 9.06) < 0.1, f"rakes 9.06 m ({L['rake']} m)")
     check(abs(L["valley"] - 12.15) < 0.1, f"two garage valleys 12.15 m ({L['valley']} m)")
     check(abs(L["ridge"] - 15.45) < 0.1 and abs(L["hip"] - 32.70) < 0.1, f"ridges 15.45 m and hips 32.70 m, each counted once ({L['ridge']}, {L['hip']})")
+    stored = json.loads(bpy.context.scene.get("rt_measure", "{}"))
+    check(stored == {k: res[k] for k in ("planes", "squares", "lengths_m")}, "layers stores its measurements on the scene as rt_measure (for roof_qa.py --expect)")
     for lid in ("deck", "iceWater", "underlayment", "starter", "nails", "covering", "ridgeVent", "ridgeCap", "dripEdge"):
         ob = bpy.data.objects.get(f"RT_layer_{lid}")
         check(ob is not None and "rt_up" in ob.data.attributes and len(ob.data.polygons) > 0, f"layer {lid} built with build attributes")

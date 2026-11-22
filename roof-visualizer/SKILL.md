@@ -157,6 +157,15 @@ Remote fetches:
 
 Claude-written plans keep only the newest 20 files.
 
+## Accuracy rules when changing the studio
+
+1. Write the acceptance rows first (experiment template): the numbers the feature must show, each with its source and how it is checked.
+2. A quantity or measurement on screen needs a test against a hand calculation on at least one demo house (`tests/geometry.test.mjs` is the model: the ranch is 254.85 m², 27.43 squares).
+3. Mark what is measured, what is an allowance and what is assumed, in the data and in the list. Unknown is a dash with the reason, never zero.
+4. Check on the page with numbers: `node lab/tools/supplier-shots.mjs --checks`. When a screenshot cannot show it, measure it in the page.
+5. Geometry shared with Blender changes in both apps, with a parity test.
+6. Before saying done: `npm test`, the page checks, `roof_qa.py` if geometry changed, and a list of shortcuts in the experiment README.
+
 ## Files
 
 ```

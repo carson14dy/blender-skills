@@ -5,14 +5,14 @@ The execution model is in `SKILL.md`. Run `blender-asset-qa` after every modelin
 ## Pick the workflow first
 | Workflow | When | Output |
 |---|---|---|
-| **Mid-poly** (bevel + weighted normals, no bake) | modern games, props seen up close, fast iteration | game mesh directly; tiling materials/trim sheets |
+| **Mid-poly** (bevel + weighted normals, no bake) | modern games, props seen up close, quick to iterate | game mesh directly; tiling materials/trim sheets |
 | **High → low** (high via booleans+bevel or subd, low baked) | hero assets, unique textures, tight tri budgets | `_high` + `_low` → `blender-texture-baking` |
 | **Subdivision** (support loops/creases + Subsurf) | renders, product viz, film | smooth surfaces, edges held by loops/creases |
 
 ## Procedure
-1. **Blockout** at real scale (`ob.dimensions`) from primitives. Settle the silhouette and proportions before any detail. Check against references.
+1. **Blockout** at real scale (`ob.dimensions`) from primitives. Settle the silhouette and proportions before any detail. Check against references. Sizes come from the acceptance file (`build-accuracy`), not from memory.
 2. **Apply scale** (`transform_apply(scale=True)`) before bevels, booleans or solidify, because modifier distances use object space.
-3. **Primary → secondary → tertiary** forms. Booleans for cuts and panels, then bevels. Small tertiary details go in normal maps/decals, or into the high-poly as "floaters" for baking.
+3. **Primary → secondary → tertiary** forms. Booleans for cuts and panels, then bevels. Small tertiary details go in normal maps/decals, or into the high-poly as "floaters" for baking. Every part the brief names is modelled. A part left as a blockout shape is a shortcut: log it.
 4. **UV the base mesh now** (mid-poly). Bevel/Boolean modifiers propagate UVs, but after bevels no edge is sharp enough to auto-seam. Then **build the stack** with `scripts/apply_stack.py -- --objects Body --preset midpoly --cutters Cut1 Cut2`. Order: Mirror → Booleans → Bevel → Weighted Normal → (Triangulate at export).
 5. **Shading check**: smooth shading + Weighted Normal (keep sharp). There must be no gradients across flat faces. View with a matcap or `look` in `solid` shading.
 6. **QA** with `blender-asset-qa`, then apply the stack only on an export copy (`--apply`), keeping the editable source.

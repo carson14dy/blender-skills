@@ -81,6 +81,7 @@ Plan render time before you start. A full-length build at 1080p and 64 samples i
 - The demo house uses the web viewer's 0.45 m overhang and matches its measurements: 27.4 squares on the ranch preset. The main roof is notched under the garage, so hidden roof is not counted.
 - Roofs found only by slope leave the house meshes visible; name the roof object `Roof` so it can be replaced cleanly.
 - Running `material` after `build` keeps the build animation.
+- `layers` stores its measurements on the scene as `rt_measure`, for `roof_qa.py --expect`.
 - Metal panels and edge profiles (lab experiments 019 and 020):
   - `panel` picks a profile from `PANEL_PROFILES`, the same JSON text as the web studio's `profiles.js`. `ribbed_surface` slices each plane into planar strips between the profile's breakpoints, repeated from the plane's left end, so the ribs run up the slope and stand up at the eave.
   - On a metal roof the hip and ridge caps take the metal cap profile, 3 mm over the rib tops; the ridge vent and the cap over it stand on the rib tops.
@@ -95,4 +96,7 @@ Results are printed as `RT_RESULT {json}` lines.
 ```bash
 blender -b --factory-startup --python roof-blender/tests/test_roof_core.py
 # or: pip install bpy && python roof-blender/tests/test_roof_core.py
+$LAB_BPY_PYTHON lab/tools/roof_qa.py -- --expect report.json   # squares, planes and edge lengths against the house's measurement report (2 %)
 ```
+
+Builds follow `build-accuracy` in the blender-suite skill: acceptance file first, shortcuts logged.

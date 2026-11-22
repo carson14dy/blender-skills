@@ -19,6 +19,7 @@ The full runbook, with commands in order, is `LOCAL-SESSION.md` at the repositor
   3. Add the `RT_QA` line and one sentence on how the close-up looks to `lab/LOG.md`.
   4. For any other Blender check, use the `blender-suite` skill in `.claude/skills/blender-suite/` (it loads by itself).
 - [ ] **blender-suite on real Blender (about 10 minutes):** run the four commands under "Needs local" in the newest `lab/LOG.md` entry, and report the last line of each.
+- [ ] **Accuracy-first build on real Blender (about 20 minutes):** run `python .claude/skills/blender-suite/tests/run_tests.py build`, then rebuild experiment 024's shed with the GPU render at 3840x2160, `build_log.py close --times lab/build-times.jsonl`, and add the report to 024.
 - [ ] **Sioux Falls studio, local checks (about 30 minutes):**
   1. Start the studio (`cd roof-visualizer && npm start`). On the Project tab, press **Blender command** with Menards Duration on the roof, then again with Home Depot Timberline HDZ ("On the roof" switch).
   2. With Blender open (MCP for Blender addon), run `node roof-blender/scripts/roof-blender.mjs demo --preset ranch-hip --pitch 6` once. Then, for each store, run its pair of commands and `node roof-blender/scripts/roof-blender.mjs still --output out/sf-<store>.png`. Note the `RT_RESULT` seconds and device.
@@ -27,12 +28,13 @@ The full runbook, with commands in order, is `LOCAL-SESSION.md` at the repositor
 - [ ] **Experiment 003, a real RoofTec house:**
   1. Export one house as `.glb` into `lab/experiments/003-real-house/out/` (git-ignored). Name the roof mesh `Roof` if the export tool allows it.
   2. Load it in the viewer (Project tab > Load house model).
-  3. Compare squares, pitch and eave/rake/ridge/hip/valley lengths with the house's measurement report.
+  3. Write the report's numbers (squares, planes, eave/rake/ridge/hip/valley lengths) into `report.json` (format in `lab/tools/roof_qa.py`) and run `roof_qa.py -- --blend <house> --expect report.json`. Check the pitch the same way, with a `slope` check in `acceptance_check.py` (`rooftec` reference of the blender-suite skill).
   4. Run the geometry gate on it: `blender -b --factory-startup --python-exit-code 1 --python lab/tools/roof_qa.py -- --blend <the house .blend>`. Real roofs may show errors the demo does not. Record them; don't add them to ACCEPTED without a reason.
   5. Save two screenshots and write `lab/experiments/003-real-house/README.md` from the template.
 
 ## Cloud session
 
+- Every build: `build-accuracy` (acceptance file first).
 - [x] **Sioux Falls studio, steps 016, 017 and 018** (store picker with sampled colors, priced list, project files), plus the texture part of 019 and a read-only 022. See the experiment folders and the newest `lab/LOG.md` entry.
 - [x] **Sioux Falls studio, step 019 geometry with 020:** real ribs (Pro-Rib, Pro-Snap, corrugated), metal caps on the ribs, rake trim, edge profiles from the drip-edge product, in both apps with a parity test. See experiments 019 and 020.
 - [ ] After any change to `roof_core.py`, `roof-geometry.js` or the layer heights: run `$LAB_BPY_PYTHON lab/tools/roof_qa.py` and `npm test`.

@@ -33,7 +33,7 @@ This builds a camera framed to the bounding sphere (on the narrower frame axis),
 ## Look-dev procedure (material approval)
 1. Neutral setup: `--rig studio` or a neutral HDRI, grey backdrop, Khronos PBR Neutral or AgX (pick one and keep it).
 2. Add a calibration chart object if needed (a grey 18% sphere, a chrome sphere, a Macbeth chart) next to the asset.
-3. Turntable at 24–30 fps, 120–240 frames, 85 mm. Render previews with `render_batch.py --preset preview --format MP4`.
+3. Turntable at 24–30 fps, 120–240 frames, 85 mm. Render previews with `render_batch.py --preset preview --format MP4` (a preview is for looking, not delivery).
 4. Check the materials under 2–3 different HDRIs. A good PBR material holds up in all of them (`blender-pbr-materials` sanity checks). `variant_renders.py` (`blender-polyhaven`) renders the comparison grid.
 
 ## Gotchas

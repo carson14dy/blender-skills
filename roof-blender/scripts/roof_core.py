@@ -1206,7 +1206,9 @@ def build_layers(cfg):
     area = sum(p.area for p in planes)
     measure = {k: sum((s["A"] - s["B"]).length for s in v) for k, v in segs.items()}
     log(f"layers: {len(made)} on {len(planes)} planes, {area / 9.290304:.1f} squares")
-    return {"layers": list(made), "planes": len(planes), "squares": round(area / 9.290304, 2), "lengths_m": {k: round(v, 2) for k, v in measure.items()}}
+    out = {"planes": len(planes), "squares": round(area / 9.290304, 2), "lengths_m": {k: round(v, 2) for k, v in measure.items()}}
+    bpy.context.scene["rt_measure"] = json.dumps(out)  # saved with the .blend, for lab/tools/roof_qa.py --expect
+    return {"layers": list(made), **out}
 
 
 # ---------------------------------------------------------------------------

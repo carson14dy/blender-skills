@@ -12,6 +12,13 @@ metadata:
 
 Your memory of `bpy` is probably out of date, and a mesh that looks fine in code is often wrong on screen. So use the tested scripts when one fits, check API details here before guessing, and verify results with numbers and a visual check.
 
+## Accuracy first
+A build is done when it matches the brief, not when it looks finished. For every build, RoofTec roofs included, follow `build-accuracy`:
+1. **First** write `acceptance.json`: each size, count, spacing, material and deliverable in the brief, with its source. Ask before assuming anything that changes the result.
+2. **After each stage** run `qa_check.py` and `acceptance_check.py`, then look. Fix what fails. Never edit the file to pass.
+3. **Log every shortcut** with `build_log.py` (simplified or missing part, assumed value, skipped check, preview render) and show the user the list.
+Speed comes second: a faster way is fine only if the checks still pass.
+
 ## Finding things
 - Paths in these documents are relative to this skill's folder, written `<skill_dir>`. When you run a script, give its full path, because the working directory is usually the user's project. In this repo the folder is `.claude/skills/blender-suite`.
 - A name in backticks such as `blender-asset-qa` or `long-renders` means `references/<name>.md`. A mention of `SKILL.md` means this file.
@@ -61,7 +68,7 @@ Your memory of `bpy` is probably out of date, and a mesh that looks fine in code
 | Batch jobs, file conversion, CI | `blender-pipeline-automation` | `batch_process.py` |
 | Checking any asset before delivery | `blender-asset-qa` | `qa_check.py`, `review_shots.py` |
 
-Code fails with AttributeError or KeyError? Read `references/api-changes-5x.md`. Need a verified snippet for bmesh, attributes, numpy, drivers or keyframes? Read `references/bpy-patterns.md`.
+AttributeError or KeyError: read `references/api-changes-5x.md`. Verified bmesh, attribute, numpy, driver and keyframe snippets: `references/bpy-patterns.md`.
 
 ## Run code
 **Live, in the user's open Blender.** With a Blender MCP server, use `execute_blender_code`. Without one, the MCP for Blender add-on still listens on `127.0.0.1:9876` while Blender is open, and this sends to it:
@@ -80,12 +87,12 @@ An MCP call starts with a fresh namespace, so import again each time. Never rend
 python <skill_dir>/scripts/run_in_blender.py --blend in.blend <skill_dir>/scripts/qa_check.py -- --objects Chair
 python <skill_dir>/scripts/run_in_blender.py --blend in.blend --expr "import bpy; bpy.data.objects['X_high_low'].name='SM_X'; bpy.ops.wm.save_mainfile()"
 ```
-`--blend` paths resolve from the working directory. Scripts that change the scene take `--save out.blend`, and read-only checks such as `qa_check.py` don't. Each headless run starts from the saved file, so save between steps. Use `--expr` for small jobs that have no script, such as renaming an object or setting the render resolution, and save inside the expression to keep the change.
-Set `BLENDER_EXE` if Blender isn't found. Documents write commands as `scripts/x.py -- --flags`, which means either form above. `trellis_generate.py`, `gpt_model_spec.py`, `polyhaven_fetch.py`, `web_viewer.py` and `blender_send.py` are plain Python and run without Blender.
+`--blend` paths resolve from the working directory. Scripts that change the scene take `--save out.blend`; read-only checks don't. Each headless run starts from the saved file, so save between steps. Use `--expr` for small jobs with no script (rename an object, set the resolution), and save inside the expression.
+Set `BLENDER_EXE` if Blender isn't found. Documents write commands as `scripts/x.py -- --flags`, which means either form above. `build_log.py`, `trellis_generate.py`, `gpt_model_spec.py`, `polyhaven_fetch.py`, `web_viewer.py` and `blender_send.py` are plain Python and run without Blender.
 **Cloud sessions have no Blender.** Set `BLENDER_BPY_PYTHON` (or this repo's `LAB_BPY_PYTHON`) to a Python that has the pip `bpy` module and the same commands work. When you start such a Python yourself, `import bpy` first, because `bmesh`, `mathutils` and `addon_utils` only resolve after it.
 **Windows with Git Bash:** MSYS rewrites `//out.png` to `/out.png`. Prefix the command with `MSYS_NO_PATHCONV=1`, or use PowerShell.
 
-**First call in a session:** run `scripts/env_report.py`. It returns the Blender version, engines, GPU, add-ons, units, color management and scene counts. If the version is below 5.2, tell the user, because these scripts target 5.2.
+**First call in a session:** run `scripts/env_report.py` (Blender version, engines, GPU, add-ons, units, color management, scene counts). Below 5.2, tell the user, because these scripts target 5.2.
 
 ## Writing bpy yourself
 - **Prefer the data API to operators.** Use `bpy.data`, `bmesh`, `mesh.attributes`, and `foreach_get`/`foreach_set` with numpy. Operators depend on context and selection, and many need a 3D View that background mode doesn't have.
@@ -114,28 +121,23 @@ Set `BLENDER_EXE` if Blender isn't found. Documents write commands as `scripts/x
 | `file_format = "FFMPEG"` alone | set `image_settings.media_type` first |
 | `bgl` | `gpu`. Call `gpu.init()` first in background mode (5.2) |
 | Principled `Specular`, `Transmission`, `Coat` | `Specular IOR Level`, `Transmission Weight`, `Coat Weight` |
-| one compositor tree, glTF `export_image_add_webp`, VSE overlap `EXPAND` | 5.3: `scene.compositor_effects` stack, `export_image_add_compressed_images`, `RIPPLE`. Full list in `references/api-changes-5x.md` |
+| 5.3 compositor, glTF WebP flag, VSE `EXPAND` | changed: `references/api-changes-5x.md` |
 
 ## What makes results look professional
 - **Real scale.** 1 unit = 1 m. Check `ob.dimensions`. Apply rotation and scale before bevels, rigging, physics, baking and export. Wrong scale breaks modifiers, light falloff, depth of field and texel density.
-- **Metallic is 0 or 1.** Painted metal counts as non-metal.
-- **Base color has no lighting in it.** Non-metals sit around sRGB 30–240, and metals at sRGB 180–255.
-- **Roughness carries the realism.** Vary it across a surface, because a flat value looks fake.
-- **Color spaces:** base color and emission are sRGB. Roughness, metallic, normal, AO and height are Non-Color. A wrong tag is the most common material bug.
-- **Normal maps:** Blender, glTF, Unity and Roblox use OpenGL. Unreal uses DirectX, so flip green.
-- **Only image textures reach game engines.** Procedural nodes must be baked first.
-- **Silhouette and proportions first,** then secondary forms, then small details in normal maps.
+- **Materials** (`blender-pbr-materials`): metallic is 0 or 1, base color has no lighting in it, roughness varies. Base color and emission are sRGB, other maps Non-Color. Unreal normals are DirectX: flip green. Game engines only get image textures, so bake procedural nodes.
+- **Silhouette and proportions first,** then secondary forms, then small details. A blockout is a stage, not a result.
 
 ## Respect the user's work and accounts
 - A live Blender session is the user's work. Don't reset to factory settings or delete data you didn't create, and save a backup copy before destructive batch edits.
 - Photo to 3D starts with `trellis_generate.py`, which is free and keeps the photo on this PC. A run can use nearly all the graphics memory, so ask the user to save their work first, and never close their programs for them.
 - `gpt_model_spec.py` is the last resort. It uploads the user's photos to OpenAI and is billed to their API account, so confirm first and show a `--dry-run`. Say up front that the result is a part-based model, not a textured scan. The key comes only from the `OPENAI_API_KEY` environment variable. Never write it into a command, file or message.
-- Ask before any long render, and say how long it will take. Test at low quality first (`long-renders`).
+- Ask before any long render, and say how long it will take. Test at low quality first, then deliver at final quality (`long-renders`).
 - `gen_sfx.py` in `pipelines/car-film/scripts/` and `pipelines/forest/scripts/` calls ElevenLabs, a paid service, so confirm first. The key comes only from `ELEVENLABS_API_KEY`.
 
 ## Before saying "done"
 1. **Report numbers, not adjectives:** triangles, objects, materials, dimensions, and files written.
-2. **If geometry changed,** run `qa_check.py`. It finds z-fighting, floating parts, flipped normals, non-manifold edges, bad scale and material errors. Fix every error, and fix or explain each warning.
+2. **If geometry changed,** run `qa_check.py`. Fix every error, and fix or explain each warning.
 3. **Look at it.** Use the MCP's viewport or screenshot tool from several angles, in material and wireframe shading. Without one, run `review_shots.py` and open the PNG it returns. Numbers miss proportion and shading problems.
-4. **Check the output exists:** confirm exported files are there with a non-zero size, then re-import or read the summary. `export_asset.py` reports this for GLB files.
-5. **Say what you didn't verify,** such as an engine import you couldn't test.
+4. **Check the output exists:** confirm exported files are there with a non-zero size, then re-import or read the summary.
+5. **Say what you didn't verify, simplified or assumed.** A build also needs `"done": true` from `build_log.py close`; paste its report.

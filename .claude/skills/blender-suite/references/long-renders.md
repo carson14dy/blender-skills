@@ -3,6 +3,7 @@
 From Claude Blender Skills by Mr omi (MIT). How the film examples got through overnight renders: a car film estimated at 5–8 hours that took about 1 hour (600 frames, 2560x1072), a forest clip of 390 frames at 2560x1440 in about 3 hours, and a 10 s night drone shot in 3.5 hours. Single renders, presets and batches are in `blender-rendering` (`scripts/render_batch.py`).
 
 ## Before rendering
+- **The acceptance file names the delivery**: resolution, frame range, format (`build-accuracy`). Speed levers below must not change it.
 - **Benchmark**: `pipelines/forest/scripts/bench.py` renders the same frames with different Cycles settings and prints `BENCH <frame> <seconds>`. 128 samples + OpenImageDenoise looked the same as 256 samples and was about 45% faster (51 s → 28 s a frame).
 ```
 BENCH='{"samples":128,"denoiser":"OPENIMAGEDENOISE"}' blender -b scene/forest.blend --python pipelines/forest/scripts/look.py --python pipelines/forest/scripts/bench.py -- <out_dir> <frame> [frame ...]
@@ -21,6 +22,8 @@ PowerShell has no `VAR=value command` form: set it first, `$env:BENCH='{"samples
 | Camera and distance culling | trees, poles and the snow emitter (`pipelines/car-film/scripts/13_speed_cine.py`) |
 | Lighter LODs | the same tree at 1/3 of the faces beyond 30 m from every shot camera |
 | Hidden duplicates removed | the tree asset carried extra copies (`pipelines/film/scripts/09_render_opt.py`) |
+
+Each lever is a speed-up only after a test still at final size looks the same. Removing or culling something a camera can see is a shortcut: log it.
 
 ## Safety
 - Render in background Blender from a saved .blend, never in the live window.

@@ -16,6 +16,7 @@ Research and testing sandbox for RoofTec 3D-home features before they go into th
 - `lab/LOG.md`: running hand-off log between sessions, newest first
 - `lab/experiments/NNN-short-name/`: one folder per experiment, started from `lab/experiments/_template/`
 - `lab/tools/`: test harness (environment check, screenshots, snapshots, Blender stand-ins)
+- `lab/build-times.jsonl`: one line per finished build (stage times), the data for the speed phase
 - `docs/ROOFTEC-OPEN-SOURCE.md`: license-checked tools and supplier image rights
 
 ## Two kinds of sessions: pick the right one
@@ -36,6 +37,7 @@ When a task needs the other kind of session, write it under **Needs local** or *
 4. End every session with a `lab/LOG.md` entry: date, cloud or local, what changed, results, next steps, needs.
 5. Do not commit supplier images unless their rights are recorded (see roof-visualizer/SKILL.md, "Supplier images: rights").
 6. To promote a change: branch from `main`, copy only that change, open a pull request. Do not merge `rooftec-lab` into `main`.
+7. **Accuracy first.** Before building anything (a model, a roof, a studio feature), write down what it must measure: sizes, counts, quantities, each with its source and tolerance. Check the result against that list with a command, not by eye. Report every shortcut and assumption. Speed work comes after, and must not change a check result. Blender builds: `build-accuracy` in the blender-suite skill. Studio features: `roof-visualizer/SKILL.md`, "Accuracy rules".
 
 ## Commands
 
@@ -47,6 +49,8 @@ cd roof-visualizer && npm install && npm test   # unit tests (Node 18+)
 cd roof-visualizer && npm start                 # web app at http://127.0.0.1:8080
 $LAB_BPY_PYTHON roof-blender/tests/test_roof_core.py   # Blender core checks with pip bpy (cloud; see setup-cloud.sh)
 $LAB_BPY_PYTHON lab/tools/roof_qa.py                    # geometry gate (blender-suite qa_check): z-fighting, flipped faces, floating parts; pass = "roof QA passed"
+$LAB_BPY_PYTHON lab/tools/roof_qa.py -- --expect report.json    # a house against its measurement report (2 %)
+python .claude/skills/blender-suite/scripts/build_log.py report  # shortcuts, assumptions and stage times of a build
 blender -b --factory-startup --python-exit-code 1 --python roof-blender/tests/test_roof_core.py   # same, real Blender (local); pass = "all roof_core checks passed"
 node lab/tools/capture.mjs --url "http://127.0.0.1:8080/?quality=standard" --shots finished,layers,cutaway,midbuild --out lab/experiments/NNN-name/img
 node lab/tools/snapshot.mjs --url "http://127.0.0.1:8080/" --size 3840x2160 --explode --out out/roof-4k.png
