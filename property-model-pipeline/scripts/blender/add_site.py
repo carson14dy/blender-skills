@@ -79,7 +79,7 @@ import bmesh
 from mathutils import Vector
 from mathutils.bvhtree import BVHTree
 
-# buff sandstone (linear RGB), the default rock tone: sunlit Rimrock sandstone reads ~(178,169,159) sRGB; warm buff
+# buff sandstone (linear RGB), the default rock tone: sunlit buff sandstone reads ~(178,169,159) sRGB; warm buff
 # (+4 R / -6 B in sRGB over a neutral grey-buff), as the orthos show the rock tops
 ROCK_A, ROCK_B = (0.442, 0.38, 0.284), (0.524, 0.45, 0.341)
 # stone surface pattern: few long joints (Voronoi cells ~1.9 m, lines < 2 cm, 0.82 x the stone value) and faint

@@ -516,6 +516,9 @@ def main():
                          "are also clamped from below (--pit-clamp) and smoothed (--rock-smooth)")
     ap.add_argument("--peak-clamp", type=float, default=0.1,
                     help="despike: z = min(z, highest of the 8 neighbours + this) (lone peaks; 0 = off)")
+    ap.add_argument("--pit-ceiling", type=float, default=0.3,
+                    help="despike: the pit lift and the rock Gaussian never raise a node more than this above its own "
+                         "cell's lowest last return (measured ground at a rock foot stays; negative = no ceiling)")
     ap.add_argument("--pit-clamp", type=float, default=0.3, help="final despike, rock nodes: z = max(z, 3x3 median - this) (0 = off)")
     ap.add_argument("--rock-smooth", type=float, default=0.25,
                     help="final despike: Gaussian sigma (m) over the rock nodes only (0 = off)")
@@ -599,6 +602,7 @@ def main():
     rock_rise = np.zeros(X.shape)          # how far the rock merge raised each node above the filtered ground
     rock_low = None                        # measured height of each node's cell (solid merge): floor of the rock smoothing
     in_outlines = np.zeros(X.shape, bool)  # nodes inside traced rock outlines
+    cell_low = None                        # lowest last return of each node's cell (ceiling of the pit lift / smoothing)
     if a.ground == "filtered" or (a.ground == "auto" and len(g) < 0.1 * len(pts)):
         # LiDAR delivered with few class-2 points (e.g. Montana statewide QL1): find the ground with the
         # progressive morphological filter on last returns; the house, decks and anything listed in
@@ -628,6 +632,7 @@ def main():
             sol = L.solid_surface(loc, xs[0] - c / 2, ys[0] - c / 2, len(xs), len(ys), cell=c, radius=a.solid_radius,
                                   min_single=a.solid_single, max_rms=a.solid_rms)
             Zs = sol["Z"]
+            cell_low = sol["low"]
             # measured rock height of each node cell: the higher of its lowest last return and its q90 single return
             with np.errstate(invalid="ignore"):
                 rock_low = np.fmax(sol["low"], sol["q90_single"])
@@ -728,7 +733,8 @@ def main():
                                   floor=floor, bump=a.bump_clamp if a.bump_clamp > 0 else None, ring=a.rock_smooth_ring,
                                   ring_exclude=shapely.contains_xy(veg, X, Y) if not veg.is_empty else None,
                                   floor_clamp={0: False, 1: in_outlines, 2: True}[a.spike_floor],
-                                  peak=a.peak_clamp if a.peak_clamp > 0 else None)
+                                  peak=a.peak_clamp if a.peak_clamp > 0 else None,
+                                  ceiling=(cell_low + a.pit_ceiling) if (cell_low is not None and a.pit_ceiling >= 0) else None)
         dz = Zn - Z
         print(f"terrain: despike ({stage}) lowered {int((dz < -0.01).sum())} nodes (max {-dz.min():.2f} m), raised "
               f"{int((dz > 0.01).sum())} (max {dz.max():.2f} m)" + (f"; {int(rk_n.sum())} rock nodes smoothed" if smooth else "")

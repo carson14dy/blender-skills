@@ -571,7 +571,7 @@ def veg_floor(Z, mask, cell, window=2.0, dh=0.1):
 
 def clamp_spikes(Z, cell, skip=None, rock=None, above=0.3, below=0.3, passes=2, sigma=0.25, max_change=None,
                  fill_rock=True, floor=None, bump=None, bump_nodes=4, ring=0, bump_passes=3, ring_exclude=None,
-                 floor_clamp=True, peak=None):
+                 floor_clamp=True, peak=None, ceiling=None):
     """Final terrain despike on EVERY grid node (not only rock-raised ones): spikes left by shrub tops the ground
     filter kept, single solid cells, sampling holes, render as lit pyramids.
 
@@ -587,6 +587,8 @@ def clamp_spikes(Z, cell, skip=None, rock=None, above=0.3, below=0.3, passes=2, 
     node below it, nor does the clamp where ``floor_clamp`` is True or a bool grid that holds the node (e.g. traced
     rock outlines: there a measured point is rock, elsewhere it may be a shrub top), so measured rock points keep their height while the artefacts around them
     (unsupported spikes, sawtooth outline teeth over empty cells) are clamped and smoothed.
+    ``ceiling`` (grid, nan = none; e.g. each node cell's lowest last return + 0.3): the pit lift and the Gaussian never
+    raise a node above it -- a node with a ground return at the foot of a rock face is measured ground, not a pit.
     ``peak`` (m): also z = min(z, highest of the 8 neighbours + peak) (a lone node a little over the clamp still
     renders as a lit pyramid; a rounded rock top is only centimetres above its highest neighbour).
     ``bump`` (m): afterwards, nodes off the rock that stand more than this above the 5x5 median in 8-connected
@@ -618,7 +620,10 @@ def clamp_spikes(Z, cell, skip=None, rock=None, above=0.3, below=0.3, passes=2, 
             Zc = np.where(np.isfinite(fl), np.maximum(Zc, np.minimum(Z, fl)), Zc)
         Z = np.where(free, Zc, Z)
         if rk.any() and below is not None:
-            Z = np.where(rk, np.maximum(Z, med - below), Z)
+            up = np.maximum(Z, med - below)
+            if ceiling is not None:
+                up = np.where(np.isfinite(ceiling), np.minimum(up, np.maximum(Z, ceiling)), up)
+            Z = np.where(rk, up, Z)
     if sigma and sigma > 0 and rk.any():
         G = ndimage.gaussian_filter(Z, sigma / cell, mode="nearest")
         if max_change is not None:
@@ -626,6 +631,8 @@ def clamp_spikes(Z, cell, skip=None, rock=None, above=0.3, below=0.3, passes=2, 
         if floor is not None:
             fl2 = np.asarray(floor, float)
             G = np.where(np.isfinite(fl2), np.maximum(G, np.minimum(Z, fl2)), G)
+        if ceiling is not None:
+            G = np.where(np.isfinite(ceiling), np.minimum(G, np.maximum(Z, ceiling)), G)
         sm = rk
         if ring and ring > 0:
             sm = (ndimage.binary_dilation(rk, np.ones((3, 3)), iterations=int(ring)) & free) | rk
