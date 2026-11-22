@@ -472,19 +472,21 @@
    "kind": "assumed",
    "what": "Slab 4 in. thick",
    "why": "not in the brief or the design rules; IRC R506.1 sets 3-1/2 in. as the minimum, not a thickness",
-   "approved": false,
+   "approved": true,
    "stage": null,
    "effect": "pad height, wall top, every height above it",
-   "check": "pad"
+   "check": "pad",
+   "rejected": false
   },
   {
    "n": 4,
    "kind": "tolerance",
    "what": "Drawing tolerances for qa_check's 1 mm coplanar test: nail heads 1.2 mm under the surface they are driven into (real: flush); house wrap 1.8 mm thick, 1.1 mm off the sheathing, so siding and trim sit 2.9 mm further out; flashing tape 1.1 mm thick",
    "why": "a flush head or a 0.2 mm wrap puts same-facing faces within 1 mm, which qa_check reads as z-fighting (like the pilot's approved 2 mm overlaps)",
-   "approved": false,
+   "approved": true,
    "stage": null,
-   "effect": "invisible at any viewing distance; casing and siding faces 2.9 mm proud of where a real 0.2 mm wrap would put them"
+   "effect": "invisible at any viewing distance; casing and siding faces 2.9 mm proud of where a real 0.2 mm wrap would put them",
+   "rejected": false
   }
  ],
  "closed": {

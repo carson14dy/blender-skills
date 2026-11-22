@@ -231,3 +231,8 @@ Keep. The kit and finish scripts build a construction-grade shed whose counts co
 2. The nail defect (366 of 384): fix `Plane.contains2` in roof_core.py (the margin should apply to the plane's outline, not each triangle) in its own change, with the default geometry baseline regenerated; the same change can fix the sliver corners in `clip_half`.
 3. Individual shingle pieces: the user's choice, its own experiment.
 Next (local): rebuild with real Blender on the GPU (`blender -b --factory-startup --python construction_kit.py -- --build building.json --save out/shed.blend`, then the finish script with `run_in_blender.py --blend`), render at 3840x2160, and append the timing line (`out/build-times.jsonl` here) to `lab/build-times.jsonl`.
+
+## User decisions (2026-11-22)
+
+- Approved: CPU only for now (the user's standing answer from 024), slab 4 in. thick, and the drawing tolerances (nail heads 1.2 mm under the surface, house wrap 1.8 mm thick).
+- Open: the sage colour (#9CAF88) until the user names a paint or siding product.
