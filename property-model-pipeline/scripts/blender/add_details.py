@@ -54,7 +54,10 @@ geometry, placed from photo measurements. details.json (metres, model frame):
               "rail_style": "balusters|screen|none",     # screen = closely spaced vertical boards under a flat cap rail
               "picket_width": 0.11, "picket_gap": 0.025, "rail_post_spacing": 0,
               "skirt": 0.0,                              # screen boards carried this far down over the rim / header
-              # rail_edges items may also be {"edge": [i, j], "style": "screen", "skirt": 0.9} (per-edge overrides)
+              # rail_edges items may also be {"edge": [i, j], "style": "screen", "skirt": 0.9} (per-edge overrides);
+              # a per-edge "label" (e.g. one guard measured +-0.1 m, a skirt whose extent is assumed) goes on that
+              # run's rail / skirt / post objects (details key "decks[i].rail_edges[k]") instead of the deck's label,
+              # and into the Details notes, flagged like any entry label when it carries a caveat word
               "rail_color": [r,g,b], "board_color": [r,g,b], "rim_depth": 0.24, "rim_color": [r,g,b]} ],
               # rim_depth: depth of the rim joist / header board below the boards on every edge (a deep header
               # over a garage door is a rim of 0.8-0.9 m). A concave polygon (a notch around a light well) is fine.
@@ -412,6 +415,10 @@ def details_notes(D):
             lab = (e.get("label") or e.get("name")) if isinstance(e, dict) else None
             if lab:
                 rows.append((f"{k}[{i}]", str(lab)))
+            if k == "decks" and isinstance(e, dict):        # per-edge rail labels (see "rail_edges")
+                for j, re_ in enumerate(e.get("rail_edges", []) or []):
+                    if isinstance(re_, dict) and re_.get("label"):
+                        rows.append((f"decks[{i}].rail_edges[{j}]", str(re_["label"])))
     for key, lab in rows:
         if any(w in lab.lower() for w in CAVEAT_WORDS):
             flagged.append(f"- {key}: {lab}")
@@ -835,10 +842,16 @@ def add_deck(dk, c, mats, idx):
     style = dk.get("rail_style", "balusters")
     gaps = dk.get("rail_gaps", [])
     seen_posts = set()
-    for re_ in dk.get("rail_edges", []):
+    deck_tag = dict(_TAG)
+    for k_re, re_ in enumerate(dk.get("rail_edges", [])):
+        _TAG.clear()
+        _TAG.update(deck_tag)
         if isinstance(re_, dict):      # per-edge overrides: {"edge": [i, j], "style": "screen", "skirt": 0.9}
             (i, j), estyle = re_["edge"], re_.get("style", style)
             eopts = {**dk, "skirt": re_.get("skirt", dk.get("skirt", 0.0))}
+            if re_.get("label"):       # this run's own provenance (a guard measured apart, a skirt of assumed extent)
+                _TAG["details"] = f"{deck_tag.get('details', f'decks[{idx}]')}.rail_edges[{k_re}]"
+                _TAG["label"] = str(re_["label"])
         else:
             (i, j), estyle, eopts = re_, style, dk
         a, b = poly[i], poly[j]
@@ -865,6 +878,8 @@ def add_deck(dk, c, mats, idx):
                     continue
                 seen_posts.add(key)
                 box(f"deck {idx} rail post", (pend.x - 0.045, pend.y - 0.045, z), (pend.x + 0.045, pend.y + 0.045, z + H + 0.05), c, rail_m)
+    _TAG.clear()
+    _TAG.update(deck_tag)
 
 
 def add_stairs(st, c, mats, idx):

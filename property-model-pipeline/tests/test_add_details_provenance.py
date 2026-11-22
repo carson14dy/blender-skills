@@ -69,3 +69,44 @@ def test_labels_on_objects_and_notes_text(tmp_path):
     assert "- entry stair rebuilt after the photo" in cav
     assert "- openings[0]: " + long_label in cav and "- stairs[0]: stair, risers assumed" in cav
     assert "decks[0]" not in cav and "decks[0]: landing (LiDAR 0.5)" in notes          # measured: listed, not flagged
+
+
+def test_per_edge_rail_labels(tmp_path):
+    """A rail_edges item with its own "label" stamps that run's rail / skirt / post objects (details key
+    decks[i].rail_edges[k]) and lists it in the Details notes, flagged only when it carries a caveat word; the other
+    runs and the boards keep the deck's label."""
+    w = Wing.from_dict(dict(id="M", type="gable", cx=0, cy=0, azimuth=90, length=10, width=8, eave_height=3.0,
+                            pitch=0.5, eave_overhang=0.5, rake_overhang=0.3))
+    mj = to_mesh_json(build([w]))
+    (tmp_path / "model.json").write_text(json.dumps(mj))
+    _run([os.path.join(SCRIPTS, "build_model.py"), "--model", str(tmp_path / "model.json"), "--out",
+          str(tmp_path / "out"), "--plain-ground"])
+    D = {"model_json": str(tmp_path / "model.json"),
+         "decks": [{"polygon": [[-4, -5], [0, -5], [0, -7], [-4, -7]], "top_z": 0.5, "rail_style": "screen",
+                    "rail_edges": [[0, 1],
+                                   {"edge": [1, 2], "label": "east guard: LiDAR rail-top returns (6), +-0.1 m"},
+                                   {"edge": [2, 3], "skirt": 0.4, "label": "board skirt, extent assumed"}],
+                    "label": "landing (LiDAR 0.5)"}]}
+    (tmp_path / "details.json").write_text(json.dumps(D))
+    r = _run([os.path.join(SCRIPTS, "add_details.py"), str(tmp_path / "out" / "model.blend"),
+              str(tmp_path / "details.json"), str(tmp_path / "detailed.blend")])
+    assert "details notes: 3 labelled entries, 1 caveats" in r.stdout
+    (tmp_path / "dump_props.py").write_text(INSPECT)
+    _run([str(tmp_path / "dump_props.py"), str(tmp_path / "detailed.blend"), str(tmp_path / "out.json")])
+    res = json.loads((tmp_path / "out.json").read_text())
+    objs = res["objects"]
+    by_key = {}
+    for k, v in objs.items():
+        by_key.setdefault(v.get("details"), []).append(k)
+    g = by_key["decks[0].rail_edges[1]"]
+    assert any("rail pickets" in k for k in g) and any("rail cap" in k for k in g)
+    assert all(objs[k]["label"] == "east guard: LiDAR rail-top returns (6), +-0.1 m" for k in g)
+    s = by_key["decks[0].rail_edges[2]"]
+    assert any("rail pickets" in k for k in s) and all(objs[k]["label"] == "board skirt, extent assumed" for k in s)
+    deck = by_key["decks[0]"]
+    assert "deck 0 boards" in deck and any("rail pickets" in k for k in deck)       # run [0, 1]: the deck's own label
+    assert all(objs[k]["label"] == "landing (LiDAR 0.5)" for k in deck)
+    notes = res["notes"]
+    head, cav = notes.split("Caveats (not fully measured):")
+    assert "decks[0].rail_edges[1]: east guard: LiDAR rail-top returns (6), +-0.1 m" in head
+    assert "- decks[0].rail_edges[2]: board skirt, extent assumed" in cav and "rail_edges[1]" not in cav

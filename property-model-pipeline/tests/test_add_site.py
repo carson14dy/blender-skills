@@ -100,7 +100,18 @@ def site(tmp_path_factory):
          "thickness": 0.2, "material": "concrete", "color": [[0.16, 0.16, 0.15], [0.21, 0.21, 0.2]],
          "cap_color": [[0.55, 0.55, 0.53], [0.62, 0.62, 0.6]]},
         {"kind": "pier", "name": "pier sx", "xy": [-4.5, 3.0], "size": [1.0, 0.5], "top_z": 1.0,
-         "plaque": {"text": "88", "face": "-y", "size": 0.4, "scale_x": 0.6}}],
+         "plaque": {"text": "88", "face": "-y", "size": 0.4, "scale_x": 0.6}},
+        {"kind": "discs", "name": "dots", "points": [[4.0, 4.0], [4.0, -4.5]], "diameter": 0.25, "proud": 0.03,
+         "color": [0.7, 0.66, 0.6]},
+        {"kind": "retaining_wall", "name": "rubble wall", "line": [[1.0, -3.0], [2.0, -3.0]], "top_z": -0.6, "thickness": 0.3,
+         "material": "drystack", "line_is": "face", "uphill": "left",
+         "drystack": {"corner": 0.03, "pillow": 0.012, "lift": 0.5, "lift_k": 1.7, "lift_range": 0.3}},
+        {"kind": "rock_scatter", "name": "round stone", "stones": [[3.0, -2.0, 0.6]], "shape": "dome", "chaikin": 2,
+         "height": [0.3, 0.3], "tint_spread": 0.5, "color": [[0.40, 0.355, 0.20], [0.94, 0.83, 0.47]]},
+        {"kind": "box", "name": "deck slab", "xy": [-2.0, 1.0], "size": [0.8, 0.5, 0.08], "base_z": 2.5,
+         "color": [0.145, 0.1, 0.088]},
+        {"kind": "surface", "name": "shrub bed", "polygon": [[-1, -4], [0, -4], [0, -3], [-1, -3]],
+         "color": [[0.05, 0.05, 0.02], [0.1, 0.1, 0.04]], "foliage": {"side": 0.2, "power": 2.0}}],
         "materials": {"rock": [[0.26, 0.19, 0.12], [0.55, 0.42, 0.28]]}}
     sp, yp, out, js = d / "scene.json", d / "yard.json", str(d / "out.blend"), str(d / "inspect.json")
     sp.write_text(json.dumps(scene)); yp.write_text(json.dumps(yard))
@@ -149,6 +160,27 @@ def test_rock_scatter_places_measured_stones(site):
     assert 0.5 * 0.6 < w < 0.5 * 1.3
     assert st["nverts"] in (15, 18, 21) and not st["smooth"]         # 3 rings of a 5-7-sided outline, faceted
     assert st["mat"].startswith("Garden stone")
+
+
+def test_discs_sit_proud_of_the_terrain_at_their_points(site):
+    """discs: one flat round object per point, `diameter` across, its top `proud` m over the terrain (0 north, -1 south)
+    and its bottom under it, so none is buried and none floats."""
+    for k, (x, y, g) in enumerate(((4.0, 4.0, 0.0), (4.0, -4.5, -1.0))):
+        d = site["objects"][f"dots 14 disc {k}"]
+        assert abs((d["min"][0] + d["max"][0]) / 2 - x) < 1e-3 and abs((d["min"][1] + d["max"][1]) / 2 - y) < 1e-3
+        assert abs((d["max"][0] - d["min"][0]) - 0.25) < 0.01
+        assert abs(d["max"][2] - (g + 0.03)) < 1e-3 and d["min"][2] < g - 0.02
+        assert d["mat"].startswith("Discs")
+
+
+def test_disc_span_takes_the_highest_terrain_under_the_rim():
+    """On a slope the disc top stands `proud` over the HIGHEST terrain under its rim (never buried at the uphill edge)
+    and its bottom `embed` under the lowest."""
+    ds = _pure({"disc_span"})["disc_span"]
+    z0, z1 = ds(lambda x, y: 0.5 * y, 0.0, 0.0, 0.125, proud=0.03, embed=0.05)
+    assert abs(z1 - (0.5 * 0.125 + 0.03)) < 1e-9 and abs(z0 - (-0.5 * 0.125 - 0.05)) < 1e-9
+    z0, z1 = ds(lambda x, y: None, 0.0, 0.0, 0.1)                     # no terrain: around z 0
+    assert z0 < 0.0 < z1
 
 
 def _pure(names):
@@ -394,6 +426,9 @@ out = {"sizes": sorted({len(p.vertices) for p in t.data.polygons}),
                 if "sharp_edge" in t.data.attributes else 0,
        "mods": [m.type for m in t.modifiers], "keep_sharp": [m.keep_sharp for m in t.modifiers if m.type == "WEIGHTED_NORMAL"],
        "overlay_nz": [p.normal.z for p in bpy.data.objects["concrete (draped)"].data.polygons],
+       "overlay_faces": [{"nz": p.normal.z, "n": list(p.normal), "c": list(p.center), "smooth": p.use_smooth,
+                          "z": [bpy.data.objects["concrete (draped)"].data.vertices[i].co.z for i in p.vertices]}
+                         for p in bpy.data.objects["concrete (draped)"].data.polygons],
        "kinds": {o.name: o.get("site_kind") for o in bpy.data.collections["Site"].objects},
        "rock": [list(e.color[:3]) for m in bpy.data.materials if m.name.startswith("Rock") and m.node_tree
                 for n in m.node_tree.nodes if n.bl_idname == "ShaderNodeValToRGB" for e in n.color_ramp.elements]}
@@ -403,7 +438,8 @@ json.dump(out, open(sys.argv[2], "w"))
 
 def test_terrain_is_folded_creased_and_overlays_face_up(tmp_path):
     """Quads become the two triangles of their 0-2 fold, a 3 m step between neighbouring cells is a sharp
-    crease with area-weighted normals, a clockwise overlay triangle is flipped normal-up, rock is warm buff."""
+    crease with area-weighted normals, a clockwise overlay triangle is flipped normal-up and skirted (one flat-shaded
+    vertical quad per outer edge, facing out, 0.10 m deep, 2 mm inside the edge), rock is warm buff."""
     blend = str(tmp_path / "empty.blend")
     (tmp_path / "empty.py").write_text(EMPTY)
     _run([str(tmp_path / "empty.py"), blend])
@@ -423,7 +459,14 @@ def test_terrain_is_folded_creased_and_overlays_face_up(tmp_path):
     assert r["sizes"] == [3]                                    # explicit triangles
     assert r["sharp"] >= 2                                      # the cliff's top and foot are creases
     assert "WEIGHTED_NORMAL" in r["mods"] and r["keep_sharp"] == [True]
-    assert r["overlay_nz"] and min(r["overlay_nz"]) > 0.99     # flipped to face up
+    top = [f for f in r["overlay_faces"] if abs(f["nz"]) > 0.5]
+    skirt = [f for f in r["overlay_faces"] if abs(f["nz"]) < 0.01]
+    assert len(top) == 1 and top[0]["nz"] > 0.99 and top[0]["smooth"]      # flipped to face up
+    assert len(skirt) == 3 and not any(f["smooth"] for f in skirt)          # one skirt quad per outer edge
+    for f in skirt:
+        assert abs(max(f["z"]) - 0.03) < 1e-6 and abs(min(f["z"]) - (0.03 - 0.10)) < 1e-6
+        out = (f["c"][0] - 0.3667) * f["n"][0] + (f["c"][1] - 0.3667) * f["n"][1]
+        assert out > 0                                                         # faces away from the overlay's centre
     assert r["rock"] and all(abs(a - b) < 0.01 for a, b in zip(r["rock"][0], (0.442, 0.38, 0.284)))   # warm buff
     # every Site object is tagged with what made it (render_thumbnail.py --terrain keeps the hardscape by it)
     assert r["kinds"]["concrete (draped)"] == "overlay:concrete" and r["kinds"]["boulder 0"] == "boulder"
@@ -724,3 +767,128 @@ def test_site_materials_never_take_over_a_house_material(tmp_path):
             n1 = r["mats"]["Site Concrete"]["nodes"]
         else:
             assert r["mats"]["Site Concrete"]["nodes"] == n1
+
+
+def test_face_smoothing_leaves_the_scene_fixed_nodes_in_place(tmp_path):
+    """build_site lists the nodes it capped under decks / stairs as "fixed_nodes": the steep-face Laplacian (which lifts a
+    stair foot next to a boulder face by up to 0.3 m, back over the bottom tread) must not move them; the other cliff
+    vertices are still smoothed."""
+    blend = str(tmp_path / "empty.blend")
+    (tmp_path / "empty.py").write_text(EMPTY)
+    _run([str(tmp_path / "empty.py"), blend])
+    c, n = 0.25, 13
+    xy = [(i * c - 1.5, j * c - 1.5) for j in range(n) for i in range(n)]
+    z = [2.0 if y > 0.1 else 0.0 for x, y in xy]                  # a 2 m face along y = 0.1
+    verts = [[x, y, zz] for (x, y), zz in zip(xy, z)]
+    faces = [[j * n + i, j * n + i + 1, (j + 1) * n + i + 1, (j + 1) * n + i] for j in range(n - 1) for i in range(n - 1)]
+    fixed = [k for k, (x, y) in enumerate(xy) if x < 0.0]          # the west half: a stair foot capped by build_site
+    scene = {"verts": verts, "faces": faces, "face_class": [0] * len(faces), "classes": ["ground"], "overlays": {},
+             "curbs": [], "edging": [], "parcel": None, "points": [], "fixed_nodes": fixed,
+             "grid": {"nx": n, "ny": n, "z": z, "x0": -1.5, "y0": -1.5, "cell": c}}
+    sp, yp, out, js = tmp_path / "scene.json", tmp_path / "yard.json", str(tmp_path / "out.blend"), str(tmp_path / "c.json")
+    sp.write_text(json.dumps(scene)); yp.write_text(json.dumps({"items": []}))
+    _run([ADD_SITE, blend, str(sp), str(yp), out])
+    (tmp_path / "look.py").write_text(CLIFF_LOOK)
+    _run([str(tmp_path / "look.py"), out, js])
+    r = json.load(open(js))
+    face = [k for k, (x, y) in enumerate(xy) if abs(y - 0.1) < 0.4]
+    moved = lambda k: abs(r["z"][k] - z[k]) > 1e-6 or abs(r["xy"][k][0] - xy[k][0]) > 1e-6 or abs(r["xy"][k][1] - xy[k][1]) > 1e-6
+    assert not any(moved(k) for k in fixed)
+    assert any(moved(k) for k in face if k not in set(fixed))
+
+
+def test_rubble_drystack_rounded_pillowed_graded_lift(site):
+    """drystack "corner" > 0: one joint map range fed by the rounded-box distance (labelled "courses: rounded ...", so a
+    presentation script rescales it by the course), "pillow" > 0 rounds every stone face towards its joints (a "pillow"
+    node), "lift_range" grades the lift over the lifted share; the default wall keeps the two square joint masks."""
+    nodes = site["nodes"][site["objects"]["rubble wall"]["mat"]]
+    labels = [n["label"] for n in nodes]
+    assert "rounded corner distance" in labels and "courses: rounded stone joint distance / mean course" in labels
+    assert labels.count("joint") == 1 and "pillow" in labels and "lifted stones: grade" in labels
+    stones = {round(n["scale"], 3) for n in nodes if n["type"] == "ShaderNodeTexVoronoi" and n["label"] == "stones"}
+    assert stones == {round(1 / 0.375, 3)}
+    plain = [n["label"] for n in site["nodes"][site["objects"]["face wall"]["mat"]]]
+    assert plain.count("joint") == 2 and "pillow" not in plain and "rounded corner distance" not in plain
+
+
+def test_rock_scatter_dome_stones_are_rounded(site):
+    """rock_scatter "shape": "dome" + "chaikin": 2 -- a smooth-shaded dome on a corner-cut (rounded) outline, in the
+    boulder stone material (not a 'Garden stone'), centred on the measured stone, 0.3 x its width above grade."""
+    st = site["objects"]["round stone 1"]
+    assert st["smooth"] and st["nverts"] > 100 and not st["mat"].startswith("Garden stone")
+    assert abs((st["min"][0] + st["max"][0]) / 2 - 3.0) < 0.2 and abs((st["min"][1] + st["max"][1]) / 2 + 2.0) < 0.2
+    assert abs(st["max"][2] - (-1.0 + 0.6 * 0.3)) < 0.02
+
+
+def test_chaikin_rounds_a_polygon():
+    import math
+    ch = _pure({"chaikin"})["chaikin"]
+    sq = [(0, 0), (1, 0), (1, 1), (0, 1)]
+    r1 = ch(sq)
+    assert len(r1) == 8 and (0.25, 0) in r1 and (0.75, 0) in r1
+    r2 = ch(r1)
+    assert len(r2) == 16
+    turns = []
+    for k in range(len(r2)):
+        (ax, ay), (bx, by), (cx, cy) = r2[k - 1], r2[k], r2[(k + 1) % len(r2)]
+        a1, a2 = math.atan2(by - ay, bx - ax), math.atan2(cy - by, cx - bx)
+        turns.append(abs(math.degrees((a2 - a1 + math.pi) % (2 * math.pi) - math.pi)))
+    assert max(turns) < 46                                       # no 90-degree corner left
+
+
+def test_foliage_bed_darkens_seen_obliquely(site):
+    """surface "foliage": the bed colour x a clump mottle x a view factor mapped to [side, 1] ("foliage view")."""
+    nodes = site["nodes"][site["objects"]["shrub bed"]["mat"]]
+    fv = [n for n in nodes if n["label"] == "foliage view" and n["type"] == "ShaderNodeMapRange"]
+    assert fv and abs(fv[0]["to"][0] - 0.2) < 1e-6 and abs(fv[0]["to"][1] - 1.0) < 1e-6
+    assert any(n["label"] == "foliage clumps" and n["type"] == "ShaderNodeTexNoise" for n in nodes)
+    assert any(n["type"] == "ShaderNodeMath" and abs(n.get("v", 0) - 2.0) < 1e-6 for n in nodes)   # |N.V| ^ 2
+
+
+def test_box_base_z_is_absolute(site):
+    """A box with "base_z" stands at that absolute height (on a deck), not on the terrain under it (z 0 here)."""
+    b = site["objects"]["deck slab"]
+    assert abs(b["min"][2] - 2.5) < 1e-6 and abs(b["max"][2] - 2.58) < 1e-6
+
+
+TUB_LOOK = r"""
+import bpy, json, sys
+bpy.ops.wm.open_mainfile(filepath=sys.argv[1])
+out = {}
+for nm in ("Hot tub cover", "Hot tub cabinet"):
+    b = bpy.data.materials[nm].node_tree.nodes["Principled BSDF"]
+    key = "Specular IOR Level" if "Specular IOR Level" in b.inputs else "Specular"
+    out[nm] = {"rough": b.inputs["Roughness"].default_value, "spec": b.inputs[key].default_value,
+               "rgb": list(b.inputs["Base Color"].default_value)[:3]}
+json.dump(out, open(sys.argv[2], "w"))
+"""
+
+
+def _tub_materials(tmp_path, tub, tag):
+    blend = str(tmp_path / "empty.blend")
+    if not os.path.exists(blend):
+        (tmp_path / "empty.py").write_text(EMPTY)
+        _run([str(tmp_path / "empty.py"), blend])
+    scene = {"verts": [[-3, -3, 0], [3, -3, 0], [3, 3, 0], [-3, 3, 0]], "faces": [[0, 1, 2, 3]], "face_class": [0],
+             "classes": ["ground"], "overlays": {}, "curbs": [], "edging": [], "parcel": None, "points": []}
+    sp, yp, out, js = tmp_path / f"s{tag}.json", tmp_path / f"y{tag}.json", str(tmp_path / f"o{tag}.blend"), str(tmp_path / f"m{tag}.json")
+    sp.write_text(json.dumps(scene)); yp.write_text(json.dumps({"items": [tub]}))
+    _run([ADD_SITE, blend, str(sp), str(yp), out])
+    (tmp_path / "tub_look.py").write_text(TUB_LOOK)
+    _run([str(tmp_path / "tub_look.py"), out, js])
+    return json.load(open(js))
+
+
+def test_hot_tub_cover_roughness_and_specular(tmp_path):
+    """hot_tub "cover_roughness" / "cover_specular" (and "roughness" / "specular" for the cabinet) set the Principled
+    Roughness and Specular IOR Level of the 'Hot tub cover' / 'Hot tub cabinet' materials; without them the cover stays
+    at roughness 0.6, the cabinet at 0.7, and the specular level at the Principled default."""
+    base = {"kind": "hot_tub", "xy": [0, 0], "size": [1.5, 1.2, 0.9], "color": [0.01, 0.008, 0.006],
+            "cover_color": [0.01, 0.008, 0.006]}
+    m = _tub_materials(tmp_path, dict(base, cover_roughness=0.9, cover_specular=0.1, roughness=0.85, specular=0.2), "a")
+    assert abs(m["Hot tub cover"]["rough"] - 0.9) < 1e-6 and abs(m["Hot tub cover"]["spec"] - 0.1) < 1e-6
+    assert abs(m["Hot tub cabinet"]["rough"] - 0.85) < 1e-6 and abs(m["Hot tub cabinet"]["spec"] - 0.2) < 1e-6
+    assert all(abs(a - b) < 1e-6 for a, b in zip(m["Hot tub cover"]["rgb"], (0.01, 0.008, 0.006)))
+    d = _tub_materials(tmp_path, base, "b")
+    assert abs(d["Hot tub cover"]["rough"] - 0.6) < 1e-6 and abs(d["Hot tub cabinet"]["rough"] - 0.7) < 1e-6
+    assert abs(d["Hot tub cover"]["spec"] - 0.5) < 1e-6 and abs(d["Hot tub cabinet"]["spec"] - 0.5) < 1e-6   # Principled default

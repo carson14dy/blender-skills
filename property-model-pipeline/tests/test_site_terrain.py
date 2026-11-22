@@ -831,3 +831,209 @@ def test_wall_back_cap_keeps_unsnapped_nodes_inside_the_wall_body_under_the_cap(
     joint = (np.abs(Y - 0.25) < 1e-9) & (np.abs(X) < 1e-9)  # at the joint: the higher top of the two segments
     assert np.allclose(Zc[joint], 0.0)
     assert np.allclose(Zc[Y < 0.0], Z[Y < 0.0]) and np.all(Zc <= Z + 1e-12)
+
+
+def test_wall_back_shift_keeps_the_terrain_under_the_cap_back_edge():
+    """Back-line nodes (snapped onto a wall's back line) at or over the wall top: the terrain triangles from them to the
+    face nodes run through the body and reach the cap's back edge at (or over) the cap -- coincident with it or lapping
+    over it. wall_back_shift moves them uphill off the back line by max(shift, th (z - top + margin) / (top - margin -
+    zf)), so the triangles cross the back edge under the cap; Z is untouched, nodes under the top stay, a buried wall
+    (face nodes over the top) is left alone; a node inside the body at a convex joint is pushed out past the mitre."""
+    c = 0.25
+    xs = np.arange(-2, 2 + 1e-9, c); X, Y = np.meshgrid(xs, xs)
+    for top, want in ((0.0, 0.02), (-0.06, 0.02), (-0.2, 0.25 * 0.21 / 0.79)):
+        item = {"kind": "retaining_wall", "line": [[-3, 0.1], [3, 0.1]], "thickness": 0.25, "top_z": top,
+                "line_is": "face", "uphill": "left"}
+        walls = build_site.wall_lines({"items": [item]}); faces = build_site.wall_faces({"items": [item]})
+        tops = build_site.face_tops({"items": [item]})
+        node = [X.copy(), Y.copy()]
+        Z = build_site.apply_breaklines(np.where(Y > 0.2, 0.0, -1.0), xs, xs, walls, c, snap=node)
+        Z = np.where(node[1] >= 0.1 + 0.25 - 1e-6, max(Z.max(), 0.0), Z)       # back line at the retained grade 0
+        Z = np.where(np.abs(node[1] - 0.1) < 1e-6, -1.0, Z)                     # face nodes at the lower level
+        back = np.abs(node[1] - 0.35) < 1e-6
+        assert back.sum() >= 10
+        n2 = [node[0].copy(), node[1].copy()]
+        mv, amt = build_site.wall_back_shift(Z, n2[0], n2[1], faces, tops, c, shift=0.02)
+        assert mv[back].all() and not mv[~back].any()
+        assert np.allclose(amt[back], want, atol=1e-6) and np.allclose(n2[1][back], 0.35 + want)
+        assert np.allclose(n2[0], node[0])
+        # the triangle edge from a moved node down to the face node crosses the back line under the cap
+        zb = Z[back] - (Z[back] - (-1.0)) * want / (0.25 + want)
+        assert np.all(zb <= top - 0.01 + 1e-9)
+    # nodes under the top stay; a buried wall (face nodes over the top) is left alone
+    n3 = [node[0].copy(), node[1].copy()]
+    mv, _ = build_site.wall_back_shift(Z - 0.5, n3[0], n3[1], faces, tops, c)
+    assert not mv.any()
+    mv, _ = build_site.wall_back_shift(np.full(Z.shape, 0.5), n3[0], n3[1], faces, tops, c)
+    assert not mv.any()
+    # convex joint on the uphill side: a node inside the body outside both spans (no snap) goes out past the mitre
+    item = {"kind": "retaining_wall", "line": [[-3, 0.0], [0.0, 0.0], [3, -1.0]], "thickness": 0.3, "top_z": -0.1,
+            "line_is": "face", "uphill": "left"}
+    faces = build_site.wall_faces({"items": [item]}); tops = build_site.face_tops({"items": [item]})
+    NX, NY = X.copy(), Y.copy()
+    j0, i0 = int(np.argmin(np.abs(xs - 0.25))), int(np.argmin(np.abs(xs - 0.0)))   # (0.0, 0.25): inside the body
+    body = LineString(item["line"]).buffer(0.3, single_sided=True, join_style="mitre")
+    assert body.contains(shapely.Point(NX[j0, i0], NY[j0, i0]))
+    Z = np.where(Y > 0.0, 0.2, -1.0); Z[j0, i0] = -0.1
+    mv, amt = build_site.wall_back_shift(Z, NX, NY, faces, tops, c)
+    assert mv[j0, i0] and not body.contains(shapely.Point(NX[j0, i0], NY[j0, i0]))
+    assert body.distance(shapely.Point(NX[j0, i0], NY[j0, i0])) >= 0.02 - 1e-6
+
+
+def _tri_z_max_over(NX, NY, Z, poly, step=0.02):
+    """Highest terrain z (grid quads split along both diagonals' worst case: max of the two triangulations) sampled on a
+    step grid inside ``poly`` -- what a ray cast down onto the cap would meet first."""
+    ny, nx = Z.shape
+    bx0, by0, bx1, by1 = poly.bounds
+    best = -np.inf
+    tris = []
+    for j in range(ny - 1):
+        for i in range(nx - 1):
+            q = [(j, i), (j, i + 1), (j + 1, i + 1), (j + 1, i)]
+            for t in ((q[0], q[1], q[2]), (q[0], q[2], q[3]), (q[0], q[1], q[3]), (q[1], q[2], q[3])):
+                P = np.array([[NX[a], NY[a], Z[a]] for a in t])
+                if P[:, 0].max() < bx0 or P[:, 0].min() > bx1 or P[:, 1].max() < by0 or P[:, 1].min() > by1:
+                    continue
+                tris.append(P)
+    xs = np.arange(bx0 + step / 2, bx1, step); ys = np.arange(by0 + step / 2, by1, step)
+    for x in xs:
+        for y in ys:
+            if not poly.contains(shapely.Point(x, y)):
+                continue
+            for P in tris:
+                (x1, y1, z1), (x2, y2, z2), (x3, y3, z3) = P
+                den = (y2 - y3) * (x1 - x3) + (x3 - x2) * (y1 - y3)
+                if abs(den) < 1e-12:
+                    continue
+                l1 = ((y2 - y3) * (x - x3) + (x3 - x2) * (y - y3)) / den
+                l2 = ((y3 - y1) * (x - x3) + (x1 - x3) * (y - y3)) / den
+                l3 = 1 - l1 - l2
+                if min(l1, l2, l3) >= -1e-9:
+                    best = max(best, l1 * z1 + l2 * z2 + l3 * z3)
+    return best
+
+
+def test_wall_back_cap_holds_the_back_line_and_a_free_end_at_the_cap_where_the_lidar_sees_it():
+    """A 0.4 m-thick tier (face y = 0, uphill north, top 0.0) with a steep bank rising behind it (+0.35 m 0.25 m back) and
+    a raised toe beyond its west end: the side grade leaves the back-line nodes 0.3 m over the cap, and no snap reaches
+    past the end, so terrain covers the back and the end of the cap -- though the LiDAR returns ON the cap are at the top.
+    wall_back_cap (cap_seen, ends): back-boundary nodes and the beyond-end nodes (one onto the back corner, the others onto
+    the end line) stand at top - cap_drop; then no terrain point over the cap is above the top. With the cap returns 0.3 m
+    over the top (soil lapping onto the cap) nothing moves; off, the old behaviour."""
+    c = 0.25
+    xs = np.arange(-2, 2 + 1e-9, c); X, Y = np.meshgrid(xs, xs)
+    item = {"kind": "retaining_wall", "line": [[-0.9, 0.02], [3.0, 0.02]], "thickness": 0.4, "top_z": 0.0,
+            "line_is": "face", "uphill": "left"}
+    walls = build_site.wall_lines({"items": [item]}); faces = build_site.wall_faces({"items": [item]})
+    tops = build_site.face_tops({"items": [item]})
+    ground = lambda x, y: np.where(y < 0.02, -0.6, np.where(y < 0.42, 0.3, 0.3 + 0.5 * (y - 0.42)))
+    Z0 = np.where(X < -0.9, np.where(Y < 0.0, -0.3, 0.25 + 0.3 * Y), ground(X, Y))   # raised toe west of the end
+    node = [X.copy(), Y.copy()]
+    Z = build_site.apply_breaklines(Z0.copy(), xs, xs, walls, c, snap=node)
+    rng = np.random.default_rng(2)
+    px = rng.uniform(-2, 2, 6000); py = rng.uniform(-2, 2, 6000)
+    on_cap = (px > -0.9) & (py > 0.02) & (py < 0.42)
+    pz = np.where(on_cap, rng.normal(0.0, 0.02, px.size), np.where(py >= 0.42, 0.35 + 0.5 * (py - 0.42), -0.6))
+    body = LineString(item["line"]).buffer(0.4, single_sided=True, join_style="mitre").intersection(
+        shapely.box(-2, -2, 2, 2))
+    cap = body.buffer(-0.03)
+    assert _tri_z_max_over(node[0], node[1], Z, cap) > 0.1            # the old terrain covers the cap
+    n2 = [node[0].copy(), node[1].copy()]; st = {}
+    Zc, low = build_site.wall_back_cap(Z, n2[0], n2[1], faces, tops, np.column_stack([px, py]), pz, c, stats=st)
+    assert st["cap_seen"] >= 10 and st["ends"] >= 2
+    assert _tri_z_max_over(n2[0], n2[1], Zc, cap) <= 0.0 + 1e-9       # nothing over the cap now
+    cb = np.array([-0.9, 0.42])                                          # the end's back corner holds a node
+    assert np.min(np.hypot(n2[0] - cb[0], n2[1] - cb[1])) < 1e-9
+    assert np.all(Zc <= Z + 1e-12)
+    far = (X < -1.3) | (Y > 0.8)
+    assert np.allclose(Zc[far], Z[far]) and np.allclose(n2[0][far], node[0][far])
+    # soil on the cap (its returns 0.3 m over the top): nothing moves
+    pz_soil = np.where(on_cap, 0.3 + rng.normal(0.0, 0.02, px.size), pz)
+    n3 = [node[0].copy(), node[1].copy()]
+    Zs, _ = build_site.wall_back_cap(Z, n3[0], n3[1], faces, tops, np.column_stack([px, py]), pz_soil, c)
+    on_back = np.abs(n3[1] - 0.42) < 1e-6
+    assert np.allclose(Zs[on_back], Z[on_back]) and np.allclose(n3[0], node[0])
+    # both rules off: as before
+    n4 = [node[0].copy(), node[1].copy()]
+    Zo, _ = build_site.wall_back_cap(Z, n4[0], n4[1], faces, tops, np.column_stack([px, py]), pz, c, cap_seen=False,
+                                     ends=False)
+    assert np.allclose(n4[0], node[0]) and np.allclose(n4[1], node[1])
+
+
+def test_cap_nodes_mark_the_stair_footprint_and_its_blend():
+    st = {"stairs": [{"top": [0.0, 0.0], "dir": [1, 0], "width": 1.0, "length": 1.5, "top_z": 1.0, "bottom_z": 0.0,
+                      "risers": 6}]}
+    caps = build_site.deck_caps(st)
+    xs = np.arange(-2, 3 + 1e-9, 0.25); X, Y = np.meshgrid(xs, xs)
+    m = build_site.cap_nodes(X, Y, caps, 0.55)
+    assert m[(X > 0.1) & (X < 1.4) & (np.abs(Y) < 0.4)].all()
+    assert m[(np.abs(X - 0.75) < 1e-9) & (np.abs(Y - 1.0) < 1e-9)].all()        # 0.5 m off the side: kept
+    assert not m[(X < -0.6) | (X > 2.1) | (np.abs(Y) > 1.1)].any()
+
+
+def test_stair_foot_ground_takes_the_measured_landing_past_the_foot():
+    """Past a stair's foot the bridged ground (here 0.2 m over the measured landing) drops to the lower quartile of the
+    last returns within the radius; nodes under the treads, beside the stair, beyond the reach or protected keep their
+    height, and a node with fewer than min_n returns near it is left alone. Never raises."""
+    c = 0.25
+    xs = np.arange(-1, 4.001, c); ys = np.arange(-2, 2.001, c)
+    X, Y = np.meshgrid(xs, ys)
+    st = {"stairs": [{"top": [0.0, 0.0], "dir": [1, 0], "width": 1.0, "length": 2.0, "top_z": 2.0, "bottom_z": 0.4,
+                      "risers": 8}]}
+    land = 0.2
+    Z = np.full(X.shape, land + 0.2)                                # bridge 0.2 m over the measured landing
+    rng = np.random.default_rng(3)
+    px = rng.uniform(-1, 4, 4000); py = rng.uniform(-2, 2, 4000)
+    keep = np.hypot(px - 2.75, py - 0.5) > 0.3                     # a hole in the returns round the node (2.75, 0.5)
+    px, py = px[keep], py[keep]
+    pz = np.full(px.shape, land) + rng.normal(0, 0.01, px.shape)
+    prot = (np.abs(X - 2.25) < 1e-9) & (np.abs(Y) < 1e-9)
+    Zf, low, stats = build_site.stair_foot_ground(Z, X, Y, st, np.column_stack([px, py]), pz, reach=0.75, radius=0.25,
+                                                  protect=prot)
+    past = (X > 2.0 + 1e-6) & (X <= 2.75 + 1e-6) & (np.abs(Y) <= 0.75 + 1e-9) & ~prot
+    hole = (np.abs(X - 2.75) < 1e-9) & (np.abs(Y - 0.5) < 1e-9)
+    assert np.all(np.abs(Zf[past & ~hole] - land) < 0.03)          # on the measured landing
+    assert np.allclose(Zf[hole], Z[hole])                           # no returns near it: kept
+    assert np.all(Zf <= Z + 1e-12)                                  # never raises
+    assert np.allclose(Zf[~past], Z[~past])                         # treads, sides, beyond the reach, protected: untouched
+    assert np.allclose(Zf[prot], Z[prot])
+    assert low[past & ~hole].all() and stats[0][1] == int((low).sum())
+
+
+def test_overlay_gap_per_wall_keeps_an_uphill_walk_up_to_a_thin_edge_and_past_its_end():
+    """A wall item's "overlay_gap" overrides --overlay-wall-gap: 0 for a walk's 12 cm concrete edge leaves no strip on its
+    uphill side (the walk overlay meets the edge's back and runs on past its end), while the default wall keeps its
+    0.15 m strip and the 0.15 m extension past its ends."""
+    edge = {"kind": "retaining_wall", "line": [[0.0, 0.0], [-2.0, 0.0]], "top_z": 0.0, "thickness": 0.12,
+            "line_is": "face", "uphill": "right", "overlay_gap": 0.0}
+    other = {"kind": "retaining_wall", "line": [[0.0, 5.0], [-2.0, 5.0]], "top_z": 0.0, "thickness": 0.12,
+             "line_is": "face", "uphill": "right"}
+    data = {"items": [edge, other]}
+    faces = build_site.wall_faces(data)
+    gaps = build_site.face_overlay_gaps(data, 0.15)
+    assert gaps == [0.0, 0.15]
+    strips = build_site.uphill_strips(faces, gaps)
+    assert not strips.intersects(Polygon([(-2.2, -0.1), (0.3, -0.1), (0.3, 0.3), (-2.2, 0.3)]))   # no strip at the edge
+    assert abs(strips.area - (2.0 + 0.3) * 0.15) < 1e-6                                              # the other wall's
+    walls = build_site.wall_lines(data)
+    wallpoly = shapely.unary_union([LineString(l_).buffer(th / 2, cap_style="flat") for l_, th in walls] + [strips])
+    walk = Polygon([(-2.5, 0.0), (0.6, 0.0), (0.6, 1.0), (-2.5, 1.0)]).difference(wallpoly)
+    assert walk.contains(shapely.Point(-1.0, 0.13))                 # meets the edge's back (0.12)
+    assert walk.contains(shapely.Point(0.08, 0.05))                 # and runs on past its end
+
+
+def test_split_diagonals_never_turns_a_snapped_cell_over():
+    """A cell whose nodes were snapped onto a diagonal wall face is skewed in plan: the diagonal the height rule picks
+    would give a triangle of negative plan area (facing down, folded over its neighbours). With the node positions the
+    other diagonal is taken; without them (or on a regular cell) the height rule stands."""
+    # one cell (local coordinates) whose two lower nodes were snapped onto a wall face running at 45 deg to the grid
+    NX = np.array([[0.082, 0.195], [0.0, 0.33]]); NY = np.array([[-0.035, -0.16], [0.0, 0.212]])
+    Z = np.array([[-3.72, -3.755], [-3.608, -2.93]])
+    assert bool(build_site.split_diagonals(Z)[0, 0])                       # height rule: (j,i+1)-(j+1,i)
+    alt = build_site.split_diagonals(Z, NX, NY)
+    assert not bool(alt[0, 0])                                             # that one turns over: the other is used
+    tri = lambda a, b, c: 0.5 * ((b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1]))
+    P = {k: (NX[j, i], NY[j, i]) for k, (j, i) in {"00": (0, 0), "01": (0, 1), "11": (1, 1), "10": (1, 0)}.items()}
+    assert tri(P["01"], P["10"], P["00"]) < 0 < min(tri(P["00"], P["01"], P["11"]), tri(P["00"], P["11"], P["10"]))
+    xs = np.arange(0, 1.01, 0.25); X, Y = np.meshgrid(xs, xs); Zr = np.random.default_rng(1).normal(0, 0.2, X.shape)
+    assert np.array_equal(build_site.split_diagonals(Zr, X, Y), build_site.split_diagonals(Zr))   # regular grid: unchanged
