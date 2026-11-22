@@ -1,5 +1,15 @@
 {"approved_by": "user", "approved_on": "2026-11-22",
- "note": "Standing rules for a new build with nothing to measure. A measured main house always wins (roof_pitch.py rule --match).",
+ "note": "Standing rules for a new build when the brief and the site give nothing to measure. A measured main house always wins (roof_pitch.py rule --match). Every value used from here is reported as a design rule, not an assumption.",
  "new_build_pitch": {"accessory": "6/12", "house": "6/12"},
  "accessory": {"ice_barrier": false, "ridge_vent": false},
+ "overhang_in": {"house": {"eave": 12, "rake": 12}, "accessory": {"eave": 6, "rake": 6}},
+ "layout": {
+   "pad_margin_in": 0,
+   "windows": "equally spaced along their wall",
+   "window_head": "level with the door head",
+   "door_knob_in": 36,
+   "door_color": "matches the trim"
+ },
+ "doors": {"accessory": {"style": "6-panel", "swing": "out", "hinges": "left, seen from outside"}},
+ "detail_includes": ["house wrap and flashing tape", "rake lookouts and frieze blocks", "window sash locks and screens", "wall, sheathing and trim nails per the code nailing schedule"],
  "shingles": {"each_shingle_a_piece": true, "note": "User's choice 2026-11-22: every shingle and joint as real geometry. Needs roof_core.py and the web studio changed together, in its own experiment."}}
