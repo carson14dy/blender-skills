@@ -17,6 +17,9 @@ import * as TX from './textures.js';
 import { sunPosition, sunDirection, dayOfYear, makeSkyTexture, fitShadow, snapshot, PathTraceMode } from './render.js';
 import { pitchLabel, slugify, rgbToHex, clamp } from './util.js';
 import { LabelOverlay, drawCallouts, labelReserve, SCREEN_INSETS } from './labels.js';
+import { createStoreUI } from './supplier-ui.js';
+import { createTap } from './tap.js';
+import { createSolar } from './solar.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -29,15 +32,23 @@ const S = {
   product: null,
   catalog: [],
   server: null,
-  sun: { lat: 39.7, date: new Date(), hour: 15, facing: 180 },
+  sun: { lat: 43.54, date: new Date(), hour: 15, facing: 180 }, // Sioux Falls, SD: where the jobs are
   quality: ['standard', 'high', 'ultra'].includes(params.get('quality')) ? params.get('quality')
     : (window.matchMedia?.('(pointer: coarse)').matches ? 'standard' : 'high'),
   cine: true,
   env: 'sky',
   glb: null,
+  measuredHouses: [], // houses/index.json: measured models of real jobs
   planMode: 'auto',
   customPlan: null,
 };
+
+let supplierPromise = null;
+/** The Sioux Falls store catalog (lab project sioux-falls-studio), loaded once on first use. Null when missing. */
+function supplierCatalog() {
+  supplierPromise ??= fetch('catalog/suppliers/sioux-falls.json').then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  return supplierPromise;
+}
 
 // ---------------------------------------------------------------------------
 // renderer, scene, camera
@@ -95,9 +106,17 @@ function resize() {
   const w = stage.clientWidth, h = stage.clientHeight;
   renderer.setSize(w, h);
   camera.aspect = w / Math.max(1, h);
-  camera.updateProjectionMatrix();
+  applyMobileOffset(w, h);
   ptDirty = true;
   invalidate();
+}
+
+/** Phones: the panel is a drawer over the full-screen view, so draw the scene centred in the area
+ *  above the open drawer. The offset is fixed: sliding the drawer never changes the rendering. */
+function applyMobileOffset(w = stage.clientWidth, h = stage.clientHeight) {
+  if (window.matchMedia('(max-width: 860px)').matches) camera.setViewOffset(w, h, 0, Math.round(h * 0.2), w, h);
+  else camera.clearViewOffset();
+  camera.updateProjectionMatrix();
 }
 new ResizeObserver(resize).observe(stage);
 
@@ -186,13 +205,16 @@ function makeLayers(planes, segs) {
   const prevOptions = layers?.options;
   const prevCustom = layers?.custom || [];
   layers = new RoofLayers({ planes, segs, renderer, overhangM: S.glb ? null : (house?.preset?.overhang ?? null) });
+  applyVerifiedMeasure();
   if (prevOptions) Object.assign(layers.options, prevOptions);
   layers.custom = prevCustom;
   layers.gap = Number($('lyGap').value);
   layers.labelsOn = $('lyLabels').checked;
+  stores.onLayers();
   layers.rebuildAll(S.product);
   if (S.product) layers.updateProductTransform(S.product.view || {});
   scene.add(layers.root);
+  try { solar.onLayers(); } catch (_) { /* first build runs before the solar designer exists */ }
   player.layers = layers;
   refreshPlan();
   player.seek(player.duration);
@@ -240,6 +262,34 @@ function frameView(exploded = false, instant = false) {
     center.y -= dist * tanV * ((SCREEN_INSETS.bottom - SCREEN_INSETS.top) / H);
   }
   tweenCamera(center, center.clone().addScaledVector(dir, dist), instant ? 0 : 0.9);
+}
+
+/**
+ * A project's saved view: the camera's compass bearing from the house (0 = north, 90 = east), how far it
+ * looks down, framed on the house (roof and walls) rather than the whole yard. The model's +z axis points to
+ * compass S.sun.facing ("Front faces"), so bearings convert to model directions through it.
+ */
+function houseViewDir(bearing, elevation) {
+  const d = THREE.MathUtils.degToRad(bearing - S.sun.facing), e = THREE.MathUtils.degToRad(elevation);
+  return new THREE.Vector3(-Math.sin(d) * Math.cos(e), Math.sin(e), Math.cos(d) * Math.cos(e));
+}
+
+function frameHouseView(view, instant = false) {
+  const box = new THREE.Box3();
+  if (layers) box.expandByObject(layers.root);
+  if (box.isEmpty()) { frameView(false, instant); return; }
+  // down to the foot of the walls (on a hillside the model's y = 0 is the bottom of the slope, not the house)
+  const walls = glbRoot?.getObjectByName('Walls');
+  if (walls) box.expandByObject(walls); else box.min.y = Math.min(box.min.y, 0);
+  const center = box.getCenter(new THREE.Vector3());
+  const size = box.getSize(new THREE.Vector3());
+  const r = size.length() / 2;
+  const tanV = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+  // fit the house in both directions; the bounding sphere overstates it, so pull in by `fit`
+  const fit = view.fit ?? 1.25;
+  const dist = Math.max(r / tanV, r / (tanV * Math.max(0.2, camera.aspect))) * fit;
+  center.y = box.min.y + size.y * 0.42;
+  tweenCamera(center, center.clone().addScaledVector(houseViewDir(view.bearing, view.elevation ?? 23), dist), instant ? 0 : 0.9);
 }
 
 let camTween = null;
@@ -303,12 +353,14 @@ async function applyProduct(p, { keepView = false } = {}) {
     return;
   }
   S.product = p;
+  stores.onRoof(p);
   layers.setProduct(p);
   layers.updateProductTransform(p.view || {});
   layers.refreshLabels();
   refreshPlan();
   player.seek(player.t);
   renderCatalog(); renderStack(); renderTakeoff(); updateChips(); syncTune();
+  if (p.image && !p.procedural && $('tuneWrap')) $('tuneWrap').open = true; // a photo needs its width and exposure set
   ptDirty = true;
   hideProgress();
   invalidate();
@@ -346,15 +398,22 @@ function renderFilters() {
   }
 }
 
+/** Built-in catalog filter ids (Materials > Studio samples types): all, shingle, metal, tile, supplier (imports and photos). */
+function inCatalogFilter(p, f) {
+  const imported = p.supplier !== 'Built-in';
+  if (f === 'supplier') return imported;
+  if (f === 'all') return true;
+  if (imported) return false;
+  if (f === 'tile') return ['tile', 'slate', 'shake'].includes(p.category);
+  return p.category === f;
+}
+
 function renderCatalog() {
   const q = $('search').value.trim().toLowerCase();
   const el = $('catalog');
   el.innerHTML = '';
   for (const p of S.catalog) {
-    const imported = p.supplier !== 'Built-in';
-    if (filter === 'supplier' && !imported) continue;
-    if (filter === 'tile' && !['tile', 'slate', 'shake'].includes(p.category)) continue;
-    if (['shingle', 'metal'].includes(filter) && p.category !== filter) continue;
+    if (!inCatalogFilter(p, filter)) continue;
     if (q && !`${p.name} ${p.supplier}`.toLowerCase().includes(q)) continue;
     const b = document.createElement('button');
     b.className = 'card'; b.type = 'button';
@@ -462,7 +521,9 @@ function renderStack() {
       const sel = document.createElement('select');
       sel.setAttribute('aria-label', `${rec.info.label} product`);
       for (const o of LAYER_OPTIONS[optKey]) sel.add(new Option(o.label, o.id, false, layers.options[optKey] === o.id));
-      sel.onchange = () => setLayerOption(optKey, sel.value);
+      const storeOpt = typeof layers.options[optKey] === 'object' ? layers.options[optKey] : null; // a store product (drip edge)
+      if (storeOpt) sel.add(new Option(`Store: ${storeOpt.label}`, '__store', false, true));
+      sel.onchange = () => setLayerOption(optKey, sel.value === '__store' ? storeOpt : sel.value);
       row.append(sel);
     }
     if (rec.id === 'iceWater') {
@@ -520,7 +581,10 @@ let wasteTouched = false;
 function renderTakeoff() {
   if (!wasteTouched) $('waste').value = Math.round(layers.suggestedWaste() * 100);
   const rows = layers.takeoff({ waste: (Number($('waste').value) || 0) / 100 });
-  $('takeoff').innerHTML = rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('');
+  $('takeoff').innerHTML = rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('')
+    + '<tr class="sf-link-row"><td colspan="2"><button type="button" class="sf-linkbtn">Order quantities and prices: List tab</button></td></tr>';
+  $('takeoff').querySelector('.sf-linkbtn').onclick = () => selectTab('list');
+  stores.refresh();
 }
 
 // ---------------------------------------------------------------------------
@@ -679,6 +743,7 @@ async function addImported() {
   thumbCache.delete(product.id);
   $('dlgImport').close();
   filter = 'supplier'; renderFilters();
+  stores.showStudio('supplier');
   await applyProduct(product);
   toast(S.server ? 'Added to the catalog and applied to the roof.' : 'Applied for this session. Run the local server to keep it in the catalog.');
 }
@@ -689,6 +754,7 @@ async function useFile(file) {
   const product = { id: `upload-${slugify(file.name)}-${Date.now()}`, name: file.name.replace(/\.[^.]+$/, ''), supplier: 'Uploaded photo', category: 'shingle', widthIn: 36, image: url, sessionOnly: true };
   S.catalog.push(product);
   filter = 'supplier'; renderFilters();
+  stores.showStudio('supplier');
   await applyProduct(product);
   toast(S.server ? 'Photo applied for this session. To keep it, use Add supplier product and confirm your rights to the image.' : 'Photo applied. Set "Photo width" so its scale matches the real shingles.');
 }
@@ -740,6 +806,7 @@ async function takeSnapshot(w, h) {
     console.error(e);
   } finally {
     busy = false;
+    applyMobileOffset(); // snapshot() clears the view offset when it restores the camera
     if (pendingResize) { pendingResize = false; resize(); }
     invalidate();
   }
@@ -772,7 +839,114 @@ function exportGlb() {
 // ---------------------------------------------------------------------------
 // GLB house import
 
-async function loadHouseModel(fileOrUrl) {
+/**
+ * Measured houses: the roof planes come from the GLB like any model, but the edge lengths the
+ * takeoff and the materials list use (eaves, rakes, ridges, hips, valleys) are replaced with the
+ * verified values from the measurement report, because automatic edge classification can
+ * double-count where one roof runs under another's overhang. Area is kept from the planes and
+ * checked against the report.
+ */
+function applyVerifiedMeasure() {
+  const v = S.glb?.verified;
+  if (!v || !layers) return;
+  const m = layers.measure;
+  m.autoArea = m.areaM2;
+  for (const k of ['eaveM', 'rakeM', 'ridgeM', 'hipM', 'valleyM']) if (Number.isFinite(v[k])) m[k] = v[k];
+  if (Number.isFinite(v.areaM2) && Math.abs(m.areaM2 - v.areaM2) / v.areaM2 > 0.01) {
+    toast(`Model area ${m.areaM2.toFixed(1)} m² differs from the report (${v.areaM2.toFixed(1)} m²) by more than 1 %.`);
+  }
+}
+
+async function loadMeasuredIndex() {
+  try {
+    const idx = await (await fetch('houses/index.json', { cache: 'no-store' })).json();
+    S.measuredHouses = idx.houses || [];
+  } catch (_) { S.measuredHouses = []; }
+  if (!S.measuredHouses.length) { $('measuredSec').hidden = true; return; }
+  const sel = $('pHouse');
+  const grp = document.createElement('optgroup');
+  grp.label = 'Measured jobs';
+  for (const h of S.measuredHouses) grp.append(new Option(h.label, `m:${h.id}`));
+  sel.append(grp);
+  const list = $('measuredList');
+  list.innerHTML = '';
+  for (const h of S.measuredHouses) {
+    const card = document.createElement('div');
+    card.className = 'measured-card';
+    card.dataset.id = h.id;
+    const k = h.summary || {};
+    card.innerHTML = `<button class="mc-thumb" type="button" hidden><img alt="" loading="lazy" decoding="async"></button>
+      <div class="mc-head"><b></b><span class="hint"></span></div>
+      <table class="takeoff mc-table"></table>
+      <div class="row"><button class="btn primary" type="button">Open project</button><a class="btn" target="_blank" rel="noopener">Report</a></div>`;
+    card.querySelector('b').textContent = h.label;
+    card.querySelector('.hint').textContent = h.subtitle || '';
+    card.querySelector('.mc-table').innerHTML = (k.rows || []).map(([a, b]) => `<tr><td>${esc(a)}</td><td>${esc(b)}</td></tr>`).join('');
+    card.querySelector('.row button').onclick = () => openMeasuredHouse(h.id);
+    if (h.thumb) {
+      const tb = card.querySelector('.mc-thumb'), img = tb.querySelector('img');
+      img.src = h.thumb; img.alt = `3D view of ${h.label}`;
+      tb.hidden = false; tb.setAttribute('aria-label', `Open ${h.label}`);
+      tb.onclick = () => openMeasuredHouse(h.id);
+      img.onerror = () => { tb.hidden = true; };
+    }
+    const a = card.querySelector('a');
+    if (h.report) a.href = h.report; else a.remove();
+    list.append(card);
+  }
+}
+const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+async function openMeasuredHouse(id, { instant = false } = {}) {
+  const h = S.measuredHouses.find((x) => x.id === id);
+  if (!h) return;
+  let detail = {};
+  try { if (h.detail) detail = await (await fetch(h.detail, { cache: 'no-store' })).json(); } catch (_) { /* summary only */ }
+  $('pUnits').value = '1';
+  if (Number.isFinite(h.lat)) {
+    S.sun.lat = h.lat; $('pLat').value = h.lat;
+    $('pLoc').value = [...$('pLoc').options].some((o) => Math.abs(Number(o.value) - h.lat) < 0.05) ? $('pLoc').options[0].value : 'custom';
+  }
+  if (h.facing != null) { S.sun.facing = Number(h.facing); $('pFacing').value = String(S.sun.facing); }
+  $('pHouse').value = `m:${h.id}`;
+  document.querySelectorAll('.measured-card').forEach((c) => c.classList.toggle('active', c.dataset.id === h.id));
+  await loadHouseModel(h.glb, { verified: detail.verified || h.verified || null, label: h.label });
+  if (h.view && Number.isFinite(h.view.bearing)) { S.houseView = h.view; frameHouseView(h.view, instant); } else S.houseView = null;
+  const nameBox = document.getElementById('sfJobName');
+  // a new measured job takes its own name, unless the user typed a different one
+  const knownNames = new Set(S.measuredHouses.flatMap((x) => [x.jobName, x.label]));
+  if (nameBox && (!nameBox.value || nameBox.value === 'Untitled roof' || knownNames.has(nameBox.value))) { nameBox.value = h.jobName || h.label; nameBox.dispatchEvent(new Event('input')); }
+  if (h.waste != null) { wasteTouched = true; $('waste').value = Math.round(h.waste); } // the report's reviewed waste, not the generic rule
+  updateSun(); renderTakeoff(); updateChips();
+}
+
+/** Fetch an embedded .gltf JSON (base64 data: buffer) and repack it as a binary GLB ArrayBuffer. */
+async function embeddedGltfToGlb(url) {
+  const r = await fetch(url, { cache: 'no-store' });
+  if (!r.ok) throw new Error(`House model not found (${r.status}).`);
+  const json = await r.json();
+  const bufs = json.buffers || [];
+  if (bufs.length !== 1) throw new Error('Embedded model must have exactly one buffer.');
+  const m = /^data:[^,]*;base64,(.*)$/s.exec(bufs[0].uri || '');
+  if (!m) throw new Error('Embedded model buffer is not a base64 data URL.');
+  const bin = Uint8Array.from(atob(m[1]), (c) => c.charCodeAt(0));
+  delete bufs[0].uri;
+  bufs[0].byteLength = bin.length;
+  const enc = new TextEncoder().encode(JSON.stringify(json));
+  const pad4 = (n) => (n + 3) & ~3;
+  const jl = pad4(enc.length), bl = pad4(bin.length);
+  const out = new ArrayBuffer(12 + 8 + jl + 8 + bl);
+  const dv = new DataView(out), u8 = new Uint8Array(out);
+  dv.setUint32(0, 0x46546c67, true); dv.setUint32(4, 2, true); dv.setUint32(8, out.byteLength, true);
+  dv.setUint32(12, jl, true); dv.setUint32(16, 0x4e4f534a, true);
+  u8.fill(0x20, 20, 20 + jl); u8.set(enc, 20);
+  const o = 20 + jl;
+  dv.setUint32(o, bl, true); dv.setUint32(o + 4, 0x004e4942, true);
+  u8.set(bin, o + 8);
+  return out;
+}
+
+async function loadHouseModel(fileOrUrl, opts = {}) {
   const loader = new GLTFLoader();
   loader.setMeshoptDecoder(MeshoptDecoder);
   // compressed models (Draco geometry, KTX2 textures); decoders load from the CDN on first use
@@ -781,8 +955,15 @@ async function loadHouseModel(fileOrUrl) {
   loader.setKTX2Loader(new KTX2Loader().setTranscoderPath(`${cdn}basis/`).detectSupport(renderer));
   showProgress(0.2);
   try {
-    const url = typeof fileOrUrl === 'string' ? fileOrUrl : URL.createObjectURL(fileOrUrl);
-    const gltf = await loader.loadAsync(url);
+    let gltf;
+    if (typeof fileOrUrl === 'string' && /\.gltf\.json$/i.test(fileOrUrl)) {
+      // Embedded glTF (hosts that cannot serve .glb). Decode its data: buffers here and parse a
+      // GLB in memory: page security policies often block fetch() of data: URLs.
+      gltf = await loader.parseAsync(await embeddedGltfToGlb(fileOrUrl), '');
+    } else {
+      const url = typeof fileOrUrl === 'string' ? fileOrUrl : URL.createObjectURL(fileOrUrl);
+      gltf = await loader.loadAsync(url);
+    }
     const root = gltf.scene;
     const unit = Number($('pUnits').value) || 1;
     root.scale.setScalar(unit);
@@ -811,7 +992,7 @@ async function loadHouseModel(fileOrUrl) {
       mesh.geometry = stripped;
       swaps.push({ mesh, original, stripped });
     }
-    S.glb = { swaps };
+    S.glb = { swaps, fileName: typeof fileOrUrl === 'string' ? fileOrUrl.split('/').pop() : fileOrUrl.name, verified: opts.verified || null };
     $('origRow').hidden = false; $('pOrig').checked = false;
     if (layers) { scene.remove(layers.root); disposeTree(layers.root); }
     makeLayers(planes, house.segs);
@@ -928,7 +1109,10 @@ function bindUI() {
   if (inArtifact) { $('btnGlb').disabled = true; $('btnGlb').title = 'Run the viewer locally (npm start) to export GLB'; $('glbHint').textContent = 'GLB export works in the local viewer (npm start in roof-visualizer). Layer meshes named RT_layer_* open in Blender for Cycles renders.'; }
   // project
   for (const [id, p] of Object.entries(HOUSE_PRESETS)) $('pHouse').add(new Option(p.label, id, false, id === S.presetId));
-  $('pHouse').onchange = (e) => { S.presetId = e.target.value; S.glb = null; buildHouse(); frameView(false); };
+  $('pHouse').onchange = (e) => {
+    if (e.target.value.startsWith('m:')) { openMeasuredHouse(e.target.value.slice(2)); return; }
+    S.presetId = e.target.value; S.glb = null; buildHouse(); frameView(false);
+  };
   let pitchTimer = null;
   $('pPitch').value = S.pitch; $('pPitchV').textContent = pitchLabel(S.pitch);
   $('pPitch').oninput = (e) => {
@@ -942,7 +1126,18 @@ function bindUI() {
     ptDirty = true;
   };
   $('pDate').valueAsDate = S.sun.date;
-  $('pLat').onchange = (e) => { S.sun.lat = Number(e.target.value); updateSun(); };
+  $('pLat').onchange = (e) => {
+    S.sun.lat = Number(e.target.value);
+    $('pLoc').value = [...$('pLoc').options].some((o) => Number(o.value) === S.sun.lat) ? String(S.sun.lat) : 'custom';
+    updateSun();
+  };
+  $('pLoc').onchange = (e) => { if (e.target.value !== 'custom') { $('pLat').value = e.target.value; S.sun.lat = Number(e.target.value); updateSun(); } };
+  supplierCatalog().then((c) => {
+    if (!c) { $('pPrices').textContent = 'Store prices: the supplier catalog did not load.'; return; }
+    const priced = c.products.filter((p) => p.price?.shelf).length;
+    const stores = Object.values(c.stores).map((s) => `${s.name} (${s.captured})`).join(' and ');
+    $('pPrices').textContent = `Store prices: ${c.products.length} roof products, ${priced} with a price, from ${stores}. These are snapshots: check them before quoting.`;
+  });
   $('pDate').onchange = (e) => { if (e.target.valueAsDate) { S.sun.date = e.target.valueAsDate; updateSun(); } };
   $('pHour').oninput = (e) => { S.sun.hour = Number(e.target.value); const h = Math.floor(S.sun.hour), m = Math.round((S.sun.hour - h) * 60); $('pHourV').textContent = `${h}:${String(m).padStart(2, '0')}`; updateSun(); };
   $('pFacing').onchange = (e) => { S.sun.facing = Number(e.target.value); updateSun(); };
@@ -1019,9 +1214,10 @@ function frame(now) {
   if (busy) return; // a snapshot owns the renderer
   timer.update(now);
   const dt = Math.min(0.05, timer.getDelta());
-  const animating = !!camTween || player.playing || (layers && (Math.abs(layers.explodeTarget - layers.explode) > 1e-4 || Math.abs(layers.cutTarget - layers.cut) > 1e-4));
+  const animating = !!camTween || player.playing || solar.animating || (layers && (Math.abs(layers.explodeTarget - layers.explode) > 1e-4 || Math.abs(layers.cutTarget - layers.cut) > 1e-4));
   if (!animating && !ptMode.enabled && performance.now() > renderUntil) return; // idle: nothing to draw
   const moving = layers ? layers.update(dt) : false;
+  solar.update(dt);
   player.update(dt);
   if (camTween) {
     camTween.t += dt / camTween.dur;
@@ -1073,19 +1269,27 @@ async function boot() {
   }
   $('aiBox').hidden = !S.server?.ai;
   await loadCatalog();
-  const first = S.catalog.find((p) => p.id === params.get('product')) || S.catalog[0];
+  await stores.init(); // store catalog: picker, list, project buttons
+  const first = S.catalog.find((p) => p.id === params.get('product')) || (!params.get('product') && stores.firstProduct()) || S.catalog[0];
   S.product = first;
   await prepareProduct(first);
   buildHouse();
+  await stores.afterBuild();
   renderCatalog(); updateChips(); syncTune();
   frameView(false, true);
   await loadPlanIndex();
+  await loadMeasuredIndex();
+  // open on the projects: the newest measured project in the view, not the sample house,
+  // unless the link asks for a specific house, model or plan
+  const askedHouse = params.get('house') || params.get('glb') || params.get('plan');
+  const openId = params.get('measured') || (!askedHouse && S.measuredHouses[0]?.id);
+  if (openId) await openMeasuredHouse(openId, { instant: true });
   if (params.get('plan')) await usePlan(params.get('plan'));
   if (params.get('glb')) await loadHouseModel(params.get('glb'));
   if (params.has('t')) player.seek(Number(params.get('t')) * player.duration);
   if (params.get('explode') === '1') { setExplode(true); layers.explode = 1; frameView(true, true); }
   if (params.get('cut') === '1') { setCutaway(true); layers.cut = 0; }
-  if (params.get('tab')) selectTab(params.get('tab'));
+  selectTab(params.get('tab') || 'materials');
   $('loading').hidden = true;
   requestAnimationFrame(frame);
   readyResolve();
@@ -1093,6 +1297,74 @@ async function boot() {
 
 let readyResolve;
 const ready = new Promise((r) => { readyResolve = r; });
+
+// Store products, priced list and project files (supplier-ui.js owns S.job).
+const stores = createStoreUI({
+  S, params, catalog: supplierCatalog, layers: () => layers, toast, saveFile, selectTab, renderStack: () => renderStack(),
+  applyProduct: (p, o) => applyProduct(p, o),
+  setLayerOptions: (opts) => {
+    Object.assign(layers.options, opts);
+    for (const k of new Set(Object.keys(opts).map((k) => (k === 'capColor' ? 'capPalette' : k)))) layers.setOption(k, layers.options[k]);
+    if (S.product) layers.updateProductTransform(S.product.view || {});
+    afterLayerChange();
+  },
+  waste: () => ({ pct: Number($('waste').value) || 0, source: wasteTouched ? 'typed' : 'suggested' }),
+  setWaste: (pct) => { wasteTouched = pct != null; if (pct != null) $('waste').value = pct; renderTakeoff(); },
+  builtinProduct: (id) => S.catalog.find((p) => p.id === id) || S.catalog[0],
+  setCatalogFilter: (id) => { filter = id || 'all'; renderFilters(); renderCatalog(); },
+  builtinCount: (id) => S.catalog.filter((p) => inCatalogFilter(p, id)).length,
+  builtinThumbs: (id) => S.catalog.filter((p) => inCatalogFilter(p, id)).slice(0, 4).map(thumbFor),
+  glbName: () => S.glb?.fileName ?? null,
+  solar: () => solar,
+  solarData: () => solarData,
+  projectState: () => ({
+    site: { location: $('pLoc').value === 'custom' ? null : $('pLoc').selectedOptions[0]?.textContent ?? null, lat: S.sun.lat },
+    house: S.glb ? { source: 'glb', fileName: S.glb.fileName ?? null, units: Number($('pUnits').value) || 1 } : { source: 'preset', presetId: S.presetId, pitch: S.pitch },
+    sun: { date: $('pDate').value || null, hour: S.sun.hour, facing: S.sun.facing },
+    layers: { options: { ...layers.options }, custom: layers.custom.map(({ texSet, ...c }) => c), hidden: [...layers.layers.values()].filter((r) => !r.userVisible).map((r) => r.id) },
+  }),
+  applyProjectState: (p, o) => applyProjectState(p, o),
+});
+
+// Rooftop solar designer (Materials > Solar): panels on the roof planes, dragged and grown in 3D.
+let solarData = null;
+const solar = createSolar({
+  scene, camera, dom: renderer.domElement, stage, controls, layers: () => layers, facing: () => S.sun.facing,
+  invalidate, onChange: () => stores.onSolar?.(),
+  focus: (center, radius) => {
+    const dir = camera.position.clone().sub(controls.target).normalize();
+    const dist = Math.max(8, radius / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * 1.25);
+    tweenCamera(center, center.clone().addScaledVector(dir, dist), 0.9);
+  },
+});
+fetch('catalog/solar.json', { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).then((d) => { solarData = d; if (d) solar.setData(d); }).catch(() => {});
+
+// Tap a roof plane: its area, pitch, facing and covering (read-only).
+const tapper = createTap({ dom: renderer.domElement, stage, camera, scene, layers: () => layers, facing: () => S.sun.facing, invalidate, ignore: () => solar.dragging,
+  covering: () => (S.product ? `${S.product.name} (${S.product.supplier || 'Built-in'})` : 'default shingles'), onChange: () => stores.openPicker('covering') });
+
+/** Open a project (or start a new one): site, sun, house and layer options here, then the store job in supplier-ui.js. */
+async function applyProjectState(p, { fresh = false } = {}) {
+  player.pause();
+  const lat = Number(p.job?.lat);
+  if (Number.isFinite(lat)) { S.sun.lat = lat; $('pLat').value = lat; $('pLoc').value = [...$('pLoc').options].some((o) => Number(o.value) === lat) ? String(lat) : 'custom'; }
+  if (p.sun?.date) { $('pDate').value = p.sun.date; S.sun.date = $('pDate').valueAsDate || S.sun.date; }
+  if (p.sun?.hour != null) { $('pHour').value = p.sun.hour; $('pHour').dispatchEvent(new Event('input')); }
+  if (p.sun?.facing != null) { S.sun.facing = Number(p.sun.facing); $('pFacing').value = String(S.sun.facing); }
+  // makeLayers copies these onto the new stack; keys not in the file keep their defaults
+  layers.options = { ...(p.layers?.options || {}) };
+  layers.custom = (p.layers?.custom || []).map((c) => ({ ...c }));
+  if (p.house?.source !== 'glb') {
+    S.presetId = HOUSE_PRESETS[p.house?.presetId] ? p.house.presetId : 'ranch-hip'; S.pitch = Number(p.house?.pitch) || 6; S.glb = null;
+    $('pHouse').value = S.presetId; $('pPitch').value = S.pitch; $('pPitchV').textContent = pitchLabel(S.pitch);
+    buildHouse();
+  } else { scene.remove(layers.root); disposeTree(layers.root); makeLayers(house.planes, house.segs); } // keeps the current house
+  layers._customSeq = layers.custom.reduce((n, c) => Math.max(n, Number(String(c.id).replace(/\D/g, '')) || 0), 0);
+  await stores.applyJob(p, { fresh });
+  for (const id of p.layers?.hidden || []) layers.setVisible(id, false);
+  renderStack(); updateSun();
+  if (p.house?.source !== 'glb') frameView(false);
+}
 
 // Automation API for Claude skills, tests and demos.
 window.roofStudio = {
@@ -1112,6 +1384,11 @@ window.roofStudio = {
     if (layers) { layers.explode = layers.explodeTarget; layers.cut = layers.cutTarget; for (let i = 0; i < 60; i++) layers.update(0.2); }
     if (camTween) { controls.target.copy(camTween.t1); camera.position.copy(camTween.p1); camTween = null; }
   },
+  suppliers: () => supplierCatalog(),
+  ...stores.api,
+  openPicker: (slot) => stores.openPicker(slot),
+  tapRoof: (x, y) => tapper.tapAt(x, y),
+  solar,
   three: { THREE, scene, camera, renderer, controls },
 };
 

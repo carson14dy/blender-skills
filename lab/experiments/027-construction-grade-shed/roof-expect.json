@@ -1,0 +1,11 @@
+{
+ "source": "hand values (accuracy plan 2, D1): two 13 ft eaves, four 73.79 in. rakes, one 13 ft ridge",
+ "tol_pct": 2,
+ "planes": 2,
+ "squares": 1.599,
+ "lengths_ft": {
+  "eave": 26,
+  "rake": 24.597,
+  "ridge": 13
+ }
+}

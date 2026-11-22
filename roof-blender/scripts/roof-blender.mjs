@@ -38,6 +38,9 @@ const HELP = `roof-blender <command> [options]
 Commands
   demo            build a demo house (roof object "Roof")              --pitch 6 --preset ranch-hip|two-story|cottage
   layers          rebuild all roofing layers on the roof               --roof <object> --ice-rows 2 --nails 4|6 --category shingle|metal --no-vent --no-old-roof
+                                                                       --panel proRib|proSnap|corrugated|flat   metal panel ribs (default flat)
+                                                                       --cap-width-in 11.5   metal hip/ridge cap product width (default 12)
+                                                                       --edge "flange,face,kickOut,kickDown,hem"   drip-edge profile, inches
   material        supplier photo (or palette) on the shingles          --image <file> --width-in 36 [--height-in] [--rotation 0] [--relief 0.4] [--category metal]
                                                                        or --palette "#3a3d42,#2b2d30,#4d5157"
   scene           Cycles, physical sky, sun, camera                    --samples 256 --resolution 3840x2160 --sun-elevation 38 --sun-azimuth 215
@@ -65,10 +68,20 @@ const sceneCfg = {
   view_azimuth: num('view-azimuth', -35), view_elevation: num('view-elevation', 24), distance: num('distance', 0.85), lens: num('lens', 35),
   percentage: num('percentage', 100),
 };
+const PANELS = ['proRib', 'proSnap', 'corrugated', 'flat'];
+if (flags.panel !== undefined && !PANELS.includes(String(flags.panel))) { console.error(`--panel must be one of ${PANELS.join(', ')}`); process.exit(1); }
+// --edge "flange,face,kickOut,kickDown,hem" in inches (lab experiment 020); values left out keep today's drip edge
+const EDGE_KEYS = ['flange_in', 'face_in', 'kick_out_in', 'kick_down_in', 'hem_in'];
+const edgeVals = flags.edge === undefined ? null : String(flags.edge).split(',').map((v) => v.trim()).filter((v) => v !== '').map(Number);
+if (edgeVals && (!edgeVals.length || edgeVals.length > 5 || edgeVals.some((v) => !Number.isFinite(v) || v < 0))) {
+  console.error('--edge takes up to five inch values: "flange,face,kickOut,kickDown,hem", e.g. "2.375,1.6875,0.5,0.25,0"'); process.exit(1);
+}
 const layersCfg = {
   cmd: 'layers', roof: flags.roof || null, ice_rows: num('ice-rows', 2), nails_per_shingle: num('nails', 4), category: flags.category || 'shingle',
   ridge_vent: !flags['no-vent'], old_roof: !flags['no-old-roof'], valleys: !flags['no-valleys'],
   exposure_in: num('exposure-in', 5.625), palette: flags.palette ? String(flags.palette).split(',') : null,
+  panel: flags.panel ? String(flags.panel) : 'flat', cap_width_in: flags['cap-width-in'] !== undefined ? num('cap-width-in') : null,
+  edge_profile: edgeVals ? Object.fromEntries(edgeVals.map((v, i) => [EDGE_KEYS[i], v])) : null,
 };
 const materialCfg = flags.image || flags.palette ? {
   cmd: 'material', image: flags.image ? path.resolve(String(flags.image).replace(/^~/, os.homedir())) : null, width_in: num('width-in', 36),

@@ -62,6 +62,15 @@ CAP_OVER_VENT = [(0.0, _VC + _VH + 0.009), (0.142, _VC + _VH - 0.0015), (0.17, _
 STACK = ["oldFelt", "oldShingles", "deck", "deckRepair", "dripEdge", "iceWater", "underlayment", "starter",
          "nails", "covering", "ridgeVent", "ridgeCap"]
 
+# metal panel profiles (lab experiment 019): [u, h] in inches within one period, u across the slope from the plane's
+# u-origin, h above the pan. Same JSON text as roof-visualizer/viewer/js/profiles.js (tests/profiles.test.mjs compares them).
+PANEL_PROFILES = json.loads(r"""{
+ "proRib":     {"periodIn": 9,    "points": [[0,0.75],[0.375,0.75],[0.875,0],[2.7,0],[3.0,0.09],[3.3,0],[5.7,0],[6.0,0.09],[6.3,0],[8.125,0],[8.625,0.75],[9,0.75]], "note": "Menards Pro-Rib: 36 in. cover, major ribs 9 in. o.c., 3/4 in. high (Menards spec); rib top 3/4 in., base 1-3/4 in. and two minor ribs are assumed"},
+ "proSnap":    {"periodIn": 16,   "points": [[0,0.75],[0.1875,0.75],[0.25,0],[15.75,0],[15.8125,0.75],[16,0.75]], "note": "Menards Pro-Snap: 16 in. coverage, 3/4 in. seam (Menards spec); seam top 3/8 in. assumed"},
+ "corrugated": {"periodIn": 2.67, "points": [[0,0],[0.33375,0.0732],[0.6675,0.25],[1.00125,0.4268],[1.335,0.5],[1.66875,0.4268],[2.0025,0.25],[2.33625,0.0732],[2.67,0]], "note": "common 2.67 in. pitch, 1/2 in. depth: not store data"},
+ "flat":       {"periodIn": 0,    "points": [], "note": "no profile"}
+}""")
+
 
 def log(*a):
     print("[roof]", *a)
@@ -95,9 +104,19 @@ def clip_half(poly, hp):
         if (fp >= 0) != (fq >= 0):
             t = fp / (fp - fq)
             out.append((p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t))
+    # a corner on the clip line comes out twice, under a micrometre apart (kept, then as the crossing): keep it once
+    # (10 micrometres; no roof edge is that short), or it leaves a zero-area sliver that qa_check reads as z-fighting
+    out = [p for i, p in enumerate(out) if abs(p[0] - out[i - 1][0]) + abs(p[1] - out[i - 1][1]) > 1e-5] if len(out) > 1 else out
     if len(out) >= 3 and poly_area2(out) < 0:
         out.reverse()
     return out
+
+
+def seg_dist2(u, v, a, b):
+    """Distance from (u, v) to the segment a-b."""
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    t = max(0.0, min(1.0, ((u - a[0]) * dx + (v - a[1]) * dy) / (dx * dx + dy * dy or 1e-12)))
+    return math.hypot(u - (a[0] + dx * t), v - (a[1] + dy * t))
 
 
 def point_in_tri(u, v, t, margin=0.0):
@@ -162,7 +181,12 @@ class Plane:
         return (p - self.origin).dot(self.n)
 
     def contains2(self, u, v, margin=0.0):
-        return any(point_in_tri(u, v, t, margin) for t in self.tris)
+        """Is (u, v) on the plane? A positive margin keeps the point that far inside the plane's OUTER boundary;
+        the diagonals between its triangles are ignored (as the web studio's contains2). A negative margin is a
+        tolerance."""
+        if margin <= 0 or not getattr(self, "edges", None):
+            return any(point_in_tri(u, v, t, min(0.0, margin)) for t in self.tris)
+        return self.contains2(u, v) and all(seg_dist2(u, v, e["a"], e["b"]) >= margin for e in self.edges)
 
     def region(self, half_planes=()):
         out = []
@@ -395,7 +419,13 @@ def build_surface(parts, offset, course_h=None, step_h=0.005, thickness=None):
     return buf
 
 
-def drip_edge_buf(segs, flange=0.05, drop=0.045):
+def drip_edge_buf(segs, flange=0.05, drop=0.045, profile=None):
+    """`profile` (lab experiment 020): the drip-edge product's {"flange_in", "face_in", "kick_out_in", "kick_down_in",
+    "hem_in"}; a missing key keeps today's value. None draws today's shape."""
+    kick_out, kick_down, hem = drip_kick(profile)
+    if profile:
+        flange = float(profile["flange_in"]) * IN if "flange_in" in profile else flange
+        drop = float(profile["face_in"]) * IN if "face_in" in profile else drop
     buf = Buf()
     for kind, off, kup in (("eave", H["dripEave"], 0.0), ("rake", H["dripRake"], 1.0)):
         lst = segs[kind]
@@ -419,9 +449,14 @@ def drip_edge_buf(segs, flange=0.05, drop=0.045):
             B1 = P.to3(b2[0] + inn[0] * flange, b2[1] + inn[1] * flange, off)
             dz = Vector((0, 0, -drop))
             A2, B2 = A + dz, B + dz
-            kick = outw * 0.012 + Vector((0, 0, -0.006))
-            # one folded sheet, front side out: flange faces up the roof, the drop faces out, the kick out and up
-            for q, face in (((A1, B1, B, A), P.n), ((A, B, B2, A2), outw), ((A2, B2, B2 + kick, A2 + kick), outw * 0.006 + Vector((0, 0, 0.012)))):
+            kick = outw * kick_out + Vector((0, 0, -kick_down))
+            A3, B3, back = A2 + kick, B2 + kick, outw * -hem
+            # one folded sheet, front side out: flange faces up the roof, the drop faces out, the kick out and up,
+            # the hem (folded back toward the house) down
+            for q, face in (((A1, B1, B, A), P.n), ((A, B, B2, A2), outw), ((A2, B2, B3, A3), outw * kick_down + Vector((0, 0, kick_out))),
+                            ((A3, B3, B3 + back, A3 + back), -UP)):
+                if (q[0] - q[3]).length < 1e-6:
+                    continue  # zero-length part of the profile (no kick, no hem)
                 buf.tri(list(q), [(0, 0), (ln, 0), (ln, 0.05), (0, 0.05)], [kup] * 4, [k0, k1, k1, k0], face)
     return buf
 
@@ -532,6 +567,111 @@ def mesh_object(name, buf, material=None, coll=None):
     if material:
         me.materials.append(material)
     return ob
+
+
+# ---------------------------------------------------------------------------
+# metal panels with real ribs, the metal caps and rake trim on them (lab experiment 019), drip-edge profiles (020)
+
+def panel_points(profile):
+    """(period, [(u, h), ...]) in metres for a PANEL_PROFILES name or entry; a period of 0 means flat."""
+    prof = PANEL_PROFILES[profile] if isinstance(profile, str) else (profile or PANEL_PROFILES["flat"])
+    return prof["periodIn"] * IN, [(u * IN, h * IN) for u, h in prof["points"]]
+
+
+def panel_max_h(profile):
+    """Rib height above the pan (metres): 0.75 in. for proRib and proSnap, 0.5 in. corrugated, 0 flat."""
+    period, pts = panel_points(profile)
+    return max(h for _, h in pts) if period and pts else 0.0
+
+
+def ribbed_surface(parts, offset, profile):
+    """Panel surface with real ribs. Each plane polygon is sliced into strips between the profile's breakpoints,
+    repeated across the plane from u = 0 (ribs run up the slope). Inside a strip the height is linear in u, so the
+    strip stays planar; its normal is n - slope * h. UVs and build attributes as in build_surface."""
+    period, pts = panel_points(profile)
+    if not period or len(pts) < 2:
+        return build_surface(parts, offset)
+    buf = Buf()
+    for P, polys in parts:
+        al = lambda u: min(0.9999, u / max(P.umax, 1e-6))
+        for poly in polys:
+            lo, hi = min(p[0] for p in poly), max(p[0] for p in poly)
+            for k in range(int(math.floor(lo / period)), int(math.floor(hi / period)) + 1):
+                for (ua, ha), (ub, hb) in zip(pts, pts[1:]):
+                    u0, u1 = k * period + ua, k * period + ub
+                    if u1 - u0 < 1e-6 or u1 <= lo or u0 >= hi:
+                        continue
+                    strip = clip_half(clip_half(poly, (1.0, 0.0, -u0)), (-1.0, 0.0, u1))
+                    # a polygon corner on a cut line gives a repeated point: drop it (no zero-length edges)
+                    strip = [p for i, p in enumerate(strip) if (p[0] - strip[i - 1][0]) ** 2 + (p[1] - strip[i - 1][1]) ** 2 > 1e-14]
+                    if len(strip) < 3 or max(p[0] for p in strip) - min(p[0] for p in strip) < 1e-6 or abs(poly_area2(strip)) < 1e-10:
+                        continue
+                    slope = (hb - ha) / (ub - ua)
+                    buf.tri([P.to3(u, v, offset + ha + slope * (u - u0)) for u, v in strip], [(u, v) for u, v in strip],
+                            [v for _, v in strip], [al(u) for u, _ in strip], (P.n - P.h * slope).normalized())
+    return buf
+
+
+def lift(profile, dh):
+    """A cap or vent profile raised by `dh` (the rib height, so it stands on the rib tops)."""
+    return [(w, h + dh) for w, h in profile]
+
+
+def metal_cap_profile(top, cap_width_in=None):
+    """Metal hip and ridge cap from the line outward: [(distance, height above the rafters), ...]. `top` is 3 mm over
+    the rib tops; each side is half the cap product's width (Menards Residential Ridge Cap 11.5 in.), 6 in. without one."""
+    w = (float(cap_width_in) / 2 if cap_width_in else 6.0) * IN
+    return [(0.0, top + 0.010), (w - 0.0127, top + 0.002), (w, top - 0.006)]
+
+
+def drip_kick(profile=None):
+    """(kick out, kick down, hem) of the drip edge in metres; today's 12 mm out, 6 mm down and no hem by default."""
+    p = profile or {}
+    return (float(p["kick_out_in"]) * IN if "kick_out_in" in p else 0.012,
+            float(p["kick_down_in"]) * IN if "kick_down_in" in p else 0.006,
+            float(p.get("hem_in", 0.0)) * IN)
+
+
+def rake_trim_buf(segs, top, clear=0.0, leg=1.5 * IN, out=0.25 * IN, face=3.5 * IN, hem=0.5 * IN):
+    """Metal rake trim over the panel edge, part of the covering. Cross-section from inside to outside: a top leg
+    at `top` in the roof plane (its inner end `leg - out` inside the panel edge), the bend `out` past the edge, a
+    face straight down and a hem back toward the house. `clear`: how far the drip edge under it reaches past the
+    edge; the bend moves out to clear it by 1/8 in., so the drip edge's kick stays inside the trim. Where two rakes
+    meet (a gable peak) both trims are mitered, so no notch opens at the apex."""
+    out_ = max(out, clear + 0.125 * IN)
+
+    def miter(X, d):
+        """Slide the trim's end at X along its rake (d points to X) onto the plane bisecting it and the other rake."""
+        for t in segs:
+            for E, F in ((t["A"], t["B"]), (t["B"], t["A"])):
+                e = (E - F).normalized()
+                if (E - X).length < 0.03 and abs(e.dot(d)) < 0.999:
+                    m = (d - e).normalized()
+                    return lambda p: p + d * ((X - p).dot(m) / d.dot(m))
+        return lambda p: p
+    buf = Buf()
+    for s in segs:
+        P = s["planes"][0]
+        ln = (s["A"] - s["B"]).length
+        a2, b2 = P.from3(s["A"]), P.from3(s["B"])
+        inn = inward2(P, a2, b2)
+        outw = -(P.h * inn[0] + P.b * inn[1])
+        outw.z = 0
+        outw.normalize()
+        at = lambda q, d: P.to3(q[0] - inn[0] * d, q[1] - inn[1] * d, top)  # d: distance out past the edge
+        A, B = at(a2, out_), at(b2, out_)
+        A1, B1 = at(a2, out - leg), at(b2, out - leg)
+        dz = Vector((0, 0, -face))
+        A2, B2 = A + dz, B + dz
+        A3, B3 = A2 + outw * -hem, B2 + outw * -hem
+        ma, mb = miter(s["A"], (s["A"] - s["B"]).normalized()), miter(s["B"], (s["B"] - s["A"]).normalized())
+        A1, A, A2, A3, B1, B, B2, B3 = ma(A1), ma(A), ma(A2), ma(A3), mb(B1), mb(B), mb(B2), mb(B3)
+        ups = [a2[1], b2[1], b2[1], a2[1]]
+        al = [min(0.9999, q[0] / max(P.umax, 1e-6)) for q in (a2, b2, b2, a2)]
+        # front side out and up (same rule as the drip edge): leg up the roof, face out, hem down
+        for q, f, w in (((A1, B1, B, A), P.n, out_ + leg - out), ((A, B, B2, A2), outw, face), ((A2, B2, B3, A3), -UP, hem)):
+            buf.tri(list(q), [(0, 0), (ln, 0), (ln, w), (0, w)], ups, al, f)
+    return buf
 
 
 # ---------------------------------------------------------------------------
@@ -1001,6 +1141,11 @@ def build_layers(cfg):
             bpy.data.meshes.remove(data)
     exposure = cfg.get("exposure_in", 5.625) * IN
     metal = cfg.get("category") == "metal"
+    panel = cfg.get("panel") or "flat"  # metal panel profile (lab experiment 019); shingle roofs ignore it
+    if panel not in PANEL_PROFILES:
+        raise ValueError(f"unknown panel {panel!r}: use one of {', '.join(PANEL_PROFILES)}")
+    rib_h = panel_max_h(panel) if metal else 0.0
+    top = H["covering"] + rib_h + 0.003  # what sits on the ribs: metal caps and rake trim
     ice_rows = int(cfg.get("ice_rows", 2))
     nails_per = int(cfg.get("nails_per_shingle", 4))  # 4 standard, 6 for high-wind zones
     made = {}
@@ -1021,21 +1166,28 @@ def build_layers(cfg):
         add("oldShingles", build_surface(full_parts(planes), H["oldShingles"], 5 * IN, 0.004),
             layer_material("RT_oldShingles", row_h=5 * IN, procedural={"exposure": 5 * IN, "palette": ["#57534c", "#4a4741", "#605b52"]}), 5 * IN, rows(5 * IN))
     add("deck", build_surface(full_parts(planes), H["deck"], thickness=H["deck"]), layer_material("RT_deck", (0.42, 0.30, 0.17), 1.2192, 0.8), 1.2192, rows(1.2192))
-    add("deckRepair", build_surface(deck_patch_parts(planes), H["deck"] + 0.0012), layer_material("RT_deckRepair", (0.62, 0.45, 0.26), 1000.0, 0.8), 1000.0, 1)
-    add("dripEdge", drip_edge_buf(segs), layer_material("RT_dripEdge", (0.88, 0.88, 0.85), 1.0, 0.35, 0.3), 1.0, 2)
+    if cfg.get("deck_repair", True):  # a re-roof's patched sheets; a new build has none (it z-fights on a small roof)
+        add("deckRepair", build_surface(deck_patch_parts(planes), H["deck"] + 0.0012), layer_material("RT_deckRepair", (0.62, 0.45, 0.26), 1000.0, 0.8), 1000.0, 1)
+    add("dripEdge", drip_edge_buf(segs, profile=cfg.get("edge_profile")), layer_material("RT_dripEdge", (0.88, 0.88, 0.85), 1.0, 0.35, 0.3), 1.0, 2)
     roll, lap = 36 * IN, 3 * IN
     ice_w = ice_rows * (roll - lap) + lap
-    ice = strip_parts(planes, segs["eave"], ice_w)
+    ice = strip_parts(planes, segs["eave"], ice_w) if ice_rows > 0 else []  # 0: no eave membrane (unheated building)
     if segs["valley"] and cfg.get("valleys", True):
         ice += strip_parts(planes, segs["valley"], roll / 2, vmin=ice_w)  # butts the eave rows, no coplanar overlap
-    add("iceWater", build_surface(ice, H["iceWater"]), layer_material("RT_iceWater", (0.025, 0.028, 0.035), roll - lap, 0.85), roll - lap, ice_rows + 1)
+    if ice:
+        add("iceWater", build_surface(ice, H["iceWater"]), layer_material("RT_iceWater", (0.025, 0.028, 0.035), roll - lap, 0.85), roll - lap, ice_rows + 1)
     und_h = 44 * IN
     add("underlayment", build_surface(full_parts(planes), H["underlayment"]), layer_material("RT_underlayment", (0.26, 0.28, 0.30), und_h, 0.7), und_h, rows(und_h))
     if metal:
         # standing seam: concealed clips every 16" along the seams, 24" up the slope; flat panels
         add("nails", nail_buf(planes, 0.6, 16 * IN, H["underlayment"] + 0.003), layer_material("RT_nails", (0.55, 0.56, 0.58), 0.6, 0.35, 0.9), 0.6, rows(0.6))
         color = hex_rgb((cfg.get("palette") or ["#40464d"])[0])
-        add("covering", build_surface(full_parts(planes), H["covering"]), layer_material("RT_covering", color, 1000.0, 0.35, 0.6), 1000.0, 1)
+        if rib_h:  # real ribs, and the rake trim over the panel edge (merged into the covering, no new layer id)
+            cov = merge_bufs(ribbed_surface(full_parts(planes), H["covering"], panel),
+                             rake_trim_buf(segs["rake"], top, clear=0.0015 + drip_kick(cfg.get("edge_profile"))[0]))
+        else:
+            cov = build_surface(full_parts(planes), H["covering"])
+        add("covering", cov, layer_material("RT_covering", color, 1000.0, 0.35, 0.6), 1000.0, 1)
     else:
         starter = strip_parts(planes, segs["eave"], 7 * IN) + strip_parts(planes, segs["rake"], 7 * IN, vmin=7 * IN)
         add("starter", build_surface(starter, H["starter"]), layer_material("RT_starter", (0.03, 0.03, 0.03), 1000.0, 0.85), 1000.0, 1)
@@ -1051,11 +1203,15 @@ def build_layers(cfg):
             if ln > 0.9:
                 d = (l["B"] - l["A"]).normalized()
                 vent_lines.append({"A": l["A"] + d * 0.3, "B": l["B"] - d * 0.3, "planes": l["planes"]})
-        add("ridgeVent", cap_buf(vent_lines, profile=VENT_PROFILE), layer_material("RT_ridgeVent", (0.02, 0.02, 0.022), 1000.0, 0.7), 1000.0, 1)
-    cap = cap_buf(segs["hip"] + ([] if has_vent else segs["ridge"]))
+        add("ridgeVent", cap_buf(vent_lines, profile=lift(VENT_PROFILE, rib_h)), layer_material("RT_ridgeVent", (0.02, 0.02, 0.022), 1000.0, 0.7), 1000.0, 1)
+    cap = cap_buf(segs["hip"] + ([] if has_vent else segs["ridge"]), profile=metal_cap_profile(top, cfg.get("cap_width_in")) if metal else None)
     if has_vent:
-        cap = merge_bufs(cap, cap_buf(segs["ridge"], profile=CAP_OVER_VENT))
-    add("ridgeCap", cap, layer_material("RT_ridgeCap", row_h=1000.0, procedural={"exposure": 5 * IN, "palette": cfg.get("palette") or ["#3a3d42", "#2b2d30", "#4d5157"]}), 1000.0, 1)
+        cap = merge_bufs(cap, cap_buf(segs["ridge"], profile=lift(CAP_OVER_VENT, rib_h)))
+    if metal:  # a metal roof's caps are the panel's painted steel, not cap shingles
+        cap_mat = layer_material("RT_ridgeCap", hex_rgb((cfg.get("palette") or ["#40464d"])[0]), 1000.0, 0.35, 0.6)
+    else:
+        cap_mat = layer_material("RT_ridgeCap", row_h=1000.0, procedural={"exposure": 5 * IN, "palette": cfg.get("palette") or ["#3a3d42", "#2b2d30", "#4d5157"]})
+    add("ridgeCap", cap, cap_mat, 1000.0, 1)
     if any(any(k in s.name.lower() for k in ("roof", "shingle")) for s in srcs):
         for s in srcs:
             s.hide_render = True  # a dedicated roof object: the layer stack replaces it
@@ -1067,7 +1223,10 @@ def build_layers(cfg):
     area = sum(p.area for p in planes)
     measure = {k: sum((s["A"] - s["B"]).length for s in v) for k, v in segs.items()}
     log(f"layers: {len(made)} on {len(planes)} planes, {area / 9.290304:.1f} squares")
-    return {"layers": list(made), "planes": len(planes), "squares": round(area / 9.290304, 2), "lengths_m": {k: round(v, 2) for k, v in measure.items()}}
+    out = {"planes": len(planes), "squares": round(area / 9.290304, 2), "lengths_m": {k: round(v, 2) for k, v in measure.items()},
+           "pitches_per_12": [{"rise_per_12": round(12 * math.tan(p.slope), 2), "area_m2": round(p.area, 2)} for p in planes]}
+    bpy.context.scene["rt_measure"] = json.dumps(out)  # saved with the .blend, for lab/tools/roof_qa.py --expect
+    return {"layers": list(made), **out}
 
 
 # ---------------------------------------------------------------------------

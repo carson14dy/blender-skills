@@ -268,7 +268,12 @@ export function eaveParts(planes, segs, dist) {
 // ---------------------------------------------------------------------------
 // Edge profiles: drip edge (L flange) and ridge / hip caps.
 
-export function dripEdgeGeometry(segs, { offEave = 0.013, offRake = 0.019, flange = 0.05, drop = 0.045 } = {}) {
+// profile (020, inches, from edgeProfileFor): { flangeIn, faceIn, kickOutIn, kickDownIn, hemIn }; none keeps today's
+// shape, and a missing key keeps today's value (as drip_edge_buf in roof_core.py)
+export function dripEdgeGeometry(segs, { offEave = 0.013, offRake = 0.019, flange = 0.05, drop = 0.045, profile = null } = {}) {
+  const p = profile || {}, m = (k, today) => (p[k] != null ? p[k] * 0.0254 : today);
+  flange = m('flangeIn', flange); drop = m('faceIn', drop);
+  const kickOut = m('kickOutIn', 0.012), kickDown = m('kickDownIn', 0.006), hem = m('hemIn', 0);
   const pos = [], nor = [], uv = [], up = [], along = [];
   const add = (p, n, u, v, kUp, kAl) => { pos.push(p.x, p.y, p.z); nor.push(n.x, n.y, n.z); uv.push(u, v); up.push(kUp); along.push(kAl); };
   const quad = (a, b, c, d, n, len, kUp, k0, k1) => {
@@ -297,11 +302,16 @@ export function dripEdgeGeometry(segs, { offEave = 0.013, offRake = 0.019, flang
       const A1 = P.to3(a2[0] + inward[0] * flange, a2[1] + inward[1] * flange, off);
       const B1 = P.to3(b2[0] + inward[0] * flange, b2[1] + inward[1] * flange, off);
       quad(A1, B1, B, A, P.n, len, kUp, k0, k1); // top flange (lies on the deck)
-      const A2 = A.clone().add(new THREE.Vector3(0, -drop, 0)), B2 = B.clone().add(new THREE.Vector3(0, -drop, 0));
-      quad(A, B, B2, A2, outW, len, kUp, k0, k1);
-      const kick = outW.clone().multiplyScalar(0.012).add(new THREE.Vector3(0, -0.006, 0));
-      // the kick's outer side (continuing the drop's outer face) looks out and up
-      quad(A2, B2, B2.clone().add(kick), A2.clone().add(kick), outW.clone().multiplyScalar(0.006).add(new THREE.Vector3(0, 0.012, 0)).normalize(), len, kUp, k0, k1);
+      // then face, kick and hem, each (dOut, dUp) in the outward-horizontal / world-up frame; zero-length legs are skipped
+      // the front side looks out and up: outW * (-dUp) + up * dOut (the face looks out, the kick out and up, the hem down)
+      let pA = A, pB = B;
+      for (const [dOut, dUp] of [[0, -drop], [kickOut, -kickDown], [-hem, 0]]) {
+        if (Math.hypot(dOut, dUp) < 1e-6) continue;
+        const d = outW.clone().multiplyScalar(dOut).add(new THREE.Vector3(0, dUp, 0));
+        const qA = pA.clone().add(d), qB = pB.clone().add(d);
+        quad(pA, pB, qB, qA, outW.clone().multiplyScalar(-dUp).add(new THREE.Vector3(0, dOut, 0)).normalize(), len, kUp, k0, k1);
+        pA = qA; pB = qB;
+      }
     }
   }
   return makeGeometry(pos, nor, uv, up, along, true);
@@ -569,7 +579,7 @@ function orientTriangles(pos, nor, uv, up, along) {
   }
 }
 
-function makeGeometry(pos, nor, uv, up, along) {
+export function makeGeometry(pos, nor, uv, up, along) {
   orientTriangles(pos, nor, uv, up, along);
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
@@ -641,7 +651,7 @@ function segDist2(u, v, a, b) {
   return Math.hypot(u - (a[0] + dx * t), v - (a[1] + dy * t));
 }
 
-function clipHalf(poly, [a, b, c]) {
+export function clipHalf(poly, [a, b, c]) {
   const out = [];
   const f = (p) => a * p[0] + b * p[1] + c;
   for (let i = 0; i < poly.length; i++) {
@@ -694,7 +704,7 @@ function collinear(a, b, c) {
   return Math.abs(cross) < 1e-4 * Math.hypot(abx, aby) * Math.hypot(bcx, bcy) + 1e-9 && abx * bcx + aby * bcy > 0;
 }
 
-function inwardDir2(P, e) {
+export function inwardDir2(P, e) {
   const a = e.a, b = e.b;
   const dx = b[0] - a[0], dy = b[1] - a[1];
   const len = Math.hypot(dx, dy) || 1;

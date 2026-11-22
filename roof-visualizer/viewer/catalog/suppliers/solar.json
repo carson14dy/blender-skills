@@ -1,0 +1,467 @@
+{
+ "version": 1,
+ "captured": "2026-11-21",
+ "notes": [
+  "Home Depot data read from homedepot.com product pages (server-rendered __APOLLO_STATE__), with the page localized to store #4301 Sioux Falls via the THD_LOCALIZER cookie. The embedded price object is keyed to storeId 8119 (HD's online store), so the prices are homedepot.com online prices. All 12 HD items have availabilityType 'Online' (ship-to-home/ship-to-store, not stocked on the shelf at #4301). Local in-store stock was not confirmed.",
+  "Home Depot sizes come from the listing's 'Panel length' and the larger of its 'Panel Width/Height' fields, converted to mm. Weight is the listing's 'Panel weight', which looks like a per-panel value. Watts is per panel; total kit watts = watts x panels for panel packs.",
+  "Home Depot sells no grid-tie microinverters (searches for Enphase, APsystems and 'microinverter' returned none) and no IronRidge, Unirac or SnapNrack PV racking (the 'IronRidge' brand at HD is landscape edging). Its roof mounts are RV/small-panel Z-brackets and tilt mounts.",
+  "Menards: menards.com returns HTTP 403 to scripted and WebFetch requests, so no Menards page was read. All Menards entries come from web-search snippets and summaries of menards.com listings. Their prices are list prices from cached snippets, some with expired 11% mail-in rebates, and should be re-checked. The ids use Menards' URL product id (p-<id>), not the 7-digit Menards SKU, which could not be read. Availability at Sioux Falls West #3064 is unknown; the Solar Panel Kit Direct kits appear to be vendor-shipped special-order items.",
+  "Menards' residential-grade modules (Thornova 440 W bifacial, Phono Solar PS400M1H-24/TH 400 W) and its SMA string inverters appear only inside the Solar Panel Kit Direct kits. No standalone listing was found, so they have no panel or inverter entries. Some snippet spec tables contradict the kit descriptions (e.g. 6 kW: 16 vs 22 panels; 7 kW: 28 x 280 W). Menards also lists 3/5/6/7/8/10 kW ground-mount versions (the ground-mount racking excludes the 2-3 in. pipe substructure) and 9/15/20 kW flush-mount versions.",
+  "Not included: HD Nature Power 50262 '330-Watt' panel (the listing says 2 panels at 58 x 27 in, which is inconsistent with 330 W per panel), portable/foldable panels, and Ring/trickle-charger panels."
+ ],
+ "stores": {
+  "homedepot-4301": {
+   "name": "The Home Depot #4301",
+   "address": "2523 S Louise Ave, Sioux Falls SD",
+   "install_service": "'Solar Panel Installation' (homedepot.com/services/c/solar-panel-installation/3e382af82): a free in-home energy consultation, then a custom system installed by a local licensed partner. The page's lead form says 'Redirecting to our service provider Sunrun...', so Sunrun is the current provider. Sunrun's state list (sunrun.com/utility) does not include South Dakota (it lists CA, CT, DC, FL, HI, IL, MA, MD, NH, NJ, NV, NY, RI, TX), so the service very likely does not cover Sioux Falls. This was not confirmed with a ZIP-code check (the form shows 'This service isn't available in your area' for uncovered ZIPs). HD also lists an 'Off Grid Solar System Assembly' service."
+  },
+  "menards-3064": {
+   "name": "Menards Sioux Falls West",
+   "install_service": "None found. Menards sells DIY grid-tied kits (Solar Panel Kit Direct) but no Menards solar installation program was found; installation would go through a third-party contractor."
+  }
+ },
+ "products": [
+  {
+   "id": "hd-335158845",
+   "store": "homedepot-4301",
+   "kind": "solarPanel",
+   "layer": "solar",
+   "category": "solar",
+   "name": "Renogy 2-Pcs 320-Watt 24V Monocrystalline Solar Panels (640W)",
+   "brand": "Renogy",
+   "model": "RNG-320Dx2",
+   "url": "https://www.homedepot.com/p/Renogy-2-Pcs-320-Watt-24V-Monocrystalline-Solar-Panels-640W-PV-Off-Grid-Module-Power-for-RV-Boat-Shed-Farm-Home-House-Rooftop-RNG-320Dx2/335158845",
+   "availability": "online",
+   "includes": "2 x 320 W N-type 18BB mono panels, Vmp ~38 V, Imp 8.46 A; no mounts/cables (was $699.99)",
+   "price": {
+    "shelf": 534.0,
+    "per": "pack of 2"
+   },
+   "source_checked": "page",
+   "packCount": 2,
+   "watts": 320,
+   "size_mm": [
+    1640.8,
+    881.4
+   ],
+   "weight_kg": 14.92
+  },
+  {
+   "id": "hd-329807200",
+   "store": "homedepot-4301",
+   "kind": "solarPanel",
+   "layer": "solar",
+   "category": "solar",
+   "name": "NATURE'S GENERATOR 410-Watt Monocrystalline Solar Panels (2 Pack)",
+   "brand": "NATURE'S GENERATOR",
+   "model": "NGPHPN2",
+   "url": "https://www.homedepot.com/p/NATURE-S-GENERATOR-410-Watt-Monocrystalline-Solar-Panels-2-Pack-NGPHPN2/329807200",
+   "availability": "online",
+   "includes": "2 x 410 W all-black half-cell mono panels (up to 20.38% eff.), Vmp 37 V, Imp 13.84 A; listed as grid-tie or off-grid; includes electrical wire + mounting hardware; sold by pallet unit",
+   "price": {
+    "shelf": 999.99,
+    "per": "pack of 2"
+   },
+   "source_checked": "page",
+   "packCount": 2,
+   "watts": 410,
+   "size_mm": [
+    1723.9,
+    1133.9
+   ],
+   "weight_kg": 20.41
+  },
+  {
+   "id": "hd-335081141",
+   "store": "homedepot-4301",
+   "kind": "solarPanel",
+   "layer": "solar",
+   "category": "solar",
+   "name": "Renogy Bifacial 2pcs 590-Watt 16BB N-Type Monocrystalline Solar Panel",
+   "brand": "Renogy",
+   "model": "RSP590DCT-144x2",
+   "url": "https://www.homedepot.com/p/Renogy-Bifacial-2pcs-590-Watt-12V-16BB-N-Type-Monocrystalline-Solar-Panel-for-Off-Grid-RV-High-Efficiency-RSP590DCT-144x2/335081141",
+   "availability": "online",
+   "includes": "2 x 590 W bifacial N-type 144-half-cell panels (1180 W total), Imp 13.5 A; panel only (was $989.99). Above the 450 W target but full residential-format module",
+   "price": {
+    "shelf": 891.0,
+    "per": "pack of 2"
+   },
+   "source_checked": "page",
+   "packCount": 2,
+   "watts": 590,
+   "size_mm": [
+    2278.4,
+    1132.8
+   ],
+   "weight_kg": 26.49
+  },
+  {
+   "id": "hd-314332390",
+   "store": "homedepot-4301",
+   "kind": "solarPanel",
+   "layer": "solar",
+   "category": "solar",
+   "name": "Renogy 200-Watt 24-Volt Monocrystalline N-Type Solar Panel",
+   "brand": "Renogy",
+   "model": "RSP200D-G1",
+   "url": "https://www.homedepot.com/p/Renogy-200-Watt-24-Volt-Monocrystalline-N-Type-Solar-Panel-High-Efficiency-for-Off-Grid-Cabin-Sheds-Rooftop-Back-Up-Power-RSP200D-G1/314332390",
+   "availability": "online",
+   "includes": "1 x 200 W N-type 16BB mono panel, 24 V nominal, Imp 6.45 A; panel only (was $169.99)",
+   "price": {
+    "shelf": 154.99,
+    "per": "each"
+   },
+   "source_checked": "page",
+   "watts": 200,
+   "size_mm": [
+    1262.4,
+    764.5
+   ],
+   "weight_kg": 10.61
+  },
+  {
+   "id": "hd-339716986",
+   "store": "homedepot-4301",
+   "kind": "solarPanel",
+   "layer": "solar",
+   "category": "solar",
+   "name": "Renogy 2 Pieces 200-Watt N-Type ShadowFlux Anti-Shading Solar Panel (400W)",
+   "brand": "Renogy",
+   "model": "200DCASR2",
+   "url": "https://www.homedepot.com/p/Renogy-2-Pieces-200-Watt-Monocrystalline-N-Type-ShadowFlux-Solar-Panel-Anti-Shading-16BB-400W-Back-up-Power-PV-Module-200DCASR2/339716986",
+   "availability": "online",
+   "includes": "2 x 200 W ShadowFlux anti-shading N-type panels, Vmp ~36 V, Imp 6.86 A, IP67; panel only (was $479.99)",
+   "price": {
+    "shelf": 400.0,
+    "per": "pack of 2"
+   },
+   "source_checked": "page",
+   "packCount": 2,
+   "watts": 200,
+   "size_mm": [
+    1262.1,
+    764.0
+   ],
+   "weight_kg": 10.81
+  },
+  {
+   "id": "hd-314274561",
+   "store": "homedepot-4301",
+   "kind": "solarKit",
+   "layer": "solar",
+   "category": "solar",
+   "name": "Renogy 800-Watt 12-Volt Off-Grid Solar Premium Kit (8 x 100W + 60A MPPT Rover)",
+   "brand": "Renogy",
+   "model": "RKIT800DPM-RVR60",
+   "url": "https://www.homedepot.com/p/Renogy-800-Watt-12-Volt-Off-Grid-Solar-Premium-Kit-w-8-Piece-100W-Monocrystalline-Panel-and-60A-MPPT-Rover-Charge-Controller-RKIT800DPM-RVR60/314274561",
+   "availability": "online",
+   "includes": "8 x 100 W mono panels, Rover Li 60 A MPPT charge controller, wiring/fuses, mounting hardware (Z-brackets). No inverter, no battery. Off-grid 12/24 V (was $1,405.66). Panel size/weight as listed per panel",
+   "price": {
+    "shelf": 1149.0,
+    "per": "kit"
+   },
+   "source_checked": "page",
+   "panels": 8,
+   "kitWatts": 800,
+   "watts": 100,
+   "size_mm": [
+    866.1,
+    579.1
+   ]
+  },
+  {
+   "id": "hd-317710870",
+   "store": "homedepot-4301",
+   "kind": "solarKit",
+   "layer": "solar",
+   "category": "solar",
+   "name": "NATURE POWER 800-Watt Off Grid 12-Volt Complete Solar Panel Kit",
+   "brand": "NATURE POWER",
+   "model": "53280",
+   "url": "https://www.homedepot.com/p/NATURE-POWER-800-Watt-Crystalline-Off-Grid-12-Volt-High-Performance-Complete-Solar-Panel-Kit-53280/317710870",
+   "availability": "online",
+   "includes": "4 x 200 W mono panels, 750 W power inverter (off-grid), 60 A MPPT charge controller, 4 sets of Z-brackets, cables. Battery not included. Listed panel dims (39.7 x 26.6 in) look like packaging/implausible for 200 W, so size left null",
+   "price": {
+    "shelf": 1413.81,
+    "per": "kit"
+   },
+   "source_checked": "page",
+   "panels": 4,
+   "kitWatts": 800,
+   "watts": 200,
+   "size_mm": null
+  },
+  {
+   "id": "hd-302779450",
+   "store": "homedepot-4301",
+   "kind": "solarKit",
+   "layer": "solar",
+   "category": "solar",
+   "name": "Renogy 400-Watt 12V Off-Grid Solar Starter Kit (4 x 100W + 40A MPPT Rover)",
+   "brand": "Renogy",
+   "model": "STARTER400DR40",
+   "url": "https://www.homedepot.com/p/Renogy-400-Watt-12V-Off-Grid-Solar-Starter-Kit-w-4-Piece-100W-Monocrystalline-Panel-and-40A-MPPT-Rover-Charge-Controller-STARTER400DR40/302779450",
+   "availability": "online",
+   "includes": "4 x 100 W N-type mono panels, 40 A MPPT Rover controller, 20 ft MC4 adapter kit, 8 ft tray cable, 4 sets of Z-brackets. No inverter, no battery",
+   "price": {
+    "shelf": 446.42,
+    "per": "kit"
+   },
+   "source_checked": "page",
+   "panels": 4,
+   "kitWatts": 400,
+   "watts": 100,
+   "size_mm": [
+    866.1,
+    579.1
+   ]
+  },
+  {
+   "id": "hd-344814701",
+   "store": "homedepot-4301",
+   "kind": "solarInverter",
+   "layer": "solar",
+   "category": "solar",
+   "name": "Sol-Ark Limitless 12K-2P-L-L 12kW Hybrid Inverter, 48V battery, 120/240V split-phase",
+   "brand": "Sol-Ark",
+   "model": "12k-2P-LL",
+   "url": "https://www.homedepot.com/p/Sol-Ark-Limitless-12K-2P-L-L-12kW-Hybrid-Inverter-with-48V-Battery-Compatibility-120-240V-Split-Phase-Solar-Backup-Power-System-Sol-Ark-12k-2P-LL/344814701",
+   "availability": "online",
+   "includes": "12 kW hybrid (grid-interactive + backup) string inverter for residential solar, 48 V battery compatible, 120/240 V split phase, generator input. Battery not included",
+   "price": {
+    "shelf": 4299.0,
+    "per": "each"
+   },
+   "source_checked": "page",
+   "watts": 12000
+  },
+  {
+   "id": "hd-344914233",
+   "store": "homedepot-4301",
+   "kind": "solarInverter",
+   "layer": "solar",
+   "category": "solar",
+   "name": "LINIOTECH 12k-Watt 48-Volt Off-Grid Solar Inverter, 120/240V split-phase, dual MPPT",
+   "brand": "LINIOTECH",
+   "model": "LNT12000-48-US",
+   "url": "https://www.homedepot.com/p/LINIOTECH-12k-Watt-48-Volt-Off-Grid-Solar-Inverter-with-120-240-Volt-Split-Phase-Output-Dual-MPPT-and-12k-Watt-PV-Input-LNT12000-48-US/344914233",
+   "availability": "online",
+   "includes": "12 kW off-grid/hybrid all-in-one inverter, dual 6 kW MPPT inputs (12 kW PV), 48 V battery, 120/240 V split phase",
+   "price": {
+    "shelf": 1899.0,
+    "per": "each"
+   },
+   "source_checked": "page",
+   "watts": 12000
+  },
+  {
+   "id": "hd-306540060",
+   "store": "homedepot-4301",
+   "kind": "solarRacking",
+   "layer": "solar",
+   "category": "solar",
+   "name": "WindyNation Solar Panel Mounting Z-Bracket Set",
+   "brand": "WindyNation",
+   "model": "SOL-ZBRK-01",
+   "url": "https://www.homedepot.com/p/WindyNation-Solar-Panel-Mounting-Z-Bracket-Set-SOL-ZBRK-01/306540060",
+   "availability": "online",
+   "includes": "Z-bracket set (one panel) with hardware; rated for panels up to 150 W only",
+   "price": {
+    "shelf": 9.99,
+    "per": "each"
+   },
+   "source_checked": "page"
+  },
+  {
+   "id": "hd-314008014",
+   "store": "homedepot-4301",
+   "kind": "solarRacking",
+   "layer": "solar",
+   "category": "solar",
+   "name": "Renogy Solar Panel Flat Roof Tilt Mount",
+   "brand": "Renogy",
+   "model": "RNG-MTS-TM100",
+   "url": "https://www.homedepot.com/p/Renogy-Solar-Panel-Flat-Roof-Tilt-Mount-RNG-MTS-TM100/314008014",
+   "availability": "online",
+   "includes": "Aluminum adjustable tilt mount for one small panel on a flat roof/surface; adjustability decreases with panel size",
+   "price": {
+    "shelf": 32.99,
+    "per": "each"
+   },
+   "source_checked": "page"
+  },
+  {
+   "id": "mn-1444442792791",
+   "store": "menards-3064",
+   "kind": "solarKit",
+   "layer": "solar",
+   "category": "solar",
+   "name": "Solar Panel Kit Direct 5,000-Watt Photovoltaic Flush Mount Solar Panel Kit",
+   "brand": "Solar Panel Kit Direct",
+   "model": "5kw_FlushMount",
+   "url": "https://www.menards.com/main/electrical/solar-wind-power/solar-kit-direct-5-000-watt-photvoltaic-flush-mount-solar-kit/5kwflushmount/p-1444442792791-c-6292.htm",
+   "availability": "unknown",
+   "includes": "12 x Thornova 440 W bifacial panels, 1 x SMA 5 kW grid-tied string inverter (grid-tied only), flush-mount roof racking for 2 rows of 6 panels. Snippet showed 11% mail-in rebate good through 11/15/26 (expired). Watts = 12 x 440 per description",
+   "price": {
+    "shelf": 7499.0,
+    "per": "kit"
+   },
+   "source_checked": "search snippet",
+   "panels": 12,
+   "kitWatts": 5280,
+   "watts": 440,
+   "size_mm": null
+  },
+  {
+   "id": "mn-1444442792468",
+   "store": "menards-3064",
+   "kind": "solarKit",
+   "layer": "solar",
+   "category": "solar",
+   "name": "Solar Panel Kit Direct 6,000-Watt Photovoltaic Flush Mount Solar Panel Kit",
+   "brand": "Solar Panel Kit Direct",
+   "model": "6kw_FlushMount",
+   "url": "https://www.menards.com/main/electrical/solar-wind-power/solar-kit-direct-6-000-watt-photvoltaic-flush-mount-solar-kit/6kwflushmount/p-1444442792468-c-6292.htm",
+   "availability": "unknown",
+   "includes": "16 x Phono Solar 400 W Mono PERC PS400M1H-24/TH panels, 1 x SMA 6 kW grid-tied inverter, flush-mount racking. CONFLICT: spec table says 22 panels. Rebate shown good through 10/25/26 (expired)",
+   "price": {
+    "shelf": 8999.0,
+    "per": "kit"
+   },
+   "source_checked": "search snippet",
+   "panels": 16,
+   "kitWatts": 6400,
+   "watts": 400,
+   "size_mm": null
+  },
+  {
+   "id": "mn-1444442792419",
+   "store": "menards-3064",
+   "kind": "solarKit",
+   "layer": "solar",
+   "category": "solar",
+   "name": "Solar Panel Kit Direct 7,000-Watt Photovoltaic Flush Mount Solar Panel Kit",
+   "brand": "Solar Panel Kit Direct",
+   "model": "7kw_FlushMount",
+   "url": "https://www.menards.com/main/electrical/solar-wind-power/solar-panel-kit-direct-7-000-watt-photovoltaic-flush-mount-solar-panel-kit/7kwflushmount/p-1444442792419-c-6292.htm",
+   "availability": "unknown",
+   "includes": "Grid-tied flush-mount kit; family listings describe Phono Solar 400 W panels + 7 kW SMA string inverter + racking. Snippet spec table says 28 panels x 280 W (inconsistent), so panel count left null",
+   "price": {
+    "shelf": 10999.0,
+    "per": "kit"
+   },
+   "source_checked": "search snippet",
+   "panels": null,
+   "kitWatts": 7000,
+   "watts": null,
+   "size_mm": null
+  },
+  {
+   "id": "mn-1444442792886",
+   "store": "menards-3064",
+   "kind": "solarKit",
+   "layer": "solar",
+   "category": "solar",
+   "name": "Solar Panel Kit Direct 8,000-Watt Photovoltaic Flush Mount Solar Panel Kit",
+   "brand": "Solar Panel Kit Direct",
+   "model": "8kw_FlushMount",
+   "url": "https://www.menards.com/main/electrical/solar-wind-power/solar-panel-kit-direct-8-000-watt-photovoltaic-flush-mount-solar-panel-kit/8kwflushmount/p-1444442792886-c-6292.htm",
+   "availability": "unknown",
+   "includes": "Grid-tied flush-mount kit; search summary says single 8 kW SMA string inverter + Phono Solar 400 W panels + racking (panel count not confirmed). Rebate shown good through 11/26/26",
+   "price": {
+    "shelf": 11999.0,
+    "per": "kit"
+   },
+   "source_checked": "search snippet",
+   "panels": null,
+   "kitWatts": 8000,
+   "watts": null,
+   "size_mm": null
+  },
+  {
+   "id": "mn-1444442792171",
+   "store": "menards-3064",
+   "kind": "solarRacking",
+   "layer": "solar",
+   "category": "solar",
+   "name": "Solar Panel Kit Direct Shingle Flush Mount Kit 12 Pack (K-Flash)",
+   "brand": "Kinetic Solar Racking and Mounting (sold as Solar Panel Kit Direct)",
+   "model": "K-RackFlashing",
+   "url": "https://www.menards.com/main/electrical/solar-wind-power/solar-panel-kit-direct-shingle-flush-mount-kit-12-pack/k-rackflashing/p-1444442792171-c-6292.htm",
+   "availability": "unknown",
+   "includes": "12 x K-Flash roof attachments for asphalt shingle: flush-mount baseplate, 9 x 12 in. black flashing plate, stainless hardware; 20-year guarantee. Rebate in snippet expired 7/26/26",
+   "price": {
+    "shelf": 159.0,
+    "per": "pack of 12"
+   },
+   "source_checked": "search snippet",
+   "packCount": 12
+  },
+  {
+   "id": "mn-105479130886",
+   "store": "menards-3064",
+   "kind": "solarPanel",
+   "layer": "solar",
+   "category": "solar",
+   "name": "Nature's Generator Power Solar Panel 100W",
+   "brand": "Nature's Generator",
+   "model": "HKNGPNBC",
+   "url": "https://www.menards.com/main/outdoors/outdoor-power-equipment/outdoor-power-equipment-parts/generator-parts-accessories/natures-generator-power-solar-panel/hkngpnbc/p-105479130886.htm",
+   "availability": "unknown",
+   "includes": "100 W polycrystalline panel with connector, for Nature's Generator power station/Power Pod; not a residential module",
+   "price": {
+    "shelf": 269.99,
+    "per": "each"
+   },
+   "source_checked": "search snippet",
+   "watts": 100,
+   "size_mm": null,
+   "weight_kg": null
+  },
+  {
+   "id": "mn-60892441795",
+   "store": "menards-3064",
+   "kind": "solarKit",
+   "layer": "solar",
+   "category": "solar",
+   "name": "Nature's Generator Power Solar Panel Kit (100W)",
+   "brand": "Nature's Generator",
+   "model": "HKNGPNKT1",
+   "url": "https://www.menards.com/main/generator-parts-accessories/natures-generator-power-solar-panel-kit/hkngpnkt1/p-60892441795.htm",
+   "availability": "unknown",
+   "includes": "100 W poly panel + cable/mount kit for Nature's Generator units; no grid-tie inverter. Rebate in snippet expired 10/4/26",
+   "price": {
+    "shelf": 329.99,
+    "per": "kit"
+   },
+   "source_checked": "search snippet",
+   "panels": 1,
+   "kitWatts": 100,
+   "watts": 100,
+   "size_mm": null
+  },
+  {
+   "id": "mn-1444444201288",
+   "store": "menards-3064",
+   "kind": "solarKit",
+   "layer": "solar",
+   "category": "solar",
+   "name": "Coleman 200 Watt Solar Panel Kit",
+   "brand": "Coleman",
+   "model": "38928",
+   "url": "https://www.menards.com/main/electrical/generators-alternative-power-generation/solar-power/coleman-reg-200-watt-solar-panel-kit/38928/p-1444444201288.htm",
+   "availability": "unknown",
+   "includes": "2 x 100 W crystalline panels, 30 A digital charge controller, 300 W modified-sine inverter (off-grid 12 V). Price not found",
+   "price": {
+    "shelf": null,
+    "per": "kit"
+   },
+   "source_checked": "search snippet",
+   "panels": 2,
+   "kitWatts": 200,
+   "watts": 100,
+   "size_mm": null
+  }
+ ]
+}

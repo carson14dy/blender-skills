@@ -7,8 +7,10 @@ import {
   buildSurface, fullParts, stripParts, eaveParts, dripEdgeGeometry, capGeometry,
   ridgeVentGeometry, nailLayout, nailGeometry, deckPatches, measureRoof,
 } from './roof-geometry.js';
+import { profileFor, ribbedSurface, rakeTrimGeometry, metalCapProfile, onRibs, dripReach } from './profiles.js';
 import * as TX from './textures.js';
 import { inToM, fmtFtIn, easeInOutCubic, hexToRgb, rgbToHex } from './util.js';
+import { toQuantities } from './quote.js';
 
 // Physical stack heights above the rafters (metres). Real thicknesses with a
 // little separation so nothing z-fights at house scale.
@@ -85,6 +87,7 @@ export class RoofLayers {
     this.cut = 1; this.cutTarget = 1;
     this.cutDir = { value: new THREE.Vector3(1, 0, 0) }; // shared by every layer
     this.custom = [];
+    this.specOverride = {}; // layer id -> spec line for the exploded-view label (the store product chosen)
     this.labelsOn = true;
     this.measure = measureRoof(planes, segs);
     this._cutRange = [-1, 1];
@@ -121,7 +124,7 @@ export class RoofLayers {
     });
     obj.name = `RT_layer_${id}`;
     const rec = {
-      id, obj, uniforms, rowH, keyMax, info: { ...LAYER_INFO[id], ...info }, level,
+      id, obj, uniforms, rowH, keyMax, info: { ...LAYER_INFO[id], ...info, ...(this.specOverride[id] ? { spec: this.specOverride[id] } : {}) }, level,
       visible: true, userVisible: true, reveal: 1, levelPos: 0, label: null,
     };
     this.root.add(obj);
@@ -181,11 +184,17 @@ export class RoofLayers {
   }
 
   _buildDrip() {
-    const opt = LAYER_OPTIONS.dripEdge.find((o) => o.id === this.options.dripEdge) || LAYER_OPTIONS.dripEdge[0];
-    const g = dripEdgeGeometry(this.segs, { offEave: H.dripEave, offRake: H.dripRake });
+    const opt = this._dripOption();
+    const g = dripEdgeGeometry(this.segs, { offEave: H.dripEave, offRake: H.dripRake, profile: opt.profile || null });
     const m = this._material(null, { color: opt.color, metal: opt.metal, rough: 0.35 });
     // eave pieces have aUp = 0, rake pieces aUp = 1 -> keys 0..1 then 1..2
     this._rec('dripEdge', new THREE.Mesh(g, m), { rowH: 1, keyMax: 2, info: { spec: `${opt.label}, eaves under / rakes over` } });
+  }
+
+  /** The drip edge drawn: a LAYER_OPTIONS.dripEdge entry, or a store product's option object { id, label, color, metal, profile }. */
+  _dripOption() {
+    const v = this.options.dripEdge;
+    return v && typeof v === 'object' ? v : LAYER_OPTIONS.dripEdge.find((o) => o.id === v) || LAYER_OPTIONS.dripEdge[0];
   }
 
   /** Rows of 36" membrane at the eaves. 'auto' reaches 24" inside the exterior wall (IRC R905.1.2). */
@@ -247,7 +256,9 @@ export class RoofLayers {
     const p = this.product || {};
     const cat = p.category || 'shingle';
     const isMetal = cat === 'metal';
-    const set = p._texSet || TX.architecturalShingle();
+    const prof = profileFor(p); // metal panel profile drawn as geometry (019), null: flat
+    // with rib geometry, the texture keeps color, roughness, screws and noise but not the rib relief
+    const set = prof && p.procedural ? TX.proceduralFor({ ...p.procedural, ribs: false }) : p._texSet || TX.architecturalShingle();
     const exposure = inToM(p.exposureIn || (cat === 'tile' ? 13 : cat === 'slate' ? 10 : cat === 'shake' ? 7.5 : 5.625));
     const stepH = cat === 'tile' ? 0.02 : cat === 'slate' || cat === 'shake' ? 0.009 : 0.005;
     const palette = p._palette || p.procedural?.palette || [p.procedural?.color || '#3a3d42'];
@@ -272,11 +283,19 @@ export class RoofLayers {
     // the covering itself
     const parts = fullParts(this.planes);
     const flat = isMetal || p.flat;
-    const g = flat ? buildSurface(parts, { offset: H.covering }) : buildSurface(parts, { offset: H.covering, courseH: exposure, stepH });
-    const mat = this._material(set, { side: THREE.FrontSide, metal: isMetal ? 0.55 : 0, rough: 1, physical: isMetal });
+    const g = prof ? ribbedSurface(parts, { offset: H.covering, profile: prof }) : flat ? buildSurface(parts, { offset: H.covering }) : buildSurface(parts, { offset: H.covering, courseH: exposure, stepH });
+    const mat = this._material(set, { side: THREE.FrontSide, metal: isMetal ? (p.pbr?.metallic ?? 0.55) : 0, rough: isMetal && p.pbr?.roughness != null ? p.pbr.roughness / TX.roughMean(set) : 1, physical: isMetal });
     if (p.tint) mat.color.set(p.tint);
     this._applyTransform(mat, p);
-    this._rec('covering', new THREE.Mesh(g, mat), {
+    const cov = new THREE.Mesh(g, mat);
+    // rake trim (part of the covering): over the panel edge at every rake, in the panel's color and metal values
+    const top = onRibs(H.covering, prof);
+    if (prof && this.segs.rake.length) {
+      const tm = this._material(null, { color: p.procedural?.color || palette[0], metal: p.pbr?.metallic ?? 0.55, rough: p.pbr?.roughness ?? 0.4 });
+      // the bend clears the drip edge's kick by 1/8 in.
+      cov.add(Object.assign(new THREE.Mesh(rakeTrimGeometry(this.segs.rake, { top, clear: dripReach(this._dripOption().profile) }), tm), { name: 'rakeTrim' }));
+    }
+    this._rec('covering', cov, {
       rowH: isMetal ? 1e3 : exposure, keyMax: isMetal ? 1 : this._rowsMax(exposure),
       info: { label: isMetal ? 'Metal panels' : cat === 'tile' ? 'Roof tile' : cat === 'slate' ? 'Slate' : cat === 'shake' ? 'Cedar shakes' : 'Shingles', spec: p.name ? `${p.name}${p.supplier ? ' · ' + p.supplier : ''}` : 'Architectural laminate' },
     });
@@ -284,20 +303,23 @@ export class RoofLayers {
     // ridge vent (ridges only) and hip & ridge caps
     const hasVent = this.options.ridgeVent !== false && this.segs.ridge.length;
     if (hasVent) {
-      const rv = ridgeVentGeometry(this.segs.ridge, { off: H.covering, height: VENT_H }); // sides stand on the shingles: no gap under the vent
+      const rv = ridgeVentGeometry(this.segs.ridge, { off: H.covering + (prof?.maxH || 0), height: VENT_H }); // sides stand on the shingles (or the rib tops): no gap under the vent
       const grp = new THREE.Group();
       const vm = this._material(null, { color: '#1d1f22', rough: 0.7 });
       grp.add(new THREE.Mesh(rv.top, vm), new THREE.Mesh(rv.skirt, this._material(null, { color: '#2a2c2f', rough: 0.9 })));
       this._rec('ridgeVent', grp, { rowH: 1e3, keyMax: 1 });
     }
-    const capSet = isMetal ? null : TX.ridgeCap({ palette: palette.length > 1 ? palette : shadesOf(palette[0]) });
-    const capMat = this._material(capSet, { color: isMetal ? (p.procedural?.color || '#40464d') : '#ffffff', metal: isMetal ? 0.55 : 0, rough: isMetal ? 0.4 : 1, side: THREE.FrontSide });
+    const capSet = isMetal ? null : TX.ridgeCap({ palette: this.options.capPalette || (palette.length > 1 ? palette : shadesOf(palette[0])) });
+    const capMat = this._material(capSet, { color: isMetal ? (this.options.capColor || p.procedural?.color || '#40464d') : '#ffffff', metal: isMetal ? (p.pbr?.metallic ?? 0.55) : 0, rough: isMetal ? (p.pbr?.roughness ?? 0.4) : 1, side: THREE.FrontSide });
     // hips are capped first (bottom up), then the ridge: ridge pieces get key row 1 when hips exist
     const grp = new THREE.Group();
     const hips = this.segs.hip.length > 0, ridges = this.segs.ridge.length > 0;
-    if (hips) grp.add(new THREE.Mesh(capGeometry(this.segs.hip, { off: H.cap }), capMat));
+    // metal roofs: the metal cap profile on the rib tops (flat panels: maxH 0); over a vent, the vent cap lifted with the vent
+    const capOn = isMetal ? { profile: metalCapProfile(top, this.options.capWidthIn > 0 ? this.options.capWidthIn / 2 : 6) } : { off: H.cap };
+    const overVent = prof ? CAP_OVER_VENT.map(([w, h]) => [w, h + prof.maxH]) : CAP_OVER_VENT;
+    if (hips) grp.add(new THREE.Mesh(capGeometry(this.segs.hip, capOn), capMat));
     if (ridges) {
-      const rg = capGeometry(this.segs.ridge, hasVent ? { profile: CAP_OVER_VENT } : { off: H.cap });
+      const rg = capGeometry(this.segs.ridge, hasVent ? { profile: overVent } : capOn);
       if (hips) rg.attributes.aUp.array.fill(1);
       grp.add(new THREE.Mesh(rg, capMat));
     }
@@ -364,10 +386,11 @@ export class RoofLayers {
       iceWater: () => { this._remove('iceWater'); this._buildIceWater(); },
       iceRows: () => { this._remove('iceWater'); this._buildIceWater(); },
       valleys: () => { this._remove('iceWater'); this._buildIceWater(); },
-      dripEdge: () => { this._remove('dripEdge'); this._buildDrip(); },
+      dripEdge: () => { this._remove('dripEdge'); this._buildDrip(); if (this.layers.get('covering')?.obj.getObjectByName('rakeTrim')) this._buildCovering(); }, // the trim clears the kick
       nailsPerShingle: () => this._buildCovering(),
       deckRepairSheets: () => { this._remove('deck'); this._remove('deckRepair'); this._buildDeck(); },
       ridgeVent: () => this._buildCovering(),
+      capPalette: () => this._buildCovering(), capColor: () => this._buildCovering(), capWidthIn: () => this._buildCovering(),
     }[key];
     rebuild?.();
     this._applyState();
@@ -545,36 +568,36 @@ export class RoofLayers {
     return cut > 0.8 ? 0.20 : cut > 0.4 ? 0.17 : 0.15;
   }
 
+  /** Measured inputs for the materials list (quote.js). Feet and square feet. */
+  quantities() {
+    const ice = this.layers.get('iceWater');
+    return toQuantities({
+      measure: this.measure,
+      ridgeLengthsM: this.segs.ridge.map((l) => l.A.distanceTo(l.B)),
+      iceM2: ice ? geomArea(ice.obj.geometry) : 0,
+      iceRows: ice ? this.iceRows : 0,
+      ventOn: this.options.ridgeVent !== false,
+      nailCount: this.layers.get('nails')?.count || 0,
+      deckRepairSheets: Math.max(0, Math.round(this.options.deckRepairSheets || 0)),
+      category: this.product?.category || 'shingle',
+    });
+  }
+
+  /** Measurements only. Order quantities and prices are on the List tab (quote.js reads quantities()). */
   takeoff({ waste = this.suggestedWaste() } = {}) {
     const m = this.measure;
-    const sq = m.squares;
-    const lf = (x) => x / 0.3048;
-    const p = this.product || {};
-    const cat = p.category || 'shingle';
-    const isMetal = cat === 'metal', isShingle = cat === 'shingle';
-    const ice = this.layers.get('iceWater');
-    const iceArea = ice ? geomArea(ice.obj.geometry) : 0;
-    const nails = this.layers.get('nails')?.count || 0;
-    const vent = this.layers.get('ridgeVent');
-    const covering = isShingle ? ['Shingle bundles (3 per sq, incl. waste)', `${Math.ceil(sq * (1 + waste) * 3)}`]
-      : isMetal ? ['Metal panels (sq, incl. waste)', (sq * (1 + waste)).toFixed(1)]
-        : [`${cat === 'tile' ? 'Tile' : cat === 'slate' ? 'Slate' : 'Shakes'} (sq, incl. waste)`, (sq * (1 + waste)).toFixed(1)];
-    const rows = [
-      ['Roof area', `${m.areaM2.toFixed(1)} m² · ${(m.areaM2 * 10.7639).toFixed(0)} sq ft`],
-      ['Squares (before waste)', sq.toFixed(2)],
+    const q = this.quantities();
+    const valleys = this.options.valleys && this.segs.valley.length;
+    return [
+      ['Roof area', `${m.areaM2.toFixed(1)} m² · ${q.areaSqft.toFixed(0)} sq ft`],
+      ['Squares (before waste)', q.squares.toFixed(2)],
       [`Waste allowance`, `${Math.round(waste * 100)}%`],
-      covering,
       ['Eaves', fmtLen(m.eaveM)], ['Rakes', fmtLen(m.rakeM)], ['Ridges', fmtLen(m.ridgeM)], ['Hips', fmtLen(m.hipM)], ['Valleys', fmtLen(m.valleyM)],
-      ['Drip edge (10\' pieces)', `${Math.ceil(lf(m.eaveM + m.rakeM) * 1.05 / 10)}`],
-      ['Starter (LF)', isShingle ? `${Math.ceil(lf(m.eaveM + m.rakeM) * 1.05)}` : '—'],
-      ['Ice & water (2 sq rolls, approx.)', `${Math.max(1, Math.ceil(iceArea * 10.7639 * 1.1 / 200))}`],
-      ['Underlayment (10 sq rolls)', `${Math.max(1, Math.ceil(sq * 1.1 / 10))}`],
-      ['Ridge vent (LF)', vent ? `${Math.ceil(lf(m.ridgeM) - 2 * lf(0.3))}` : '—'],
-      ['Hip & ridge cap (LF)', `${Math.ceil(lf(m.ridgeM + m.hipM) * 1.05)}`],
-      ['Deck repair allowance (sheets)', `${this.layers.get('deckRepair')?.count ?? 0}`],
-      [isMetal ? 'Panel clips' : isShingle ? 'Field nails (shingles only)' : 'Fasteners', nails.toLocaleString()],
+      ['Ice & water area', q.iceSqft > 0 ? `${q.iceSqft.toFixed(0)} sq ft · ${q.iceRows} row${q.iceRows === 1 ? '' : 's'} at eaves${valleys ? ' + valleys' : ''}` : '—'],
+      ['Ridge vent', q.ventFt > 0 ? fmtLen(q.ventFt * 0.3048) : '—'],
+      [q.category === 'metal' ? 'Panel clips (count)' : q.category === 'shingle' ? 'Field nails (count)' : 'Fasteners (count)', q.nailCount.toLocaleString()],
+      ['Deck repair allowance (sheets)', `${q.deckRepairSheets}`],
     ];
-    return rows;
   }
 
   /** True while any visible layer is only partly built (the path tracer cannot show that). */

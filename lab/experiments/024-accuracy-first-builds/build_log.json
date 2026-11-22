@@ -1,0 +1,442 @@
+{
+ "name": "Garden shed (pilot 024)",
+ "started": 1795316622.857325,
+ "date": "2026-11-22T03:03:42",
+ "session": "cloud",
+ "accept": "/home/user/blender-skills/lab/experiments/024-accuracy-first-builds/acceptance.json",
+ "sha": "e4cc33986efd",
+ "checks": 23,
+ "assumed": [
+  "pad: pad size not in the brief: 4 in. slab (standard), 2 in. past the walls on each side",
+  "pitch: pitch not in the brief; the user could not be asked in this run; 6/12 is common for sheds",
+  "ridge: 4 in. pad + 8 ft wall + 2.5 ft rise (6/12 over 5 ft) + 1 in. deck / cos(26.57)",
+  "eave: 6 in. overhang at 6/12: 8.3333 - 0.25",
+  "roof-area: 2 x 13 ft x (5.5 + 1/12 sin) / cos = 160.96 sq ft, from the assumed pitch and overhangs",
+  "window-detail: frame, meeting rail and two panes, so a box cannot stand in",
+  "door-material: door colour not in the brief: white like the trim"
+ ],
+ "stages": [
+  {
+   "name": "blockout",
+   "start": 1795316622.8909292,
+   "end": 1795316872.9911573,
+   "seconds": 250.1
+  },
+  {
+   "name": "detail",
+   "start": 1795316873.0616894,
+   "end": 1795316935.6050668,
+   "seconds": 62.5
+  },
+  {
+   "name": "materials",
+   "start": 1795316945.232794,
+   "end": 1795316979.3352294,
+   "seconds": 34.1
+  },
+  {
+   "name": "light-camera",
+   "start": 1795316979.3679423,
+   "end": 1795317037.6125135,
+   "seconds": 58.2
+  },
+  {
+   "name": "render",
+   "start": 1795317037.6490037,
+   "end": 1795317235.6719134,
+   "seconds": 198.0
+  },
+  {
+   "name": "fix-roof-edges",
+   "start": 1795317235.7206542,
+   "end": 1795317394.4620218,
+   "seconds": 158.7
+  },
+  {
+   "name": "materials-look",
+   "start": 1795317923.3601186,
+   "end": 1795317923.43111,
+   "seconds": 0.1
+  }
+ ],
+ "gates": [
+  {
+   "name": "blockout-sizes",
+   "stage": "blockout",
+   "time": 1795316858.5957751,
+   "pass": true,
+   "spec_sha": "e4cc33986efd",
+   "partial": true,
+   "failed": [],
+   "assumed": [
+    "pad: pad size not in the brief: 4 in. slab (standard), 2 in. past the walls on each side",
+    "pitch: pitch not in the brief; the user could not be asked in this run; 6/12 is common for sheds",
+    "ridge: 4 in. pad + 8 ft wall + 2.5 ft rise (6/12 over 5 ft) + 1 in. deck / cos(26.57)",
+    "eave: 6 in. overhang at 6/12: 8.3333 - 0.25",
+    "roof-area: 2 x 13 ft x (5.5 + 1/12 sin) / cos = 160.96 sq ft, from the assumed pitch and overhangs"
+   ],
+   "checked": 16,
+   "passed": 16,
+   "blender": "5.2.4 LTS",
+   "seconds": 0.01,
+   "warnings": 0,
+   "warning_texts": []
+  },
+  {
+   "name": "qa",
+   "stage": "detail",
+   "time": 1795316892.2122667,
+   "pass": false,
+   "complete": true,
+   "seconds": 0.06,
+   "errors": 43,
+   "warnings": 0,
+   "warning_texts": [],
+   "tris": 1036,
+   "note": "detail stage: 43 errors, all 'empty material slot' (materials come next); 0 z-fighting, 0 floating, 0 warnings"
+  },
+  {
+   "name": "look",
+   "stage": "detail",
+   "time": 1795316934.947539,
+   "pass": true,
+   "manual": true,
+   "note": "out/review-detail.png (6 views, colour per part) and out/review-framing.png: gable roof with overhangs, door centred with casing and knob, 2 windows per long side with trim and meeting rail, 28 studs with gaps at the openings; nothing detached"
+  },
+  {
+   "name": "acceptance",
+   "stage": "detail",
+   "time": 1795316935.5736673,
+   "pass": false,
+   "spec_sha": "e4cc33986efd",
+   "partial": false,
+   "failed": [
+    "siding",
+    "trim",
+    "shingles",
+    "pad-material",
+    "door-material",
+    "hero"
+   ],
+   "assumed": [
+    "pad: pad size not in the brief: 4 in. slab (standard), 2 in. past the walls on each side",
+    "pitch: pitch not in the brief; the user could not be asked in this run; 6/12 is common for sheds",
+    "ridge: 4 in. pad + 8 ft wall + 2.5 ft rise (6/12 over 5 ft) + 1 in. deck / cos(26.57)",
+    "eave: 6 in. overhang at 6/12: 8.3333 - 0.25",
+    "roof-area: 2 x 13 ft x (5.5 + 1/12 sin) / cos = 160.96 sq ft, from the assumed pitch and overhangs",
+    "window-detail: frame, meeting rail and two panes, so a box cannot stand in",
+    "door-material: door colour not in the brief: white like the trim"
+   ],
+   "checked": 23,
+   "passed": 17,
+   "blender": "5.2.4 LTS",
+   "seconds": 0.0,
+   "warnings": 0,
+   "warning_texts": [],
+   "forbidden": [
+    "empty_slots"
+   ],
+   "fails": [
+    {
+     "id": "siding",
+     "expect": "M_Siding_Sage*",
+     "got": []
+    },
+    {
+     "id": "trim",
+     "expect": "M_Trim_White*",
+     "got": []
+    },
+    {
+     "id": "shingles",
+     "expect": "M_Shingle_Asphalt*",
+     "got": []
+    },
+    {
+     "id": "pad-material",
+     "expect": "M_Concrete*",
+     "got": []
+    },
+    {
+     "id": "door-material",
+     "expect": [
+      "M_Door_White*",
+      "M_Knob*"
+     ],
+     "got": []
+    },
+    {
+     "id": "hero",
+     "expect": [
+      1920,
+      1080
+     ],
+     "error": "file missing or empty: /home/user/blender-skills/lab/experiments/024-accuracy-first-builds/out/render/hero_0001.png"
+    }
+   ]
+  },
+  {
+   "name": "materials",
+   "stage": "materials",
+   "time": 1795316954.189576,
+   "pass": true,
+   "spec_sha": "e4cc33986efd",
+   "partial": true,
+   "failed": [],
+   "assumed": [
+    "door-material: door colour not in the brief: white like the trim"
+   ],
+   "checked": 5,
+   "passed": 5,
+   "blender": "5.2.4 LTS",
+   "seconds": 0.0,
+   "warnings": 0,
+   "warning_texts": []
+  },
+  {
+   "name": "qa",
+   "stage": "materials",
+   "time": 1795316961.556364,
+   "pass": true,
+   "complete": true,
+   "seconds": 0.07,
+   "errors": 0,
+   "warnings": 0,
+   "warning_texts": [],
+   "tris": 1036,
+   "note": "43 parts, 1036 tris, profile render, --max-tris 0: 0 errors, 0 warnings"
+  },
+  {
+   "name": "look-materials",
+   "stage": "materials",
+   "time": 1795316979.2998009,
+   "pass": false,
+   "manual": true,
+   "note": "Workbench material mode shows flat grey: the textures are mapped in the shader (object space), so this sheet cannot judge them; judged in the Cycles preview in the next stage"
+  },
+  {
+   "name": "preview",
+   "stage": "light-camera",
+   "time": 1795317037.5343056,
+   "pass": true,
+   "preset": "preview",
+   "samples": 64,
+   "res": [
+    640,
+    360
+   ],
+   "device": "CPU",
+   "deliverable": false,
+   "sec_per_image": 6.58,
+   "seconds": 6.58,
+   "warnings": 1,
+   "warning_texts": [
+    "preview quality (64 samples, 50% = 640x360): for looking, not for delivery. Use --preset final or product."
+   ],
+   "files": [
+    "/home/user/blender-skills/lab/experiments/024-accuracy-first-builds/out/render/preview_0001.png"
+   ],
+   "files_count": 1,
+   "note": "Cycles preview from the hero camera, for looking"
+  },
+  {
+   "name": "look",
+   "stage": "light-camera",
+   "time": 1795317037.5773015,
+   "pass": true,
+   "manual": true,
+   "note": "out/render/preview_0001.png (Cycles 64 spp, 640x360): sage lap siding with shadow lines, white trim, centred door and knob, 2 windows on the left side, dark shingle roof, 2 in. pad edge; sun from front-right, left side in shade, shadow on the lawn. Shingle rows barely read at this size."
+  },
+  {
+   "name": "render-640",
+   "stage": "render",
+   "time": 1795317084.153121,
+   "pass": true,
+   "preset": "final",
+   "samples": 512,
+   "res": [
+    640,
+    360
+   ],
+   "device": "CPU",
+   "deliverable": true,
+   "sec_per_image": 12.5,
+   "seconds": 12.51,
+   "files": [
+    "/home/user/blender-skills/lab/experiments/024-accuracy-first-builds/out/render/hero_0001.png"
+   ],
+   "files_count": 1,
+   "note": "the plan's pilot size: final preset at 640x360 took 12.5 s on 4 CPU threads, so 1920x1080 (the brief) should take about 2 min, inside the 5-minute limit"
+  },
+  {
+   "name": "render",
+   "stage": "render",
+   "time": 1795317193.6958907,
+   "pass": true,
+   "preset": "final",
+   "samples": 512,
+   "res": [
+    1920,
+    1080
+   ],
+   "device": "CPU",
+   "deliverable": true,
+   "sec_per_image": 101.17,
+   "seconds": 101.17,
+   "files": [
+    "/home/user/blender-skills/lab/experiments/024-accuracy-first-builds/out/render/hero_0001.png"
+   ],
+   "files_count": 1,
+   "for_delivery": true,
+   "note": "hero, Cycles CPU, final preset at the brief's 1920x1080"
+  },
+  {
+   "name": "look",
+   "stage": "render",
+   "time": 1795317235.6236594,
+   "pass": false,
+   "manual": true,
+   "note": "full-size crop of out/render/hero_0001.png: siding, trim, windows and door read well, but the front rake edge of the roof shows dark notches (shingle texture stretched over the 1 in. edge faces); shingle courses barely read on the slope"
+  },
+  {
+   "name": "qa",
+   "stage": "fix-roof-edges",
+   "time": 1795317273.4797788,
+   "pass": true,
+   "complete": true,
+   "seconds": 0.07,
+   "errors": 0,
+   "warnings": 0,
+   "warning_texts": [],
+   "tris": 1036,
+   "note": "rebuilt file after the roof-edge fix: 43 parts, render profile, --max-tris 0"
+  },
+  {
+   "name": "render",
+   "stage": "fix-roof-edges",
+   "time": 1795317393.6220663,
+   "pass": true,
+   "preset": "final",
+   "samples": 512,
+   "res": [
+    1920,
+    1080
+   ],
+   "device": "CPU",
+   "deliverable": true,
+   "sec_per_image": 99.03,
+   "seconds": 99.04,
+   "files": [
+    "/home/user/blender-skills/lab/experiments/024-accuracy-first-builds/out/render/hero_0001.png"
+   ],
+   "files_count": 1,
+   "for_delivery": true,
+   "note": "hero re-rendered after the roof-edge fix, final preset, 1920x1080"
+  },
+  {
+   "name": "look",
+   "stage": "fix-roof-edges",
+   "time": 1795317393.6707437,
+   "pass": true,
+   "manual": true,
+   "note": "full-size crop and whole frame of out/render/hero_0001.png: rake edge now a clean dark line; siding laps, trim, meeting rails, knob and pad edge read; shingle courses faint but present; nothing floating or clipped"
+  },
+  {
+   "name": "acceptance",
+   "stage": "fix-roof-edges",
+   "time": 1795317394.4244375,
+   "pass": true,
+   "spec_sha": "e4cc33986efd",
+   "partial": false,
+   "failed": [],
+   "assumed": [
+    "pad: pad size not in the brief: 4 in. slab (standard), 2 in. past the walls on each side",
+    "pitch: pitch not in the brief; the user could not be asked in this run; 6/12 is common for sheds",
+    "ridge: 4 in. pad + 8 ft wall + 2.5 ft rise (6/12 over 5 ft) + 1 in. deck / cos(26.57)",
+    "eave: 6 in. overhang at 6/12: 8.3333 - 0.25",
+    "roof-area: 2 x 13 ft x (5.5 + 1/12 sin) / cos = 160.96 sq ft, from the assumed pitch and overhangs",
+    "window-detail: frame, meeting rail and two panes, so a box cannot stand in",
+    "door-material: door colour not in the brief: white like the trim"
+   ],
+   "checked": 23,
+   "passed": 23,
+   "blender": "5.2.4 LTS",
+   "seconds": 0.11,
+   "warnings": 0,
+   "warning_texts": []
+  },
+  {
+   "name": "look-materials",
+   "stage": "materials-look",
+   "time": 1795317923.394273,
+   "pass": true,
+   "manual": true,
+   "note": "Cycles close-up out/render/materials_0001.png (1280x720, 128 spp, temp camera at the front-left corner): sage lap siding with grain and lap shadows, aligned at the corner; white casings and window frames with meeting rails; glass reflects sky and lawn; white door, casing, brass knob; concrete pad edge; plain dark roof edges. Shingle surface not in this view: judged in the hero (courses faint)"
+  }
+ ],
+ "shortcuts": [
+  {
+   "n": 1,
+   "kind": "assumed",
+   "what": "Roof pitch 6/12, with 6 in. overhangs at eaves and gables",
+   "why": "not in the brief; the procedure says ask before assuming it, but nobody can answer inside this sub-agent run",
+   "approved": false,
+   "stage": "blockout",
+   "effect": "ridge height, roof area (1.61 sq) and the look of the roof all follow from it",
+   "check": "pitch"
+  },
+  {
+   "n": 2,
+   "kind": "tolerance",
+   "what": "Parts that rest on each other overlap by 2 mm (walls in the pad, studs in the siding, trim in the walls), so the wall object is 8 ft + 2 mm tall",
+   "why": "touching faces would be coplanar, which qa_check reports; 2 mm is inside the 0.1 % tolerance of the 8 ft height, and walls-on-pad has its own 0.01 ft tol with a why",
+   "approved": true,
+   "stage": null,
+   "effect": "none visible: the 2 mm is hidden inside the part below",
+   "check": "footprint"
+  },
+  {
+   "n": 3,
+   "kind": "simplified",
+   "what": "Framing is bare studs: no bottom or top plates, headers, king, jack or cripple studs; studs that would stand in an opening are left out",
+   "why": "the brief asks for studs at 16 in. on center for a later cutaway; plates and headers were not asked for and roughly double the parts",
+   "approved": false,
+   "stage": "detail",
+   "effect": "a cutaway would show studs standing on the pad with nothing above the openings",
+   "check": "studs"
+  },
+  {
+   "n": 4,
+   "kind": "simplified",
+   "what": "Windows are a square frame with a meeting rail and two panes (no sash profiles, sill, locks or screens); the door is a flat slab with a round knob (no panels, hinges or threshold)",
+   "why": "the brief names the parts but no window or door style; the hero is a whole-shed view",
+   "approved": false,
+   "stage": null,
+   "effect": "reads as simple at a distance; looks plain closer than about 2 m",
+   "check": "window-detail"
+  },
+  {
+   "n": 5,
+   "kind": "simplified",
+   "what": "Shingles and lap siding are image textures with bump on flat surfaces: no shingle tabs or lap boards as geometry, no ridge cap, drip edge, fascia or soffit; the textures map in object space in the shader, so the UV maps do not carry them",
+   "why": "the hero is a whole-shed view where 1/2 in. of relief does not show; a roofing-grade roof is the roof-blender job, not this pilot",
+   "approved": false,
+   "stage": "render",
+   "effect": "flat closer than about 2 m; an export to glTF or FBX would lose the siding and shingle pattern"
+  },
+  {
+   "n": 6,
+   "kind": "unverified",
+   "what": "Only the builder has looked: every look gate is my reading of Workbench review sheets and the Cycles render; nothing was opened in Blender's UI, rendered on a GPU, or judged by the user",
+   "why": "cloud sub-agent session: pip bpy on the CPU, no user to ask",
+   "approved": true,
+   "stage": null,
+   "effect": "colours, the sage tone and the overall look are unconfirmed; the GPU timing is unknown"
+  }
+ ],
+ "closed": {
+  "time": 1795318084.9788036,
+  "done": true,
+  "blockers": []
+ }
+}

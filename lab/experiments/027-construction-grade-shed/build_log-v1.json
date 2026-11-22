@@ -1,0 +1,1199 @@
+{
+ "name": "Garden shed (027, construction grade)",
+ "started": 1795322437.524457,
+ "date": "2026-11-22T04:40:37",
+ "session": "cloud",
+ "accept": "/home/user/blender-skills/lab/experiments/027-construction-grade-shed/acceptance.json",
+ "sha": "66bca7cc12ae",
+ "checks": 120,
+ "assumed": [
+  "pad: not in the brief: 4 in. slab, 2 in. past the framing (the pilot's values)",
+  "window-heads: not in the brief: heads line up with the door slab top (4 + 44 + 36 in.)",
+  "window-1-at: left wall; positions not in the brief: 4 and 8 ft (the pilot's)",
+  "window-2-at: left wall; positions not in the brief: 4 and 8 ft (the pilot's)",
+  "window-3-at: right wall; positions not in the brief: 4 and 8 ft (the pilot's)",
+  "window-4-at: right wall; positions not in the brief: 4 and 8 ft (the pilot's)",
+  "door-material: door colour not in the brief: white like the trim"
+ ],
+ "stages": [
+  {
+   "name": "framing",
+   "start": 1795322453.431596,
+   "end": 1795322463.860624,
+   "seconds": 10.4
+  },
+  {
+   "name": "sheathing",
+   "start": 1795322463.8606377,
+   "end": 1795322465.2451465,
+   "seconds": 1.4
+  },
+  {
+   "name": "roofing",
+   "start": 1795322465.2451568,
+   "end": 1795322509.5311134,
+   "seconds": 44.3
+  },
+  {
+   "name": "siding",
+   "start": 1795322509.5311325,
+   "end": 1795322510.9965258,
+   "seconds": 1.5
+  },
+  {
+   "name": "trim",
+   "start": 1795322510.9965358,
+   "end": 1795322512.4209738,
+   "seconds": 1.4
+  },
+  {
+   "name": "windows",
+   "start": 1795322512.4209833,
+   "end": 1795322513.931527,
+   "seconds": 1.5
+  },
+  {
+   "name": "doors",
+   "start": 1795322513.931537,
+   "end": 1795322525.2875836,
+   "seconds": 11.4
+  },
+  {
+   "name": "qa",
+   "start": 1795322525.2875938,
+   "end": 1795322542.358699,
+   "seconds": 17.1
+  },
+  {
+   "name": "look",
+   "start": 1795322542.3587096,
+   "end": 1795322567.575179,
+   "seconds": 25.2
+  },
+  {
+   "name": "fix-startup-objects",
+   "start": 1795322567.5751884,
+   "end": 1795322584.8110783,
+   "seconds": 17.2
+  },
+  {
+   "name": "light-camera",
+   "start": 1795322584.8110895,
+   "end": 1795322608.514305,
+   "seconds": 23.7
+  },
+  {
+   "name": "render",
+   "start": 1795322608.5143158,
+   "end": 1795322762.3952317,
+   "seconds": 153.9
+  },
+  {
+   "name": "pitch-photo",
+   "start": 1795322762.395249,
+   "end": 1795323073.7518392,
+   "seconds": 311.4
+  },
+  {
+   "name": "redo-pad",
+   "start": 1795323621.854464,
+   "end": 1795323622.656482,
+   "seconds": 0.8
+  },
+  {
+   "name": "redo-roofing",
+   "start": 1795323622.6565118,
+   "end": 1795323623.5766907,
+   "seconds": 0.9
+  },
+  {
+   "name": "redo-siding",
+   "start": 1795323623.5767024,
+   "end": 1795323624.4709735,
+   "seconds": 0.9
+  },
+  {
+   "name": "redo-trim",
+   "start": 1795323624.4709842,
+   "end": 1795323625.4354622,
+   "seconds": 1.0
+  },
+  {
+   "name": "redo-doors",
+   "start": 1795323625.435478,
+   "end": 1795323626.2010765,
+   "seconds": 0.8
+  },
+  {
+   "name": "qa-2",
+   "start": 1795323626.2010896,
+   "end": 1795323636.280282,
+   "seconds": 10.1
+  },
+  {
+   "name": "render-2",
+   "start": 1795323636.280291
+  }
+ ],
+ "gates": [
+  {
+   "name": "acceptance",
+   "stage": "framing",
+   "time": 1795322454.8389127,
+   "pass": true,
+   "spec_sha": "66bca7cc12ae",
+   "partial": true,
+   "failed": [],
+   "assumed": [
+    "pad: not in the brief: 4 in. slab, 2 in. past the framing (the pilot's values)"
+   ],
+   "checked": 63,
+   "passed": 63,
+   "blender": "5.2.4 LTS",
+   "seconds": 0.02,
+   "warnings": 0,
+   "warning_texts": [],
+   "note": "framing and pad checks only"
+  },
+  {
+   "name": "acceptance",
+   "stage": "sheathing",
+   "time": 1795322465.2116094,
+   "pass": false,
+   "spec_sha": "66bca7cc12ae",
+   "partial": false,
+   "failed": [
+    "n-starter-front",
+    "n-siding-front",
+    "n-siding-front-courses",
+    "n-starter-back",
+    "n-siding-back",
+    "n-siding-back-courses",
+    "n-starter-left",
+    "n-siding-left",
+    "n-siding-left-courses",
+    "n-starter-right",
+    "n-siding-right",
+    "n-siding-right-courses",
+    "n-trim-corner",
+    "n-trim-fascia",
+    "n-trim-rake",
+    "n-trim-soffit",
+    "n-window-1",
+    "n-window-frame-head",
+    "n-window-2",
+    "n-window-3",
+    "n-window-4",
+    "n-door",
+    "tris-window-1",
+    "tris-window-2",
+    "tris-window-3",
+    "tris-window-4",
+    "tris-door",
+    "pitch-deck",
+    "roof-layers",
+    "covering-faces",
+    "nails",
+    "door",
+    "door-center",
+    "window-heads",
+    "window-1-size",
+    "window-1-at",
+    "window-2-size",
+    "window-2-at",
+    "window-3-size",
+    "window-3-at",
+    "window-4-size",
+    "window-4-at",
+    "siding",
+    "trim",
+    "shingles",
+    "glass",
+    "door-material",
+    "hero"
+   ],
+   "assumed": [
+    "pad: not in the brief: 4 in. slab, 2 in. past the framing (the pilot's values)",
+    "window-heads: not in the brief: heads line up with the door slab top (4 + 44 + 36 in.)",
+    "window-1-at: left wall; positions not in the brief: 4 and 8 ft (the pilot's)",
+    "window-2-at: left wall; positions not in the brief: 4 and 8 ft (the pilot's)",
+    "window-3-at: right wall; positions not in the brief: 4 and 8 ft (the pilot's)",
+    "window-4-at: right wall; positions not in the brief: 4 and 8 ft (the pilot's)",
+    "door-material: door colour not in the brief: white like the trim"
+   ],
+   "checked": 120,
+   "passed": 72,
+   "blender": "5.2.4 LTS",
+   "seconds": 0.04,
+   "warnings": 0,
+   "warning_texts": [],
+   "fails": [
+    {
+     "id": "n-starter-front",
+     "expect": 2,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-siding-front",
+     "expect": 32,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-siding-front-courses",
+     "expect": 18,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-starter-back",
+     "expect": 1,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-siding-back",
+     "expect": 18,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-siding-back-courses",
+     "expect": 18,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-starter-left",
+     "expect": 1,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-siding-left",
+     "expect": 32,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-siding-left-courses",
+     "expect": 14,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-starter-right",
+     "expect": 1,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-siding-right",
+     "expect": 32,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-siding-right-courses",
+     "expect": 14,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-trim-corner",
+     "expect": 8,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-trim-fascia",
+     "expect": 2,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-trim-rake",
+     "expect": 4,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-trim-soffit",
+     "expect": 6,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-window-1",
+     "expect": 19,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-window-frame-head",
+     "expect": 4,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-window-2",
+     "expect": 19,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-window-3",
+     "expect": 19,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-window-4",
+     "expect": 19,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-door",
+     "expect": 29,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "tris-window-1",
+     "expect": null,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "tris-window-2",
+     "expect": null,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "tris-window-3",
+     "expect": null,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "tris-window-4",
+     "expect": null,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "tris-door",
+     "expect": null,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "pitch-deck",
+     "expect": "6/12",
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "roof-layers",
+     "expect": 7,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "covering-faces",
+     "expect": 110,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "nails",
+     "expect": 3840,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "door",
+     "expect": [
+      1.75,
+      36,
+      80
+     ],
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "door-center",
+     "expect": null,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "window-heads",
+     "expect": 84,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "window-1-size",
+     "expect": [
+      3.9375,
+      24,
+      36
+     ],
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "window-1-at",
+     "expect": null,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "window-2-size",
+     "expect": [
+      3.9375,
+      24,
+      36
+     ],
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "window-2-at",
+     "expect": null,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "window-3-size",
+     "expect": [
+      3.9375,
+      24,
+      36
+     ],
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "window-3-at",
+     "expect": null,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "window-4-size",
+     "expect": [
+      3.9375,
+      24,
+      36
+     ],
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "window-4-at",
+     "expect": null,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "siding",
+     "expect": "M_Siding",
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "trim",
+     "expect": "M_Trim",
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "shingles",
+     "expect": "RT_covering*",
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "glass",
+     "expect": "M_Glass",
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "door-material",
+     "expect": "M_Door",
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "hero",
+     "expect": [
+      1920,
+      1080
+     ],
+     "error": "file missing or empty: /home/user/blender-skills/lab/experiments/027-construction-grade-shed/out/render/hero_0001.png"
+    }
+   ],
+   "note": "sheathing counts"
+  },
+  {
+   "name": "acceptance",
+   "stage": "roofing",
+   "time": 1795322466.7212417,
+   "pass": false,
+   "spec_sha": "66bca7cc12ae",
+   "partial": false,
+   "failed": [
+    "n-starter-front",
+    "n-siding-front",
+    "n-siding-front-courses",
+    "n-starter-back",
+    "n-siding-back",
+    "n-siding-back-courses",
+    "n-starter-left",
+    "n-siding-left",
+    "n-siding-left-courses",
+    "n-starter-right",
+    "n-siding-right",
+    "n-siding-right-courses",
+    "n-trim-corner",
+    "n-trim-fascia",
+    "n-trim-rake",
+    "n-trim-soffit",
+    "n-window-1",
+    "n-window-frame-head",
+    "n-window-2",
+    "n-window-3",
+    "n-window-4",
+    "n-door",
+    "tris-window-1",
+    "tris-window-2",
+    "tris-window-3",
+    "tris-window-4",
+    "tris-door",
+    "nails",
+    "door",
+    "door-center",
+    "window-heads",
+    "window-1-size",
+    "window-1-at",
+    "window-2-size",
+    "window-2-at",
+    "window-3-size",
+    "window-3-at",
+    "window-4-size",
+    "window-4-at",
+    "siding",
+    "trim",
+    "glass",
+    "door-material",
+    "hero"
+   ],
+   "assumed": [
+    "pad: not in the brief: 4 in. slab, 2 in. past the framing (the pilot's values)",
+    "window-heads: not in the brief: heads line up with the door slab top (4 + 44 + 36 in.)",
+    "window-1-at: left wall; positions not in the brief: 4 and 8 ft (the pilot's)",
+    "window-2-at: left wall; positions not in the brief: 4 and 8 ft (the pilot's)",
+    "window-3-at: right wall; positions not in the brief: 4 and 8 ft (the pilot's)",
+    "window-4-at: right wall; positions not in the brief: 4 and 8 ft (the pilot's)",
+    "door-material: door colour not in the brief: white like the trim"
+   ],
+   "checked": 120,
+   "passed": 76,
+   "blender": "5.2.4 LTS",
+   "seconds": 0.04,
+   "warnings": 0,
+   "warning_texts": [],
+   "fails": [
+    {
+     "id": "n-starter-front",
+     "expect": 2,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-siding-front",
+     "expect": 32,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-siding-front-courses",
+     "expect": 18,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-starter-back",
+     "expect": 1,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-siding-back",
+     "expect": 18,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-siding-back-courses",
+     "expect": 18,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-starter-left",
+     "expect": 1,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-siding-left",
+     "expect": 32,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-siding-left-courses",
+     "expect": 14,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-starter-right",
+     "expect": 1,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-siding-right",
+     "expect": 32,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-siding-right-courses",
+     "expect": 14,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-trim-corner",
+     "expect": 8,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-trim-fascia",
+     "expect": 2,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-trim-rake",
+     "expect": 4,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-trim-soffit",
+     "expect": 6,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-window-1",
+     "expect": 19,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-window-frame-head",
+     "expect": 4,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-window-2",
+     "expect": 19,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-window-3",
+     "expect": 19,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-window-4",
+     "expect": 19,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "n-door",
+     "expect": 29,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "tris-window-1",
+     "expect": null,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "tris-window-2",
+     "expect": null,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "tris-window-3",
+     "expect": null,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "tris-window-4",
+     "expect": null,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "tris-door",
+     "expect": null,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "nails",
+     "expect": 3840,
+     "got": 3660
+    },
+    {
+     "id": "door",
+     "expect": [
+      1.75,
+      36,
+      80
+     ],
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "door-center",
+     "expect": null,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "window-heads",
+     "expect": 84,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "window-1-size",
+     "expect": [
+      3.9375,
+      24,
+      36
+     ],
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "window-1-at",
+     "expect": null,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "window-2-size",
+     "expect": [
+      3.9375,
+      24,
+      36
+     ],
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "window-2-at",
+     "expect": null,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "window-3-size",
+     "expect": [
+      3.9375,
+      24,
+      36
+     ],
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "window-3-at",
+     "expect": null,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "window-4-size",
+     "expect": [
+      3.9375,
+      24,
+      36
+     ],
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "window-4-at",
+     "expect": null,
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "siding",
+     "expect": "M_Siding",
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "trim",
+     "expect": "M_Trim",
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "glass",
+     "expect": "M_Glass",
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "door-material",
+     "expect": "M_Door",
+     "error": "matched 0 objects"
+    },
+    {
+     "id": "hero",
+     "expect": [
+      1920,
+      1080
+     ],
+     "error": "file missing or empty: /home/user/blender-skills/lab/experiments/027-construction-grade-shed/out/render/hero_0001.png"
+    }
+   ],
+   "note": "roof checks"
+  },
+  {
+   "name": "acceptance",
+   "stage": "siding",
+   "time": 1795322510.938084,
+   "pass": true,
+   "spec_sha": "66bca7cc12ae",
+   "partial": true,
+   "failed": [],
+   "assumed": [],
+   "checked": 13,
+   "passed": 13,
+   "blender": "5.2.4 LTS",
+   "seconds": 0.0,
+   "warnings": 0,
+   "warning_texts": [],
+   "note": "siding checks"
+  },
+  {
+   "name": "acceptance",
+   "stage": "trim",
+   "time": 1795322512.367216,
+   "pass": true,
+   "spec_sha": "66bca7cc12ae",
+   "partial": true,
+   "failed": [],
+   "assumed": [],
+   "checked": 5,
+   "passed": 5,
+   "blender": "5.2.4 LTS",
+   "seconds": 0.0,
+   "warnings": 0,
+   "warning_texts": [],
+   "note": "trim checks"
+  },
+  {
+   "name": "acceptance",
+   "stage": "windows",
+   "time": 1795322513.8721383,
+   "pass": true,
+   "spec_sha": "66bca7cc12ae",
+   "partial": true,
+   "failed": [],
+   "assumed": [
+    "window-heads: not in the brief: heads line up with the door slab top (4 + 44 + 36 in.)",
+    "window-1-at: left wall; positions not in the brief: 4 and 8 ft (the pilot's)",
+    "window-2-at: left wall; positions not in the brief: 4 and 8 ft (the pilot's)",
+    "window-3-at: right wall; positions not in the brief: 4 and 8 ft (the pilot's)",
+    "window-4-at: right wall; positions not in the brief: 4 and 8 ft (the pilot's)"
+   ],
+   "checked": 20,
+   "passed": 20,
+   "blender": "5.2.4 LTS",
+   "seconds": 0.01,
+   "warnings": 0,
+   "warning_texts": [],
+   "note": "windows checks"
+  },
+  {
+   "name": "acceptance",
+   "stage": "doors",
+   "time": 1795322515.3559258,
+   "pass": true,
+   "spec_sha": "66bca7cc12ae",
+   "partial": true,
+   "failed": [],
+   "assumed": [
+    "door-material: door colour not in the brief: white like the trim"
+   ],
+   "checked": 6,
+   "passed": 6,
+   "blender": "5.2.4 LTS",
+   "seconds": 0.0,
+   "warnings": 0,
+   "warning_texts": [],
+   "note": "doors checks"
+  },
+  {
+   "name": "qa",
+   "stage": "qa",
+   "time": 1795322526.3892767,
+   "pass": true,
+   "complete": true,
+   "tris": 13022,
+   "errors": 0,
+   "warnings": 1,
+   "warning_texts": [
+    "431"
+   ]
+  },
+  {
+   "name": "acceptance",
+   "stage": "qa",
+   "time": 1795322527.1644838,
+   "pass": false,
+   "spec_sha": "66bca7cc12ae",
+   "partial": true,
+   "failed": [
+    "nails"
+   ],
+   "assumed": [
+    "pad: not in the brief: 4 in. slab, 2 in. past the framing (the pilot's values)",
+    "window-heads: not in the brief: heads line up with the door slab top (4 + 44 + 36 in.)",
+    "window-1-at: left wall; positions not in the brief: 4 and 8 ft (the pilot's)",
+    "window-2-at: left wall; positions not in the brief: 4 and 8 ft (the pilot's)",
+    "window-3-at: right wall; positions not in the brief: 4 and 8 ft (the pilot's)",
+    "window-4-at: right wall; positions not in the brief: 4 and 8 ft (the pilot's)",
+    "door-material: door colour not in the brief: white like the trim"
+   ],
+   "checked": 119,
+   "passed": 118,
+   "blender": "5.2.4 LTS",
+   "seconds": 0.08,
+   "warnings": 0,
+   "warning_texts": [],
+   "fails": [
+    {
+     "id": "nails",
+     "expect": 3840,
+     "got": 3660
+    }
+   ],
+   "note": "all checks but the hero image"
+  },
+  {
+   "name": "look",
+   "stage": "look",
+   "time": 1795322567.5323944,
+   "pass": false,
+   "manual": true,
+   "note": "review sheet: the startup Cube stands at the front-left corner; stage 1 ran in pip bpy's default scene (Cube, Camera, Light); acceptance forbid is scoped to Shed_* and QA saw no coplanar faces, so only the look caught it"
+  },
+  {
+   "name": "qa",
+   "stage": "fix-startup-objects",
+   "time": 1795322569.4084096,
+   "pass": true,
+   "complete": true,
+   "tris": 13010,
+   "errors": 0,
+   "warnings": 1,
+   "warning_texts": [
+    "430"
+   ],
+   "note": "after removing the startup objects"
+  },
+  {
+   "name": "look",
+   "stage": "fix-startup-objects",
+   "time": 1795322584.7743015,
+   "pass": true,
+   "manual": true,
+   "note": "review sheet img/review.jpg (Workbench, material + framing): no stray objects; siding courses, corner boards, casings, door panels, window sashes, rake and fascia trim, rafters, ties, gable studs, headers and cripples where the rules put them"
+  },
+  {
+   "name": "render",
+   "stage": "render",
+   "time": 1795322742.6229384,
+   "pass": true,
+   "preset": "final",
+   "samples": 512,
+   "res": [
+    1920,
+    1080
+   ],
+   "device": "CPU",
+   "deliverable": true,
+   "sec_per_image": 125.73,
+   "seconds": 125.74,
+   "files": [
+    "/home/user/blender-skills/lab/experiments/027-construction-grade-shed/out/render/hero_0001.png"
+   ],
+   "files_count": 1,
+   "for_delivery": true
+  },
+  {
+   "name": "look-hero",
+   "stage": "render",
+   "time": 1795322754.189097,
+   "pass": true,
+   "manual": true,
+   "note": "hero at full size: siding courses step and cast shadow lines, corner boards, door panels and knob, two sashes per window, fascia, rake boards, shingle courses; the 1 in. clearance shows the OSB edge above the slab (as built)"
+  },
+  {
+   "name": "acceptance",
+   "stage": "render",
+   "time": 1795322755.06564,
+   "pass": false,
+   "spec_sha": "66bca7cc12ae",
+   "partial": false,
+   "failed": [
+    "nails"
+   ],
+   "assumed": [
+    "pad: not in the brief: 4 in. slab, 2 in. past the framing (the pilot's values)",
+    "window-heads: not in the brief: heads line up with the door slab top (4 + 44 + 36 in.)",
+    "window-1-at: left wall; positions not in the brief: 4 and 8 ft (the pilot's)",
+    "window-2-at: left wall; positions not in the brief: 4 and 8 ft (the pilot's)",
+    "window-3-at: right wall; positions not in the brief: 4 and 8 ft (the pilot's)",
+    "window-4-at: right wall; positions not in the brief: 4 and 8 ft (the pilot's)",
+    "door-material: door colour not in the brief: white like the trim"
+   ],
+   "checked": 120,
+   "passed": 119,
+   "blender": "5.2.4 LTS",
+   "seconds": 0.2,
+   "warnings": 0,
+   "warning_texts": [],
+   "fails": [
+    {
+     "id": "nails",
+     "expect": 3840,
+     "got": 3660
+    }
+   ],
+   "note": "the whole file, hero included"
+  },
+  {
+   "name": "pitch-photo",
+   "stage": "pitch-photo",
+   "time": 1795323062.0817578,
+   "pass": false,
+   "manual": true,
+   "note": "try 1, door slab 36 x 80 in.: 5.68 +/- 0.25, confidence ok, but the overlay shows the door lines on the casing's inner edge and head jamb, not the slab (refinement takes the strongest edge within 18 px): wrong rectangle size, about 5 % low; the tool's own checks cannot see it"
+  },
+  {
+   "name": "pitch-photo",
+   "stage": "pitch-photo",
+   "time": 1795323062.117579,
+   "pass": false,
+   "manual": true,
+   "note": "try 2, door casing outline 44.75 x 84.875 in.: error 'no clear edge near a line' on the casing's right edge (both edges of the 3.5 in. casing inside the search band)"
+  },
+  {
+   "name": "pitch-photo",
+   "stage": "pitch-photo",
+   "time": 1795323062.154943,
+   "pass": true,
+   "manual": true,
+   "note": "try 3, same outline, right-edge clicks 11 px outside the casing: 6.06 +/- 0.25/12 (fit 0.028), confidence ok, rakes 6.06 and 6.05, diagonals 0.01 %; within 2 sigma of the design 6/12; every overlay line on its edge"
+  },
+  {
+   "name": "qa",
+   "stage": "qa-2",
+   "time": 1795323627.392806,
+   "pass": true,
+   "complete": true,
+   "tris": 13400,
+   "errors": 0,
+   "warnings": 1,
+   "warning_texts": [
+    "434"
+   ],
+   "note": "after the review fixes"
+  },
+  {
+   "name": "acceptance",
+   "stage": "qa-2",
+   "time": 1795323628.2525845,
+   "pass": true,
+   "spec_sha": "8980d186c005",
+   "partial": true,
+   "failed": [],
+   "assumed": [
+    "pad: not in the brief: 4 in. slab (the pilot's), flush with the framing (the kit's default since the round-2 review)",
+    "window-heads: not in the brief: heads line up with the door slab top (4 + 44 + 36 in.)",
+    "window-1-at: left wall; positions not in the brief: 4 and 8 ft (the pilot's)",
+    "window-2-at: left wall; positions not in the brief: 4 and 8 ft (the pilot's)",
+    "window-3-at: right wall; positions not in the brief: 4 and 8 ft (the pilot's)",
+    "window-4-at: right wall; positions not in the brief: 4 and 8 ft (the pilot's)",
+    "door-material: door colour not in the brief: white like the trim"
+   ],
+   "checked": 120,
+   "passed": 120,
+   "blender": "5.2.4 LTS",
+   "seconds": 0.09,
+   "warnings": 0,
+   "warning_texts": [],
+   "note": "all checks but the hero, after the review fixes"
+  },
+  {
+   "name": "render",
+   "stage": "render-2",
+   "time": 1795323843.129615,
+   "pass": true,
+   "preset": "final",
+   "samples": 512,
+   "res": [
+    1920,
+    1080
+   ],
+   "device": "CPU",
+   "deliverable": true,
+   "sec_per_image": 152.28,
+   "seconds": 152.3,
+   "files": [
+    "/home/user/blender-skills/lab/experiments/027-construction-grade-shed/out/render/hero_0001.png"
+   ],
+   "files_count": 1,
+   "for_delivery": true,
+   "note": "after the review fixes (v1 log; superseded by the rebuild under the design rules)"
+  }
+ ],
+ "shortcuts": [
+  {
+   "n": 1,
+   "kind": "unverified",
+   "what": "Built and checked on the CPU only (cloud, pip bpy 5.2.4); every look gate is the builder's reading of review sheets and the Cycles render; nothing opened in Blender's UI or on a GPU",
+   "why": "cloud sub-agent session; the user said CPU is fine for now (024, decision 6), not recorded as an approval here",
+   "approved": true,
+   "stage": null,
+   "effect": "the look and the GPU timing are unconfirmed",
+   "rejected": false
+  },
+  {
+   "n": 2,
+   "kind": "assumed",
+   "what": "Pad 4 in. thick, 2 in. past the framing on each side",
+   "why": "not in the brief; the pilot's values",
+   "approved": false,
+   "stage": null,
+   "effect": "pad edge shows 2 in. past the walls",
+   "check": "pad"
+  },
+  {
+   "n": 3,
+   "kind": "assumed",
+   "what": "Eave and rake overhangs 6 in., to the fascia and rake-board faces",
+   "why": "not in the brief and not in the design rules; the pilot's value",
+   "approved": false,
+   "stage": null,
+   "effect": "roof area 1.60 squares, the eave height and the look of the eaves follow from it",
+   "check": "roof-area"
+  },
+  {
+   "n": 4,
+   "kind": "assumed",
+   "what": "Windows centred 4 ft and 8 ft from the front on each long wall, heads 80 in. above the slab (level with the door slab top)",
+   "why": "the brief gives the count and size, not the positions",
+   "approved": false,
+   "stage": null,
+   "check": "window-heads"
+  },
+  {
+   "n": 5,
+   "kind": "assumed",
+   "what": "Door: 6-panel slab, white like the trim, inswing, hinges on the left seen from outside, knob 36 in. up; siding colour #9CAF88 for sage green",
+   "why": "the brief names a door and sage green, not the style, colour, handing or shade",
+   "approved": false,
+   "stage": null,
+   "check": "door-material"
+  },
+  {
+   "n": 6,
+   "kind": "assumed",
+   "what": "Rafter span checked for Spruce-pine-fir No. 2 (2x6 at 24 in., 70 psf column: 6 ft 11 in. allowed, 5 ft needed)",
+   "why": "no species given; Southern pine No. 2 (6 ft 5 in.) and Douglas fir-larch No. 2 (7 ft 0 in.) pass as well",
+   "approved": false,
+   "stage": null
+  },
+  {
+   "n": 7,
+   "kind": "omitted",
+   "what": "Not modelled: house wrap (WRB) and flashing tape; nails and screws in walls and trim; rake lookouts and frieze blocks (hidden behind the soffits); window sash locks and screens",
+   "why": "beyond the kit this round; listed in references/construction-detail.md for the user to decide",
+   "approved": false,
+   "stage": null,
+   "effect": "a cutaway shows sheathing straight under the siding and open bays above the soffits; windows have no hardware",
+   "resolved": "built in full in the rebuild (build_log.json): house wrap and flashing tape, rake lookouts and frieze blocks, sash locks and screens, wall, sheathing, siding, trim and roof framing nails"
+  },
+  {
+   "n": 8,
+   "kind": "brief-change",
+   "what": "Round-2 review fixes: the slab is flush with the framing (pad margin 0, the kit's new default) and the first siding course, starter and trim lap 1 in. below the bottom plate; roof_core places nails 4 cm inside each plane's outer edge only (384 now, the rule's count) and keeps clip corners once. acceptance.json regenerated: pad 120 x 144 x 4 in., a siding-lap check, 34 siding pieces on each long wall (was 32)",
+   "why": "coordinator's review fixes, 2026-11-22; the user is being asked about the layout rules. Shortcut 2's '2 in. past the framing' no longer describes this build: left for the coordinator, not edited here",
+   "approved": false,
+   "stage": null,
+   "check": "pad"
+  }
+ ],
+ "closed": {
+  "time": 1795323073.791272,
+  "done": false,
+  "blockers": [
+   "check 'nails' fails (expected 3840, got 3660): fix it, or log a shortcut with --check nails and get the user's yes",
+   "shortcut 7 is omitted (Not modelled: house wrap (WRB) and flashing tape; nails and screws in walls and trim; rake lookouts and frieze blocks (hidden behind the soffits); window sash locks and screens): a simpler part needs the user's yes (approve 7), or build it in full and resolve 7"
+  ]
+ }
+}

@@ -1,0 +1,34 @@
+{
+ "ok": true,
+ "method": "photo",
+ "source": "gable_0001.png, gable wall between the corner boards' inner edges (116.105 in.: 120 + 2 x (7/16 sheathing + 0.115 wrap + 1 in. trim) - 2 x 3.5 in.) by the siding butt lines 31 and 80 in. above grade (7 courses x 7 in.) 116.105in x 49in",
+ "slope": 0.50021,
+ "rise_per_12": 6.0,
+ "sigma_per_12": 0.25,
+ "degrees": 26.57,
+ "sigma_degrees": 0.95,
+ "nearest_whole": "6/12",
+ "whole_within_2_sigma": true,
+ "label": "6/12 (measured 6.00 \u00b1 0.25)",
+ "confidence": "ok",
+ "checks": {
+  "rakes_rise_per_12": [
+   6.0,
+   6.0
+  ],
+  "rake_spread_per_12": 0.0,
+  "diagonals_disagree_pct": 0.08,
+  "line_rms_px": 0.09,
+  "lines": 10,
+  "fewest_edge_points": 26,
+  "rect_second_edge": 1.27,
+  "alternatives": {
+   "bottom": 5.95,
+   "top": 6.07
+  }
+ },
+ "notes": [
+  "open out/gable-overlay.png: is each line on its edge? (green wall, red rake, yellow competing edge)",
+  "sigma raised to the 0.25/12 photo floor (fit 0.025)"
+ ]
+}
