@@ -33,11 +33,13 @@ Tests: `npm test` (build player, plan files, supplier parser, SSRF guard, store 
 
 ## What the user can do
 
-- **Materials tab, Stores** (default): the Sioux Falls store catalog (Menards #3064, Home Depot #4301; `viewer/catalog/suppliers/sioux-falls.json`).
-  - "On the roof" picks which store's products are drawn: covering, cap color, drip edge color, underlayment and ice & water type. Exploded-view labels name each product.
-  - "Choosing for" picks the slot (shingles / panels, hip & ridge cap, starter, underlayment, ice & water, drip edge, ridge vent, valley). Filters: store, type, brand, priced only, in stock at Home Depot, search.
-  - Rows show a color chip from the sampled palette (hatched when not sampled), price with unit, coverage and stock. Tap a row to choose it for its store; the chosen row lists its colors.
-  - No store image is loaded, only CSS chips, so it works offline and in an artifact. A new job starts with a suggested basket per store, tagged "suggested".
+- **Materials tab** (default): a drill-down browser, suppliers > projects > material types > products (`viewer/js/materials-taxonomy.js`).
+  - Suppliers: Menards #3064, Home Depot #4301, All suppliers (both side by side), Studio samples (built-in looks and photos). Catalog: `viewer/catalog/suppliers/sioux-falls.json`, plus `suppliers/solar.json` for solar.
+  - Projects: Roof, Roof accessories, Underlayment, Gutters, Solar. Each material type says which line of the List it fills, or that it is listed for reference only.
+  - A product list has search, Filters and Sort (recommended, price, unit price, name, brand, in stock). "On your list" shows the chosen product per store. "On roof" in the header picks which store's products are drawn.
+  - Rows show a color chip from the sampled palette (hatched when not sampled), price with unit, coverage and stock. Tap a row to choose it for its store; the chosen row lists its colors. Back, Escape or Alt+Left goes up a level.
+  - No store image is loaded, only CSS chips, so it works offline and in an artifact. A new job starts with a suggested basket per store, tagged "suggested". The List tab's product names and "Change product" jump to the right list.
+- **Solar** (`viewer/js/solar.js`, data in `viewer/catalog/solar.json`): panel arrays laid on the real roof planes, dragged and grown with a corner handle, with an install timeline (mounts, rails, panels, wiring), monthly generation from a PVGIS table for Sioux Falls by tilt and facing, bill savings, and parts and install prices.
 - **Materials tab, Built-in and photos**: built-in procedural products (architectural laminate in 7 colors, 3-tab, standing seam in 4 colors, clay tile, slate, cedar shake) and imported supplier products. "Fit to roof" adjusts scale, rotation, course-line alignment, relief and tint; photos also get width in inches, brightness, contrast, saturation and seamless blending. Normal and roughness maps are generated from the photo.
 - **Add supplier product:**
   - Paste a supplier product page or pick a file, choose the swatch, name it and confirm rights. It is saved into `viewer/catalog/` and applied.
@@ -65,6 +67,7 @@ Tests: `npm test` (build player, plan files, supplier parser, SSRF guard, store 
   - Path tracing (three-gpu-pathtracer, MIT). It pauses while a layer is part-built or cut away, because it can only draw whole layers.
   - Snapshots at 1080p, 4K, 8K or square, rendered in tiles (no GPU size limit) with layer labels burned in.
   - The view renders only while something changes, and phones start on Standard quality.
+- **Project tab, Projects** (measured jobs): real houses listed in `viewer/houses/index.json`, each with a model, a detail file and a report. That folder is git-ignored (addresses and photos stay out of this public repo); without it the section hides itself.
 - **Project tab, Project file**: job name, New (asks first when there are unsaved changes), Save (`<job>.rooftec.json`: house, sun, layers, store choices, waste, typed amounts, measurements and a price snapshot; no images), Open.
   - When the store data changed since the save, the list keeps the saved prices with "now $X" beside each changed one, and "Use current prices" switches.
 - **Project tab**: house presets (ranch hip + garage gable, two-story gable, cottage hip), pitch 3/12-14/12, load a house model (.glb/.gltf, units selectable), sun by latitude, date, solar time and which way the house faces, export layers as GLB for Blender, and "Blender command" (the `roof-blender.mjs layers` and `material --palette` lines for the product on the roof).
@@ -174,9 +177,13 @@ roof-visualizer/
   viewer/js/supplier-products.js  store product -> studio product (render recipe), layer options (pure)
   viewer/js/quote.js           priced list rules, crew view, CSV (pure)
   viewer/js/project-file.js    project files: build, validate, compare price snapshots (pure)
-  viewer/js/supplier-ui.js     store picker, List tab, full-list dialog, project buttons, Blender command
+  viewer/js/supplier-ui.js     Materials browser, List tab, full-list dialog, project buttons, Blender command
+  viewer/js/materials-taxonomy.js  suppliers, projects, material types, filters and sorts (pure)
+  viewer/js/solar.js           rooftop solar designer: arrays, install timeline, generation and savings
   viewer/js/tap.js             tap a roof plane
   viewer/css/suppliers.css     styles of the store features
   viewer/catalog/              catalog.json + swatches/; suppliers/sioux-falls.json (Menards #3064, Home Depot #4301: products, units, coverage, prices; images stay links)
+  viewer/catalog/solar.json    PVGIS generation table for Sioux Falls (site rounded to 0.01 degree)
+  viewer/houses/               measured real jobs (git-ignored; optional)
   viewer/plans/                build plans
 ```

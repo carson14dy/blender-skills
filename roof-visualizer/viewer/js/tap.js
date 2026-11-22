@@ -18,7 +18,7 @@ export function facingOf(n, facing = 180) {
  * opts: dom (the canvas), stage, camera, scene, layers() -> RoofLayers, facing() -> degrees,
  * covering() -> text, onChange() (open the picker on the covering slot), invalidate().
  */
-export function createTap({ dom, stage, camera, scene, layers, facing, covering, onChange, invalidate }) {
+export function createTap({ dom, stage, camera, scene, layers, facing, covering, onChange, invalidate, ignore = () => false }) {
   const ray = new THREE.Raycaster();
   let down = null, card = null, outline = null, usedLayers = null;
 
@@ -26,6 +26,7 @@ export function createTap({ dom, stage, camera, scene, layers, facing, covering,
   dom.addEventListener('pointerup', (e) => {
     const d = down; down = null;
     if (!d || d.id !== e.pointerId || d.button !== 0) return;
+    if (ignore()) return;   // a press that moved or grew solar panels
     if (Math.hypot(e.clientX - d.x, e.clientY - d.y) >= 6 || performance.now() - d.t >= 400) return;
     tap(e.clientX, e.clientY);
   }, { passive: true });

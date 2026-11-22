@@ -131,10 +131,15 @@ function storeQty(rule, need, product, choice) {
   return r;
 }
 
+/** Shingles, caps and starters are sold by the bundle: their packCount counts shingles, never packages. */
+export function isPerBundle(product) {
+  return product.category === 'shingle' || ['shingleCap', 'starter'].includes(product.kind) || (product.price?.per || 'each') === 'bundle';
+}
+
 function storeQtyRaw(rule, need, product, choice) {
   const per = product.price?.per || 'each';
   // on shingles, caps and starters packCount counts shingles per bundle, not packages: never a pack
-  const perBundle = product.category === 'shingle' || ['shingleCap', 'starter'].includes(product.kind) || per === 'bundle';
+  const perBundle = isPerBundle(product);
   const pack = product.packCount > 1 && !perBundle ? product.packCount : null;
   const typed = Number(choice.typedCoverage) > 0 ? Number(choice.typedCoverage) : null;
   if (rule.kind === 'covering' && per === '100 sq ft') {

@@ -4,6 +4,35 @@ Newest first. One entry per session: date, cloud or local, what changed, results
 
 ---
 
+## 2026-11-22 · cloud (10)
+
+**Changed**
+- **Pulled the Roof Layer Studio page** (republished from other sessions) into `roof-visualizer/viewer/` with a three-way merge against our last publish. No conflicts.
+  - New from the page: the Materials tab is a drill-down browser (suppliers > projects > material types > products; `materials-taxonomy.js`), a rooftop **solar designer** (`solar.js`, `catalog/solar.json`, `catalog/suppliers/solar.json`: 20 products) and a **Projects** section for measured real houses.
+  - Kept ours: 019/020 (`profiles.js`, `roof-geometry.js`, `layers.js`, `textures.js`, `supplier-products.js`), which the page did not have.
+- **Held back:** the page's `houses/` folder (two real Sioux Falls jobs with addresses, photos and reports, 4-5 MB models). Now git-ignored; the studio hides Projects without it.
+- `catalog/solar.json`: its PVGIS site point was one house's exact latitude; rounded to 43.53 (the data grid is 4 km, so the table is unchanged).
+- Small fixes: the Materials title wraps instead of cutting to "Architectural ..."; `roofStudio.openPicker(slot)` for tests.
+- `lab/tools/supplier-shots.mjs`: walks the new browser (every supplier, project and type); ignores only the optional `houses/index.json` 404.
+- Docs: `roof-visualizer/SKILL.md` (browser, solar, Projects, files); `LOCAL-SESSION.md` step 6 picker directions.
+
+**Results**
+- `npm test`: 87 pass, 0 fail.
+- `supplier-shots.mjs --checks` at 1440 and 390 px: 12 of 12 PASS.
+  - Ranch numbers unchanged: Menards $6,746.27, Home Depot $6,533.59, lowest $6,431.38, 98 bundles, ridge vent 46.75 ft.
+  - Walked 72 product lists (1,394 rows): 0 store-image requests, 0 img elements.
+  - Crew view, Save/Open round trip, changed-price notice, tap vs drag, Pro-Rib 9.00 in. and Pro-Snap 16.00 in.: all pass. Console: 0 errors.
+- 019/020 still work through the new browser: Pro-Rib draws 37,953 covering vertices (real ribs); with the Style-D drip edge, Blender command = `layers --category metal --panel proRib --edge "2.375,1.6875,0.5,0.25,0"`.
+
+**Next**
+- Republish the studio page with 019/020 merged in, so the page and the repo match again.
+- Decide whether the two measured houses may go into this public repo (default: no).
+
+**Needs local**
+- Step 6 of `LOCAL-SESSION.md`, with the new picker directions.
+
+---
+
 ## 2026-11-16 · cloud (9)
 
 **Changed**

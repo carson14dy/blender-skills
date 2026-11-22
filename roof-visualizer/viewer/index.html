@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
 <title>Roof Layer Studio</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -165,17 +166,60 @@ dialog::backdrop { background: rgba(8, 12, 18, 0.55); }
 .dlg .actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 .snap-img { width: 100%; border-radius: 8px; border: 1px solid var(--line); background: var(--panel-2); }
 
+.measured-card { border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: var(--panel-2); display: grid; gap: 8px; }
+.measured-card .mc-head { display: grid; gap: 2px; }
+.measured-card .mc-head b { font: 600 14.5px/1.25 var(--font-ui); }
+.measured-card a.btn { text-decoration: none; display: inline-flex; align-items: center; }
+.measured-card.active { border-color: var(--accent, #3b82f6); }
+.mc-thumb { position: relative; display: block; width: 100%; padding: 0; border: 0; border-radius: 6px; overflow: hidden; cursor: pointer;
+  aspect-ratio: 4 / 3; max-height: 170px; background: #f2f2f0; }
+.mc-thumb img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.mc-thumb:focus-visible { outline: 2px solid var(--accent, #3b82f6); outline-offset: 2px; }
 .toast { position: absolute; left: 50%; bottom: calc(80px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 9px 14px; border-radius: 8px; font: 500 13.5px/1.3 var(--font-ui); z-index: 9; max-width: calc(100% - 32px); }
 .progress { position: absolute; inset: auto 0 0 0; height: 3px; background: var(--accent); transform-origin: left; z-index: 5; }
 .loading { position: absolute; inset: 0; display: grid; place-items: center; z-index: 8; background: var(--bg); font: 600 15px/1.4 var(--font-ui); color: var(--fg-dim); text-align: center; padding: 0 16px; }
 
+.sheet-handle { display: none; }
 @media (max-width: 860px) {
-  #app { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
-  .panel { border-left: 0; border-top: 1px solid var(--line); max-height: 46vh; }
+  /* the 3D view stays full-screen and never resizes; the panel is a drawer that slides over it */
+  #app { grid-template-columns: 1fr; grid-template-rows: 1fr; }
+  /* the drawer's height is what you drag: anywhere from hidden to just under the top of the screen; its list
+     scrolls inside whatever height it has */
+  .panel { position: absolute; left: 0; right: 0; bottom: 0; height: var(--sheet-vis, 46vh); max-height: calc(100% - 50px);
+    border-left: 0; border-top: 1px solid var(--line); overflow: visible; }
+  .panel.dragging { transition: none; }
+  .panel:not(.dragging) { transition: height 0.22s ease; }
+  .panel > .tabs, .panel > .tabpanes { overflow-x: hidden; }
+  .panel.collapsed { border-top-color: transparent; }
+  .panel.collapsed .tabs, .panel.collapsed .tabpanes { visibility: hidden; }
+  /* grip that sticks up from the panel's top-right corner: hold and drag down to hide, up to show, or tap */
+  .sheet-handle {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    position: absolute; right: 12px; top: -38px; height: 38px; min-width: 64px; padding: 0 12px;
+    border: 1px solid var(--line); border-bottom: 0; border-radius: 12px 12px 0 0;
+    background: var(--panel); color: var(--fg-dim); box-shadow: 0 -4px 14px rgba(20, 30, 45, 0.12);
+    touch-action: none; cursor: grab; z-index: 6; font: 600 12px/1 var(--font-ui);
+  }
+  .sheet-handle:active { cursor: grabbing; }
+  .sheet-handle .grip { width: 22px; height: 4px; border-radius: 2px; background: currentColor; opacity: 0.6; }
+  .sheet-handle svg { width: 16px; height: 16px; transition: transform 0.2s; }
+  .panel.collapsed .sheet-handle svg { transform: rotate(180deg); }
+  .sheet-handle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  /* compact labels pinned to the top-left corner */
+  .topbar { top: 8px; left: 8px; right: auto; flex-direction: column; align-items: flex-start; gap: 4px; }
+  .brand { font-size: 10.5px; padding: 3px 6px; gap: 5px; border-radius: 5px; box-shadow: 0 3px 10px rgba(20, 30, 45, 0.14); }
+  .brand .mark { width: 11px; height: 8px; }
+  .chip { font-size: 9.5px; padding: 3px 6px; gap: 5px; border-radius: 5px; max-width: 56vw; box-shadow: 0 3px 10px rgba(20, 30, 45, 0.14); }
+  .chip #chipName { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chip .sw { width: 11px; height: 11px; }
   .tabs { padding-top: 0; }
-  .toolbar { bottom: 12px; }
+  .toolbar { bottom: calc(var(--sheet-vis, 46vh) + 8px); padding: 3px; gap: 2px; border-radius: 10px; }
+  #app:not(.sheet-dragging) .toolbar { transition: bottom 0.22s ease, opacity 0.15s; }
+  #app.sheet-high .toolbar { opacity: 0; pointer-events: none; }   /* drawer nearly full-screen: no room above it */
+  .tb { padding: 6px 9px; border-radius: 7px; font-size: 12px; gap: 5px; }
+  .tb svg { width: 15px; height: 15px; }
   .grid { grid-template-columns: repeat(4, 1fr); }
-  .caption { top: calc(108px + env(safe-area-inset-top, 0px)); }
+  .caption { top: 72px; }
 }
 @media (max-width: 480px) {
   .grid { grid-template-columns: repeat(3, 1fr); }
@@ -228,7 +272,11 @@ dialog::backdrop { background: rgba(8, 12, 18, 0.55); }
     <div class="loading" id="loading">Building the roof model…</div>
   </main>
 
-  <aside class="panel" aria-label="Controls">
+  <aside class="panel" id="panel" aria-label="Controls">
+    <button class="sheet-handle" id="sheetHandle" type="button" aria-expanded="true" aria-controls="panel" aria-label="Resize the panel: drag up or down, or tap to hide and show it">
+      <span class="grip" aria-hidden="true"></span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+    </button>
     <div class="tabs" role="tablist">
       <button class="tab" role="tab" aria-selected="true" data-tab="materials">Materials</button>
       <button class="tab" role="tab" aria-selected="false" data-tab="layers">Layers</button>
@@ -241,9 +289,10 @@ dialog::backdrop { background: rgba(8, 12, 18, 0.55); }
       <!-- MATERIALS -->
       <div class="pane" data-pane="materials">
         <div id="storePicker" class="sf"></div>
-        <div class="sec" id="builtinSec">
-          <div class="row"><input id="search" class="grow" type="text" placeholder="Search products or suppliers" aria-label="Search products"></div>
-          <div class="filters" id="filters"></div>
+        <div class="sec" id="builtinSec" hidden>
+          <!-- searched and filtered from the Materials browser (Studio samples) -->
+          <div class="row mat-hide"><input id="search" class="grow" type="text" placeholder="Search products or suppliers" aria-label="Search products" tabindex="-1"></div>
+          <div class="filters mat-hide" id="filters"></div>
           <div class="grid" id="catalog"></div>
           <div class="row">
             <button class="btn primary" id="btnImport">Add supplier product</button>
@@ -252,8 +301,9 @@ dialog::backdrop { background: rgba(8, 12, 18, 0.55); }
           </div>
           <p class="hint">Drop a swatch photo anywhere on the 3D view to try it on the roof.</p>
         </div>
+        <details class="mat-tune" id="tuneWrap">
+        <summary><span>Fit to roof</span><small class="hint">scale, rotation, relief, tint</small></summary>
         <div class="sec" id="tuneSec">
-          <h3>Fit to roof</h3>
           <div class="row"><label for="tuneScale">Scale</label><input class="grow" id="tuneScale" type="range" min="0.4" max="2.5" step="0.01" value="1"><span class="mono" id="tuneScaleV">100%</span></div>
           <div class="row"><label for="tuneRot">Rotation</label><input class="grow" id="tuneRot" type="range" min="-180" max="180" step="1" value="0"><span class="mono" id="tuneRotV">0°</span></div>
           <div class="row"><label for="tuneOffV">Course line</label><input class="grow" id="tuneOffV" type="range" min="0" max="1" step="0.005" value="0"><span class="mono" id="tuneOffVV">0</span></div>
@@ -269,6 +319,7 @@ dialog::backdrop { background: rgba(8, 12, 18, 0.55); }
             <div class="row"><label for="tuneCourses">3D courses</label><input id="tuneCourses" type="checkbox" checked><span class="hint">turn off when the photo's courses do not line up</span></div>
           </div>
         </div>
+        </details>
       </div>
 
       <!-- LAYERS -->
@@ -354,6 +405,11 @@ dialog::backdrop { background: rgba(8, 12, 18, 0.55); }
 
       <!-- PROJECT -->
       <div class="pane" data-pane="project" hidden>
+        <div class="sec" id="measuredSec">
+          <h3>Projects</h3>
+          <div id="measuredList" class="stack"></div>
+          <p class="hint">Roof planes from a fitted 3D model (LiDAR, city GIS, inspection photos). The takeoff uses the report's verified edge lengths.</p>
+        </div>
         <div class="sec sf" id="projectFile"></div>
         <div class="sec">
           <h3>Job</h3>
@@ -412,6 +468,75 @@ dialog::backdrop { background: rgba(8, 12, 18, 0.55); }
   </div>
 </dialog>
 
+<script>
+// Mobile drawer: the 3D view stays full-screen (no resize, no re-render at a new size); the panel
+// covers part of it. Hold the grip at the panel's top-right and drag anywhere from the top of the
+// screen to the bottom; it stays where you let go (snapping shut near the bottom and fully open near
+// the top). A tap hides it, or brings it back to where it was. The toolbar rides on top of the drawer.
+(function () {
+  const app = document.getElementById('app'), panel = document.getElementById('panel'), handle = document.getElementById('sheetHandle');
+  if (!panel || !handle) return;
+  const KEY = 'rls.sheet';
+  const TOP_GAP = 50;            // keeps the grip on screen when the drawer is all the way up
+  const SNAP = 56;               // within this many px of an end, the drawer snaps to that end
+  const mobile = () => window.matchMedia('(max-width: 860px)').matches;
+  const maxVis = () => Math.max(120, app.getBoundingClientRect().height - TOP_GAP);
+  const dflt = () => Math.round(window.innerHeight * 0.46);
+  let vis = dflt(), lastOpen = vis;
+  try {
+    const v = JSON.parse(localStorage.getItem(KEY) || 'null');
+    if (v && v.open === false) { vis = 0; if (v.frac > 0) lastOpen = v.frac * maxVis(); }
+    else if (v && v.frac > 0) vis = lastOpen = v.frac * maxVis();
+  } catch (_) {}
+  function apply(px, save) {
+    vis = Math.max(0, Math.min(maxVis(), px));
+    app.style.setProperty('--sheet-vis', `${Math.round(vis)}px`);
+    const isOpen = vis > 1;
+    panel.classList.toggle('collapsed', !isOpen);
+    app.classList.toggle('sheet-high', vis > maxVis() - 70);
+    handle.setAttribute('aria-expanded', String(isOpen));
+    if (isOpen) lastOpen = vis;
+    if (save) { try { localStorage.setItem(KEY, JSON.stringify({ open: isOpen, frac: +(lastOpen / maxVis()).toFixed(3) })); } catch (_) {} }
+  }
+  const toggle = () => apply(vis > 1 ? 0 : (lastOpen > SNAP ? lastOpen : dflt()), true);
+  if (mobile()) apply(vis, false);
+  let start = null;
+  handle.addEventListener('pointerdown', (e) => {
+    if (!mobile()) return;
+    start = { y: e.clientY, vis, moved: false };
+    handle.setPointerCapture(e.pointerId);
+    panel.classList.add('dragging'); app.classList.add('sheet-dragging');
+    e.preventDefault();
+  });
+  handle.addEventListener('pointermove', (e) => {
+    if (!start) return;
+    const dy = e.clientY - start.y;
+    if (Math.abs(dy) > 6) start.moved = true;
+    apply(start.vis - dy, false);
+  });
+  const end = () => {
+    if (!start) return;
+    panel.classList.remove('dragging'); app.classList.remove('sheet-dragging');
+    if (!start.moved) { start = null; toggle(); return; }
+    start = null;
+    if (vis < SNAP) apply(0, true);
+    else if (vis > maxVis() - SNAP) apply(maxVis(), true);
+    else apply(vis, true);
+  };
+  handle.addEventListener('pointerup', end);
+  handle.addEventListener('pointercancel', end);
+  handle.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+    else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); apply(vis + (e.key === 'ArrowUp' ? 1 : -1) * maxVis() * 0.1, true); }
+  });
+  window.addEventListener('resize', () => {
+    if (mobile()) apply(vis > 1 ? Math.min(vis, maxVis()) : 0, false);
+    else { app.style.removeProperty('--sheet-vis'); panel.classList.remove('collapsed'); }
+  });
+})();
+</script>
 <script type="module" src="js/app.js"></script>
+
+</body></html>
 </body>
 </html>

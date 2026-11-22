@@ -6,6 +6,7 @@
 // No store image is ever requested here: products show color chips drawn with CSS.
 
 import { buildQuote, quoteCSV, crewView, csvFileName, fmtMoney, fmtDate, LINE_LABELS, SLOTS, STORE_IDS, NOT_INCLUDED } from './quote.js';
+import { PROJECTS, SUPPLIERS, STUDIO_TYPES, DEFAULT_TYPE_FOR_SLOT, SORTS, typeOf, findType, findProject, slotOf, solarRole, productsFor, countsFor, unitPrice, colourFamily, defaultFilters, activeCount, applyFilters, facets, sortProducts } from './materials-taxonomy.js';
 import { buildProject, parseProject, jobFromProject, compareSnapshot, snapshotNotice, projectFileName, sameProject } from './project-file.js';
 import { findProduct, suggestedSelections, storeName, defaultColor, colorEntry, shortName, specFor, toStudioProduct, layerOptionFor, edgeProfileFor, SUGGESTED } from './supplier-products.js';
 import { panelName } from './profiles.js';
@@ -17,11 +18,8 @@ const VIEW_SLOTS = new Set(['covering', 'ridgeCap', 'dripEdge', 'underlayment', 
 /** Slots whose colors were sampled from the store images (the others look like their product kind). */
 const SAMPLED = new Set(['covering', 'ridgeCap', 'dripEdge', 'valley', 'ridgeVent']);
 const AREA_SLOTS = new Set(['covering', 'underlayment', 'iceWater']);
-const LEFT_OUT = new Set(['flashingTape', 'closure', 'undercourse']);
 const PAGE = 60;
 const MN = 'menards-3064', HD = 'homedepot-4301';
-const COVER_TYPES = [['all', 'All'], ['shingle', 'Shingle'], ['metal', 'Metal'], ['shake', 'Cedar']];
-const STORE_FILTERS = [['both', 'Both'], [MN, 'Menards'], [HD, 'Home Depot']];
 const DASH = '–';
 
 // ---------------------------------------------------------------------------
@@ -96,7 +94,6 @@ export function createStoreUI(ctx) {
   let catalog = null;
   const studio = new Map(); // productId::color -> studio product (keeps its fit-to-roof view)
   const names = new Map(); // productId -> shortName
-  const pick = { source: 'stores', slot: 'covering', store: 'both', brand: '', type: 'all', priced: true, inStock: false, q: '', limit: PAGE };
   const list = { crew: crewLocked, measured: null, savedHouse: null, notices: [], change: null, loaded: null };
   const roofSwitches = [];
   let baseline = null;
@@ -167,9 +164,17 @@ export function createStoreUI(ctx) {
     sel[sp.store] = next;
     let done = Promise.resolve();
     if (sp.store === job().shownStore) done = applySlots([slot]);
-    else if (VIEW_SLOTS.has(slot)) ctx.toast(`Chosen for ${storeName(sp.store)}. The roof shows ${storeName(job().shownStore)} products: switch "On the roof" to see it.`);
+    else if (VIEW_SLOTS.has(slot)) toastAction(`Chosen for ${storeName(sp.store)}. The roof shows ${storeName(job().shownStore)}.`, `Show ${storeName(sp.store)}`, () => showStore(sp.store));
     changed();
     return done;
+  }
+
+  /** A toast with one action button (the toast hides itself after a few seconds). */
+  function toastAction(msg, label, fn) {
+    ctx.toast(msg);
+    const t = $('toast');
+    if (!t) return;
+    t.append(' ', el('button', { type: 'button', class: 'mat-tact', onclick: () => { t.hidden = true; fn(); } }, label));
   }
 
   function showStore(storeId) {
@@ -189,48 +194,782 @@ export function createStoreUI(ctx) {
   }
 
   // -------------------------------------------------------------------------
-  // store picker (Materials tab)
+  // materials browser (Materials tab): suppliers -> projects -> material types -> products.
+  // Each type implies the list line (slot) its products fill; choosing still goes through choose().
+
+  /** append children, skipping null / false (Element.append would print them as text) */
+  const put = (parent, ...kids) => parent.append(...kids.flat().filter((k) => k != null && k !== false && k !== ''));
+  const nav = { level: 1, supplier: null, project: null, type: null, search: null, q: '', find: '', sort: 'recommended', limit: PAGE,
+    filters: defaultFilters(), memo: new Map(), scroll: [0, 0, 0, 0, 0], opened: [], expanded: null };
+  try { const s = JSON.parse(localStorage.getItem('rls.mat') || '{}'); if (SORTS.some(([id]) => id === s.sort)) nav.sort = s.sort; } catch (_) { /* storage blocked */ }
+  let sheetReturn = null;
+  let searchTimer = 0;
+  const pane = () => document.querySelector('.tabpanes');
+  const supplierName = (id) => SUPPLIERS.find((s) => s.id === id)?.name || '';
+  const searching = () => nav.search != null;
+  const listSupplier = () => (searching() ? 'all' : nav.supplier);
+  const scopeKey = () => `${nav.supplier}|${nav.project}|${nav.type}|${nav.search}`;
+  const curType = () => (nav.type && !searching() && nav.supplier !== 'studio' ? findType(nav.type)?.type || null : null);
+  const allProducts = () => catalog?.products || [];
+
+  const svg = (d, cls = 'mat-ic') => { const s = el('span', { class: cls, 'aria-hidden': 'true' }); s.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`; return s; };
+  const ICONS = {
+    roof: '<path d="M2.5 13 12 5l9.5 8"/><path d="M5 11v8h14v-8"/><path d="M10 19v-4h4v4"/>',
+    sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/>',
+    ridge: '<path d="M3 16 12 8l9 8"/><path d="M8 12.2 12 9l4 3.2"/><path d="M3 16h18"/>',
+    roll: '<rect x="3" y="7" width="10" height="10" rx="5"/><path d="M8 7h10a3 3 0 0 1 0 6h-5"/><circle cx="8" cy="12" r="1.6"/>',
+    gutter: '<path d="M3 7h18"/><path d="M4 7v4a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3V7"/><path d="M15 14v6"/>',
+    all: '<rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/>',
+    search: '<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/>',
+    back: '<path d="M15 5 8 12l7 7"/>',
+    chev: '<path d="m9 5 7 7-7 7"/>',
+    filter: '<path d="M4 6h16"/><path d="M7 12h10"/><path d="M10 18h4"/>',
+    sort: '<path d="M7 4v16"/><path d="m3.5 16.5 3.5 3.5 3.5-3.5"/><path d="M17 20V4"/><path d="m13.5 7.5 3.5-3.5 3.5 3.5"/>',
+    plus: '<path d="M12 5v14M5 12h14"/>',
+  };
+  const shortSort = { recommended: 'Recommended', priceAsc: 'Price ↑', priceDesc: 'Price ↓', unitAsc: 'Unit price ↑', name: 'Name', brand: 'Brand', stock: 'In stock' };
+
+  function sortCtx() {
+    const chosen = new Set(), suggested = new Set();
+    for (const per of Object.values(job()?.selections || {})) for (const c of Object.values(per || {})) if (c?.productId) (c.source === 'suggested' ? suggested : chosen).add(c.productId);
+    return { chosen, suggested, name: short, inStock };
+  }
+  const scope = () => productsFor(allProducts(), { supplier: listSupplier(), project: searching() ? null : nav.project, type: searching() ? null : nav.type });
+  const listItems = () => sortProducts(applyFilters(scope(), nav.filters, nav.q, { inStock }), nav.sort, sortCtx());
+
+  /** Move to another level. Forward moves focus to the new title; back returns focus to the card that was opened. */
+  function go(patch, { back = false } = {}) {
+    const p = pane();
+    nav.scroll[nav.level] = p?.scrollTop || 0;
+    if (nav.level === 4) nav.memo.set(scopeKey(), { q: nav.q, filters: nav.filters });
+    Object.assign(nav, patch);
+    if (nav.level === 1) nav.search = null;
+    if (nav.level === 4) {
+      const m = nav.memo.get(scopeKey());
+      nav.q = m ? m.q : searching() ? nav.search : '';
+      nav.filters = m ? m.filters : defaultFilters();
+      nav.limit = PAGE; nav.expanded = null;
+    }
+    renderNav();
+    if (p) p.scrollTop = back ? nav.scroll[nav.level] : 0;
+    const opener = back && nav.opened[nav.level] && $('matBody').querySelector(`[data-key="${CSS.escape(nav.opened[nav.level])}"]`);
+    (opener || $('matTitle'))?.focus({ preventScroll: true });
+  }
+
+  function forward(key, patch) { nav.opened[nav.level] = key; go(patch); }
+
+  function back() {
+    if (nav.level === 1) return;
+    let level = nav.level - 1;
+    if (searching() || (nav.supplier === 'studio' && level === 2)) level = 1;
+    go({ level }, { back: true });
+  }
 
   function buildPicker() {
     const root = $('storePicker');
     if (!root) return;
     root.innerHTML = '';
-    const src = segmented([['stores', 'Stores'], ['builtin', 'Built-in and photos']], () => pick.source, setSource, 'Products from');
-    src.id = 'sfSource';
-    root.append(el('div', { class: 'sf-line' }, el('span', { class: 'sf-k' }, 'Catalog'), src));
-    if (!catalog) {
-      root.append(el('p', { class: 'hint' }, 'The store catalog did not load, so only the built-in products and photos are offered.'));
-      setSource('builtin');
-      src.hidden = true;
-      return;
-    }
-    root.append(el('div', { class: 'sf-line' }, el('span', { class: 'sf-k' }, 'On the roof'), roofSwitch()));
-    const slotSel = el('select', { id: 'sfSlot', class: 'grow', onchange: (e) => setSlot(e.target.value) });
-    for (const s of SLOTS) slotSel.add(new Option(LINE_LABELS[s], s, false, s === pick.slot));
-    const narrow = window.matchMedia?.('(max-width: 860px)').matches;
-    const typeSeg = segmented(COVER_TYPES, () => pick.type, (v) => { pick.type = v; filtersChanged(); }, 'Type');
-    const storeSeg = segmented(STORE_FILTERS, () => pick.store, (v) => { pick.store = v; filtersChanged(); }, 'Store');
-    storeSeg.id = 'sfStoreSeg'; typeSeg.id = 'sfTypeSeg';
-    const sec = el('div', { id: 'sfStoreSec', class: 'sf-pick' },
-      el('div', { class: 'row' }, el('label', { for: 'sfSlot' }, 'Choosing for'), slotSel),
-      el('details', { class: 'sf-filters', id: 'sfFilters', open: !narrow },
-        el('summary', {}, 'Filters'),
-        el('div', { class: 'sf-fgrid' },
-          el('div', { class: 'sf-line' }, el('span', { class: 'sf-k' }, 'Store'), storeSeg),
-          el('div', { class: 'sf-line', id: 'sfTypeRow' }, el('span', { class: 'sf-k' }, 'Type'), typeSeg),
-          el('div', { class: 'row' }, el('label', { for: 'sfBrand' }, 'Brand'), el('select', { id: 'sfBrand', class: 'grow', onchange: (e) => { pick.brand = e.target.value; pick.limit = PAGE; renderResults(); } })),
-          el('div', { class: 'sf-checks' },
-            el('label', {}, el('input', { type: 'checkbox', id: 'sfPriced', checked: pick.priced, onchange: (e) => { pick.priced = e.target.checked; filtersChanged(); } }), 'Priced only'),
-            el('label', {}, el('input', { type: 'checkbox', id: 'sfStock', checked: pick.inStock, onchange: (e) => { pick.inStock = e.target.checked; filtersChanged(); } }), 'In stock at Home Depot')))),
-      el('div', { class: 'row' }, el('input', { id: 'sfSearch', class: 'grow', type: 'search', placeholder: 'Search store products', 'aria-label': 'Search store products', oninput: (e) => { pick.q = e.target.value; pick.limit = PAGE; renderResults(); } })),
-      el('div', { id: 'sfChosen', class: 'sf-chosen', 'aria-live': 'polite' }),
-      el('p', { class: 'hint', id: 'sfCount' }),
-      el('div', { id: 'sfResults', class: 'sf-results', role: 'list' }),
-      el('button', { type: 'button', class: 'btn', id: 'sfMore', hidden: true, onclick: () => { pick.limit += PAGE; renderResults(); } }, `Show ${PAGE} more`));
-    root.append(sec);
-    filtersChanged();
+    root.classList.add('mat');
+    const roof = roofChip();
+    root.append(
+      el('div', { class: 'mat-head', id: 'matHead' },
+        el('button', { type: 'button', class: 'mat-back', id: 'matBack', onclick: back }, svg(ICONS.back)),
+        el('div', { class: 'mat-titles' }, el('h3', { id: 'matTitle', class: 'mat-title', tabindex: '-1' }), el('nav', { class: 'mat-crumbs', id: 'matCrumbs', 'aria-label': 'Breadcrumb' })),
+        roof,
+        el('div', { class: 'mat-hbar', id: 'matHeadBar' })),
+      el('section', { id: 'matBody', class: 'mat-body', 'aria-labelledby': 'matTitle' }));
+    if (!catalog) roof.hidden = true;
+    root.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' || (e.altKey && e.key === 'ArrowLeft')) {
+        const t = e.target;
+        if (e.key === 'Escape' && t.matches?.('input[type="search"]') && t.value) { t.value = ''; t.dispatchEvent(new Event('input')); return; }
+        if (nav.level > 1) { e.preventDefault(); back(); }
+      }
+    });
+    renderNav();
   }
 
+  function roofChip() {
+    const btn = el('button', { type: 'button', class: 'mat-pill mat-roofb', id: 'matRoof', 'aria-haspopup': 'true', 'aria-expanded': 'false', title: 'Store whose products are drawn on the roof' });
+    const menu = el('div', { class: 'mat-menu', role: 'menu', hidden: true },
+      STORE_IDS.map((s) => el('button', { type: 'button', role: 'menuitemradio', class: 'mat-mi', 'data-v': s, onclick: () => { close(); showStore(s); } }, storeName(s))));
+    const wrap = el('div', { class: 'mat-roof' }, btn, menu);
+    const close = () => { menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
+    btn.onclick = () => { const open = menu.hidden; menu.hidden = !open; btn.setAttribute('aria-expanded', String(open)); if (open) menu.querySelector('[aria-checked="true"]')?.focus(); };
+    document.addEventListener('click', (e) => { if (!wrap.contains(e.target)) close(); });
+    wrap.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !menu.hidden) { e.stopPropagation(); close(); btn.focus(); } });
+    wrap.sync = () => {
+      const s = job()?.shownStore;
+      btn.textContent = '';
+      btn.append(el('span', { class: 'mat-dim' }, 'On roof: '), storeName(s), svg('<path d="m6 9 6 6 6-6"/>', 'mat-ic sm'));
+      menu.querySelectorAll('.mat-mi').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.v === s)));
+    };
+    roofSwitches.push(wrap);
+    wrap.sync();
+    return wrap;
+  }
+
+  function titleText() {
+    if (nav.level === 1) return 'Select a supplier';
+    if (nav.level === 2) return supplierName(nav.supplier);
+    if (nav.supplier === 'studio') return nav.level === 3 ? 'Studio samples' : STUDIO_TYPES.find((t) => t.id === nav.type)?.label || 'Studio samples';
+    if (nav.level === 3) return findProject(nav.project)?.label || '';
+    if (searching()) return `Results for “${nav.search}”`;
+    return curType()?.label || findProject(nav.project)?.allLabel || '';
+  }
+
+  function crumbList() {
+    const c = [['Suppliers', 1]];
+    if (nav.level === 1) return c;
+    if (searching()) return [...c, ['Search', null]];
+    if (nav.supplier === 'studio') { c.push(['Studio samples', 3]); if (nav.level === 4) c.push([titleText(), 4]); return c; }
+    c.push([supplierName(nav.supplier), 2]);
+    if (nav.level >= 3) c.push([findProject(nav.project)?.label, 3]);
+    if (nav.level === 4) c.push([titleText(), 4]);
+    return c;
+  }
+
+  function renderMatHead() {
+    $('matTitle').textContent = titleText();
+    $('matBack').hidden = nav.level === 1;
+    const up = crumbList()[crumbList().length - 2];
+    $('matBack').setAttribute('aria-label', `Back to ${up ? up[0] : 'Suppliers'}`);
+    const nv = $('matCrumbs');
+    nv.innerHTML = '';
+    nv.hidden = nav.level === 1;
+    // the path above this page (the title names the page itself)
+    const ol = el('ol');
+    for (const [label, level] of crumbList().slice(0, -1)) {
+      ol.append(el('li', {}, level == null ? el('span', {}, label)
+        : el('button', { type: 'button', class: 'mat-crumb', onclick: () => go({ level }, { back: true }) }, label)));
+    }
+    nv.append(ol);
+  }
+
+  function renderNav() {
+    const body = $('matBody');
+    if (!body) return;
+    renderMatHead();
+    body.innerHTML = '';
+    body.className = `mat-body l${nav.level}`;
+    $('matHeadBar').innerHTML = '';
+    const studioList = nav.supplier === 'studio' && nav.level === 4;
+    if ($('builtinSec')) $('builtinSec').hidden = !studioList;
+    if (nav.level === 1) renderSuppliers(body);
+    else if (nav.level === 2) renderProjects(body);
+    else if (nav.level === 3) renderTypes(body);
+    else if (nav.supplier === 'studio') renderStudioList(body);
+    else renderProducts(body);
+  }
+
+  // ---- level 1: suppliers ----------------------------------------------------
+
+  function searchBox(id, value, placeholder, oninput) {
+    return el('div', { class: 'mat-searchwrap' }, svg(ICONS.search),
+      el('input', { id, type: 'search', class: 'mat-search', placeholder, 'aria-label': placeholder, value, autocomplete: 'off', oninput }));
+  }
+
+  function renderSuppliers(body) {
+    put(body, 
+      searchBox('matFind', nav.find, 'Search suppliers or products', (e) => { nav.find = e.target.value; renderSupplierGrid(); }),
+      el('ul', { id: 'matGrid', class: 'mat-grid', role: 'list' }),
+      el('div', { id: 'matFindAll' }),
+      catalog ? null : el('p', { class: 'hint' }, 'The store catalog did not load, so only the studio samples and your photos are offered.'),
+      el('div', { class: 'mat-add' },
+        el('p', { class: 'mat-addt' }, svg(ICONS.plus), 'Add your own product or photo'),
+        el('div', { class: 'row' },
+          el('button', { type: 'button', class: 'btn', id: 'matImport', onclick: () => $('btnImport')?.click() }, 'Add supplier product'),
+          el('button', { type: 'button', class: 'btn', id: 'matUpload', onclick: () => $('fileSwatch')?.click() }, 'Upload photo')),
+        el('p', { class: 'hint' }, 'Or drop a swatch photo anywhere on the 3D view to try it on the roof.')));
+    renderSupplierGrid();
+  }
+
+  function supplierSub(s) {
+    if (s.id === 'studio') return `${ctx.builtinCount?.('all') ?? ''} looks`;
+    const n = productsFor(allProducts(), { supplier: s.id }).length;
+    return `${s.sub} · ${n} products`;
+  }
+
+  function renderSupplierGrid() {
+    const grid = $('matGrid');
+    if (!grid) return;
+    const q = nav.find.trim().toLowerCase();
+    grid.innerHTML = '';
+    for (const s of SUPPLIERS) {
+      if (!catalog && s.id !== 'studio') continue;
+      if (q && !`${s.name} ${s.sub}`.toLowerCase().includes(q)) continue;
+      const mono = s.mono ? el('span', { class: 'mat-mono', style: `background:${s.tone}` }, s.mono) : el('span', { class: `mat-mono g-${s.glyph}` }, svg(ICONS[s.glyph]));
+      grid.append(el('li', {}, el('button', { type: 'button', class: `mat-card sup${nav.supplier === s.id ? ' cur' : ''}`, 'data-key': s.id,
+        onclick: () => forward(s.id, s.id === 'studio' ? { level: 3, supplier: 'studio', project: null, type: null } : { level: 2, supplier: s.id, project: null, type: null }) },
+      mono, el('span', { class: 'mat-ct' }, el('b', {}, s.name), el('small', {}, supplierSub(s))))));
+    }
+    const all = $('matFindAll');
+    all.innerHTML = '';
+    if (catalog && q.length >= 2) {
+      const n = applyFilters(allProducts(), defaultFilters(), q).length;
+      all.append(el('button', { type: 'button', class: 'mat-findall', 'data-key': 'search', disabled: n === 0,
+        onclick: () => forward('search', { level: 4, supplier: 'all', project: null, type: null, search: nav.find.trim() }) },
+      svg(ICONS.search), el('span', {}, `Search all products for “${nav.find.trim()}”`), el('small', {}, n ? `${n} match${n === 1 ? '' : 'es'}` : 'no matches')));
+    }
+    if (!grid.children.length && !all.children.length) grid.append(el('li', { class: 'hint' }, 'No supplier matches.'));
+  }
+
+  // ---- level 2: projects -----------------------------------------------------
+
+  function renderProjects(body) {
+    const counts = countsFor(allProducts(), nav.supplier);
+    const grid = el('ul', { class: 'mat-grid', role: 'list' });
+    const order = [...PROJECTS].sort((a, b) => (counts[b.id].total > 0) - (counts[a.id].total > 0));
+    for (const pr of order) {
+      const n = counts[pr.id].total;
+      grid.append(el('li', {}, el('button', { type: 'button', class: `mat-card proj${n ? '' : ' empty'}`, 'data-key': pr.id, 'aria-disabled': n ? null : 'true',
+        'aria-label': n ? null : `${pr.label}, not captured yet`,
+        onclick: () => (n ? forward(pr.id, { level: 3, project: pr.id, type: null }) : ctx.toast(`No ${pr.label.toLowerCase()} products captured from ${supplierName(nav.supplier)} yet.`)) },
+      el('span', { class: 'mat-mono pic' }, svg(ICONS[pr.icon])), el('span', { class: 'mat-ct' }, el('b', {}, pr.label), el('small', {}, n ? `${n} products` : 'Not captured yet')))));
+    }
+    put(body, el('p', { class: 'mat-lead' }, 'What are you working on?'), grid);
+  }
+
+  // ---- level 3: material types -----------------------------------------------
+
+  function mosaic(products) {
+    const m = el('span', { class: 'mat-mosaic', 'aria-hidden': 'true' });
+    if (!products.length) { m.classList.add('empty'); return m; }
+    for (const p of products.slice(0, 4)) {
+      const e = colorEntry(p, defaultColor(p));
+      const t = el('span', { class: e.hex ? '' : 'none' });
+      if (e.hex) t.style.background = chipBackground(e);
+      m.append(t);
+    }
+    return m;
+  }
+
+  function typeRow({ key, label, blurb, count, priced, mos, empty, onclick }) {
+    return el('li', {}, el('button', { type: 'button', class: `mat-type${empty ? ' empty' : ''}`, 'data-key': key, 'aria-disabled': empty ? 'true' : null,
+      'aria-label': empty ? `${label}, not captured yet` : null, onclick },
+    mos, el('span', { class: 'mat-tt' }, el('b', {}, label), el('small', {}, empty ? 'Not captured yet' : blurb)),
+    empty ? null : el('span', { class: 'mat-tn' }, String(count), priced != null && priced < count ? el('small', {}, `${priced} priced`) : null),
+    empty ? null : svg(ICONS.chev, 'mat-ic chev')));
+  }
+
+  function renderTypes(body) {
+    const ul = el('ul', { class: 'mat-types', role: 'list' });
+    if (nav.supplier === 'studio') {
+      for (const t of STUDIO_TYPES) {
+        const n = ctx.builtinCount?.(t.id) ?? 0;
+        const mos = el('span', { class: 'mat-mosaic img', 'aria-hidden': 'true' }, (ctx.builtinThumbs?.(t.id) || []).slice(0, 4).map((src) => el('img', { src, alt: '' })));
+        if (!n) mos.classList.add('empty');
+        ul.append(typeRow({ key: t.id, label: t.label, blurb: t.blurb, count: n, mos, empty: !n && !t.always,
+          onclick: () => (n || t.always ? forward(t.id, { level: 4, type: t.id }) : ctx.toast(`No ${t.label.toLowerCase()} yet.`)) }));
+      }
+      put(body, ul);
+      return;
+    }
+    const pr = findProject(nav.project);
+    if (pr.id === 'solar') { put(body, solarCard()); ctx.solar?.()?.start(); }
+    const counts = countsFor(allProducts(), nav.supplier)[pr.id];
+    const populated = pr.types.filter((t) => counts.types[t.id]?.total > 0);
+    if (populated.length > 1) {
+      ul.append(typeRow({ key: '*', label: pr.allLabel, blurb: `Everything in ${pr.label.toLowerCase()} from ${supplierName(nav.supplier)}`, count: counts.total, priced: counts.priced,
+        mos: mosaic(populated.map((t) => productsFor(allProducts(), { supplier: nav.supplier, type: t.id })[0]).filter(Boolean)), onclick: () => forward('*', { level: 4, type: null }) }));
+    }
+    const order = [...pr.types].sort((a, b) => (counts.types[b.id]?.total > 0) - (counts.types[a.id]?.total > 0));
+    for (const t of order) {
+      const c = counts.types[t.id] || { total: 0, priced: 0 };
+      ul.append(typeRow({ key: t.id, label: t.label, blurb: t.blurb, count: c.total, priced: c.priced, empty: !c.total,
+        mos: mosaic(productsFor(allProducts(), { supplier: nav.supplier, type: t.id })),
+        onclick: () => (c.total ? forward(t.id, { level: 4, type: t.id }) : ctx.toast(`No ${t.label.toLowerCase()} captured from ${supplierName(nav.supplier)} yet.`)) }));
+    }
+    put(body, ul);
+  }
+
+  // ---- level 4: products -----------------------------------------------------
+
+  function renderStudioList(body) {
+    const s = $('search');
+    if (s) s.value = nav.q;
+    ctx.setCatalogFilter?.(nav.type);
+    put($('matHeadBar'), el('div', { class: 'mat-bar' }, searchBox('matSearch', nav.q, `Search ${titleText().toLowerCase()}`, (e) => {
+      nav.q = e.target.value;
+      if (s) { s.value = nav.q; s.dispatchEvent(new Event('input')); }
+    })));
+  }
+
+  function renderProducts(body) {
+    const t = curType();
+    const pr = findProject(nav.project);
+    if (pr?.id === 'solar' && !searching()) { put(body, solarCard()); ctx.solar?.()?.start(); }
+    const what = searching() ? 'all products' : (t?.label || pr?.allLabel || 'products').toLowerCase();
+    put($('matHeadBar'), 
+      el('div', { class: 'mat-bar' },
+        searchBox('matSearch', nav.q, `Search ${what}`, (e) => {
+          nav.q = e.target.value; nav.limit = PAGE;
+          clearTimeout(searchTimer); searchTimer = setTimeout(renderResults, 120);
+        }),
+        el('div', { class: 'mat-ctl' },
+          el('button', { type: 'button', class: 'mat-pill', id: 'matFilters', onclick: openFilters }, svg(ICONS.filter, 'mat-ic sm'), 'Filters', el('span', { class: 'mat-badge', id: 'matBadge', hidden: true })),
+          el('button', { type: 'button', class: 'mat-pill', id: 'matSort', onclick: openSort }, svg(ICONS.sort, 'mat-ic sm'), el('span', { id: 'matSortL' })),
+          el('span', { class: 'mat-count', id: 'matCount', 'aria-live': 'polite' }))),
+      el('div', { class: 'mat-chips', id: 'matChips' }));
+    put(body, 
+      t ? el('p', { class: 'hint mat-fills' }, t.slot ? `Fills the ${LINE_LABELS[t.slot]} line of your list.` : 'Listed for reference: your materials list has no line for these yet.', t.note && !/Fills/.test(t.note) ? ` ${t.note}` : '') : null,
+      el('div', { id: 'sfChosen', class: 'sf-chosen', 'aria-live': 'polite' }),
+      el('div', { id: 'sfResults', class: 'sf-results', role: 'list' }),
+      el('button', { type: 'button', class: 'btn', id: 'sfMore', hidden: true, onclick: () => { nav.limit += PAGE; renderResults(); } }, `Show ${PAGE} more`),
+      t?.goesWith ? el('div', { class: 'mat-goes' }, el('span', { class: 'sf-k' }, 'Goes with'),
+        t.goesWith.map((id) => { const g = findType(id); return el('button', { type: 'button', class: 'mat-pill', onclick: () => go({ level: 4, project: g.project.id, type: id }) }, g.type.label); })) : null);
+    renderResults();
+  }
+
+  function renderPicker() {
+    if (nav.level === 4 && nav.supplier !== 'studio' && $('sfResults')) renderResults();
+  }
+
+  function nokeyLabel() {
+    if (/^price/.test(nav.sort)) return 'No price: ask the store';
+    if (nav.sort === 'unitAsc') return 'No price or coverage not stated';
+    if (nav.sort === 'stock') return 'Stock not known';
+    return '';
+  }
+
+  function renderResults() {
+    const box = $('sfResults');
+    if (!box || !job()) return;
+    const p = pane();
+    const top = p?.scrollTop;
+    renderChosen();
+    renderBar();
+    const total = scope().length;
+    const items = listItems();
+    const counts = new Map();
+    for (const x of items) counts.set(short(x), (counts.get(short(x)) || 0) + 1);
+    box.innerHTML = '';
+    for (const x of items.slice(0, nav.limit)) {
+      if (x._nokey && nokeyLabel()) box.append(el('p', { class: 'mat-divider' }, nokeyLabel()));
+      box.append(productRow(x, counts.get(short(x)) > 1));
+    }
+    if (!items.length) box.append(el('div', { class: 'mat-empty' }, el('p', { class: 'hint' }, 'No products match.'), el('button', { type: 'button', class: 'btn', onclick: clearAll }, 'Clear search and filters')));
+    $('sfMore').hidden = items.length <= nav.limit;
+    $('matCount').textContent = searching() ? `${items.length} result${items.length === 1 ? '' : 's'}` : items.length === total ? `${total} item${total === 1 ? '' : 's'}` : `${items.length} of ${total}`;
+    if (p && top != null) p.scrollTop = top;
+  }
+
+  function clearAll() {
+    nav.q = ''; nav.filters = defaultFilters(); nav.limit = PAGE;
+    if ($('matSearch')) $('matSearch').value = '';
+    renderResults();
+  }
+
+  /** Filter and Sort buttons, the badge and the removable chips of active filters. */
+  function renderBar() {
+    const n = activeCount(nav.filters);
+    const badge = $('matBadge');
+    if (badge) { badge.hidden = !n; badge.textContent = String(n); }
+    $('matFilters')?.setAttribute('aria-label', n ? `Filters, ${n} active` : 'Filters');
+    if ($('matSortL')) $('matSortL').textContent = nav.sort === 'recommended' ? 'Sort' : `Sort: ${shortSort[nav.sort]}`;
+    $('matSort')?.setAttribute('aria-label', `Sort, ${sortOptions().find(([id]) => id === nav.sort)?.[1] || 'Recommended'}`);
+    const box = $('matChips');
+    if (!box) return;
+    box.innerHTML = '';
+    const f = nav.filters;
+    const labels = new Map();
+    for (const fc of facets(scope(), f, nav.q, { inStock, supplier: listSupplier(), typeFixed: !!curType() })) for (const o of fc.options) labels.set(`${fc.id}:${o.value}`, o.label);
+    const chips = [];
+    const add = (text, off) => chips.push(el('button', { type: 'button', class: 'mat-chip', 'aria-label': `Remove filter ${text}`, onclick: () => { off(); nav.limit = PAGE; renderResults(); } }, text, el('span', { 'aria-hidden': 'true' }, '×')));
+    if (f.priced) add('Priced only', () => { f.priced = false; });
+    if (f.inStock) add('In stock', () => { f.inStock = false; });
+    if (f.store !== 'both') add(storeName(f.store), () => { f.store = 'both'; });
+    for (const k of ['types', 'kinds', 'brands', 'colours', 'lengths', 'gauges']) for (const v of f[k]) add(labels.get(`${k}:${v}`) || String(v), () => { f[k] = f[k].filter((x) => x !== v); });
+    if (f.priceMin != null || f.priceMax != null) add(`${f.priceMin != null ? fmtMoney(f.priceMin) : '$0'}–${f.priceMax != null ? fmtMoney(f.priceMax) : 'any'}`, () => { f.priceMin = null; f.priceMax = null; });
+    if (chips.length > 1) chips.push(el('button', { type: 'button', class: 'mat-chip clear', onclick: () => { nav.filters = defaultFilters(); renderResults(); } }, 'Clear all'));
+    box.append(...chips);
+    box.hidden = !chips.length;
+  }
+
+  /** "On your list" strip: what is chosen for this type's line, per store. */
+  function renderChosen() {
+    const box = $('sfChosen');
+    if (!box) return;
+    box.innerHTML = '';
+    const t = curType();
+    if (!t?.slot) { box.hidden = true; return; }
+    box.hidden = false;
+    box.append(el('p', { class: 'sf-k' }, `On your list: ${LINE_LABELS[t.slot]}`));
+    for (const s of nav.supplier === 'all' ? STORE_IDS : [nav.supplier]) {
+      const c = job().selections[t.slot]?.[s];
+      const sp = c && findProduct(catalog, c.productId);
+      const other = sp && typeOf(sp).type.id !== t.id ? typeOf(sp) : null;
+      box.append(el('button', { type: 'button', class: 'sf-cho', title: sp ? 'Show it in the list' : 'Pick one below',
+        onclick: () => { if (other) go({ level: 4, project: other.project.id, type: other.type.id }); revealRow(s); } },
+      sp ? chip(colorEntry(sp, c.color), { sampled: SAMPLED.has(t.slot) }) : el('span', { class: 'sf-chip kind', 'aria-hidden': 'true' }),
+      el('span', { class: 'sf-cn' }, storeTag(s), ' ', el('b', {}, sp ? `${short(sp)}${c.color ? `, ${c.color}` : ''}` : 'not chosen'),
+        other ? ` (in ${other.type.label})` : null, sp && c.source === 'suggested' ? [' ', tag('suggested')] : null)));
+    }
+  }
+
+  function dots(sp, colors) {
+    const wrap = el('span', { class: 'mat-dots', title: `${colors.length} colours` });
+    for (const x of colors.slice(0, 5)) {
+      const e = colorEntry(sp, x.name);
+      const d = el('span', { class: e.hex ? '' : 'none' });
+      if (e.hex) d.style.background = e.hex;
+      wrap.append(d);
+    }
+    if (colors.length > 5) wrap.append(el('small', {}, `+${colors.length - 5}`));
+    return wrap;
+  }
+
+  function productRow(sp, showFull) {
+    const slot = slotOf(sp);
+    const c = slot ? job().selections[slot]?.[sp.store] : null;
+    const chosen = c?.productId === sp.id;
+    let color = chosen ? c.color : defaultColor(sp);
+    if (!chosen && nav.filters.colours.length) {
+      const m = (sp.colors || []).find((x) => x.name != null && nav.filters.colours.includes(colourFamily(x)));
+      if (m) color = m.name;
+    }
+    const entry = colorEntry(sp, color);
+    const sampled = SAMPLED.has(sp.layer);
+    const role = solarRole(sp);
+    const sol = role && ctx.solar?.()?.state;
+    const solarOn = !!(sol && ((role === 'panel' || role === 'kit') ? sol.panel?.id === sp.id : sol[role]?.id === sp.id));
+    const ref = !slot && !role;
+    const open = chosen || nav.expanded === sp.id || solarOn;
+    const colors = (sp.colors || []).filter((x) => x.name != null);
+    const u = crewLocked ? null : unitPrice(sp);
+    const price = priceText(sp);
+    const tile = chip(entry, { sampled });
+    tile.classList.add('mat-tile');
+    const facts = [sp.brand, coverageText(sp), stockText(sp), sampled && !entry.hex ? 'color not sampled' : null].filter(Boolean);
+    if (role) facts.splice(1, 1, solarFacts(sp));
+    const wrap = el('div', { class: `sf-item${chosen || solarOn ? ' on' : ''}${role ? ' sol' : ''}`, role: 'listitem', 'data-id': sp.id });
+    if (role) tile.classList.add('sol-tile');
+    wrap.append(el('button', { type: 'button', class: 'sf-row mat-row', 'aria-pressed': ref ? null : String(chosen || solarOn), 'aria-expanded': String(open), title: cleanName(sp.name),
+      onclick: () => tapProduct(sp, slot, color) },
+    tile,
+    el('span', { class: 'sf-rt' },
+      el('span', { class: 'mat-r1' }, el('span', { class: 'sf-l1' }, el('b', {}, short(sp)), color ? `, ${color}` : ''),
+        price ? el('span', { class: `mat-price${sp.price?.shelf == null ? ' none' : ''}` }, price) : null),
+      el('span', { class: 'mat-r2' }, el('span', { class: 'sf-l2' }, listSupplier() === 'all' ? [storeTag(sp.store), ' '] : null, facts.join(' · ')),
+        u ? el('span', { class: 'mat-unit' }, `${fmtMoney(u.value)} / ${u.unit}${u.gross ? ' gross' : ''}`) : null),
+      colors.length > 1 || chosen || ref || solarOn ? el('span', { class: 'mat-r3' }, colors.length > 1 ? dots(sp, colors) : null,
+        chosen ? tag(c.source === 'suggested' ? 'suggested' : 'chosen') : null, ref ? tag('reference only', 'ref') : null, solarOn ? tag('in your design', 'chosen') : null) : null,
+      showFull ? el('span', { class: 'sf-l3' }, cleanName(sp.name)) : null)));
+    if (open) wrap.append(role ? solarDetail(sp, role) : chosen ? chosenDetail(sp, c, slot) : refDetail(sp));
+    return wrap;
+  }
+
+  // ---- solar ------------------------------------------------------------------
+
+  function solarFacts(sp) {
+    const mm = sp.size_mm;
+    const size = mm ? `${(mm[0] / 25.4).toFixed(1)} x ${(mm[1] / 25.4).toFixed(1)} in` : null;
+    if (sp.kind === 'solarPanel') return [sp.watts ? `${sp.watts} W${sp.packCount > 1 ? ` x ${sp.packCount}` : ''}` : null, size].filter(Boolean).join(' · ');
+    if (sp.kind === 'solarKit') return [sp.kitWatts ? `${(sp.kitWatts / 1000).toFixed(sp.kitWatts < 1000 ? 1 : 2)} kW` : null, sp.panels ? `${sp.panels} panels` : null].filter(Boolean).join(' · ');
+    if (sp.kind === 'solarInverter') return sp.watts ? `${(sp.watts / 1000).toFixed(1)} kW` : '';
+    return '';
+  }
+
+  /** A store product as the designer's panel: per-panel watts, size and price (kits and packs split per panel). */
+  function solarPanelOf(sp) {
+    const n = sp.kind === 'solarKit' ? (sp.panels || (sp.kitWatts ? Math.round(sp.kitWatts / 400) : 1)) : (sp.packCount || 1);
+    const watts = sp.watts || (sp.kitWatts && n ? Math.round(sp.kitWatts / n) : 400);
+    const assumedSize = !sp.size_mm;
+    const size = sp.size_mm || (watts >= 300 ? [1722, 1134] : watts >= 150 ? [1262, 764] : [1050, 540]);
+    const price = sp.price?.shelf != null ? sp.price.shelf / n : null;
+    return { id: sp.id, name: short(sp), store: sp.store, watts, size_mm: size, assumedSize, price, per: 'each',
+      kit: sp.kind === 'solarKit', kitIncludes: sp.includes || '', url: sp.url };
+  }
+
+  function solarDetail(sp, role) {
+    const d = el('div', { class: 'sf-detail' });
+    const notes = [];
+    if (role === 'kit') notes.push(`Kit: ${sp.includes || 'see the store page for what is included'}.`);
+    if ((role === 'panel' || role === 'kit') && !sp.size_mm) notes.push('Panel size not listed: a typical module size is drawn.');
+    if (sp.source_checked && sp.source_checked !== 'page') notes.push('Price from the store\'s search listing (its product page could not be read): check it before buying.');
+    if (sp.availability) notes.push(`Availability: ${sp.availability}.`);
+    if (notes.length) d.append(el('p', { class: 'sf-approx' }, notes.join(' ')));
+    d.append(el('p', { class: 'sf-l3' }, cleanName(sp.name), sp.url ? ' · ' : '', sp.url ? el('a', { href: sp.url, target: '_blank', rel: 'noopener noreferrer' }, 'Store page') : null));
+    return d;
+  }
+
+  function useSolarProduct(sp, role) {
+    const sol = ctx.solar?.();
+    if (!sol) return;
+    if (role === 'panel' || role === 'kit') { sol.setPanel(solarPanelOf(sp)); sol.start(); }
+    else if (role === 'inverter') sol.setPart('inverter', { id: sp.id, name: short(sp), price: sp.price?.shelf ?? null, watts: sp.watts, perPanel: false });
+    else if (role === 'racking') sol.setPart('racking', { id: sp.id, name: short(sp), price: sp.price?.shelf ?? null, per: sp.price?.per, holds: 1 });
+    renderResults();
+  }
+
+  const money = (x) => (x == null || !Number.isFinite(x) ? '–' : `$${Math.round(x).toLocaleString('en-US')}`);
+  const kwh = (x) => `${Math.round(x).toLocaleString('en-US')} kWh`;
+
+  function solarChart(sum) {
+    const W = 320, H = 132, padL = 30, padB = 18, padT = 8;
+    const max = Math.max(1, ...sum.months.map((m) => Math.max(m.gen, m.use)));
+    const step = Math.pow(10, Math.floor(Math.log10(max))); const top = Math.ceil(max / step) * step;
+    const y = (v) => padT + (H - padT - padB) * (1 - v / top);
+    const gw = (W - padL - 4) / 12, bw = Math.max(3, (gw - 6) / 2);
+    const bar = (x, v, cls) => { const yy = y(v), h = Math.max(0, H - padB - yy), r = Math.min(4, h, bw / 2);
+      return `<path class="${cls}" d="M${x},${H - padB} V${yy + r} Q${x},${yy} ${x + r},${yy} H${x + bw - r} Q${x + bw},${yy} ${x + bw},${yy + r} V${H - padB} Z"/>`; };
+    let g = '';
+    for (const f of [0, 0.5, 1]) { const v = top * f; g += `<line class="sc-grid" x1="${padL}" x2="${W}" y1="${y(v)}" y2="${y(v)}"/><text class="sc-ax" x="${padL - 4}" y="${y(v) + 3}" text-anchor="end">${v >= 1000 ? `${(v / 1000).toFixed(v % 1000 ? 1 : 0)}k` : Math.round(v)}</text>`; }
+    sum.months.forEach((m, i) => {
+      const x0 = padL + 2 + i * gw + 2;
+      g += bar(x0, m.use, 'sc-use') + bar(x0 + bw + 2, m.gen, 'sc-gen');
+      g += `<text class="sc-ax" x="${x0 + bw + 1}" y="${H - 5}" text-anchor="middle">${sum.monthsLabel[i][0]}</text>`;
+      g += `<rect class="sc-hit" data-m="${i}" x="${padL + i * gw}" y="0" width="${gw}" height="${H - padB}"/>`;
+    });
+    const box = el('div', { class: 'sc-wrap' });
+    box.innerHTML = `<svg class="sc" viewBox="0 0 ${W} ${H}" role="img" aria-label="Monthly solar generation and household use, kWh">${g}</svg>`;
+    const tip = el('div', { class: 'sc-tip', hidden: true });
+    box.append(tip);
+    const show = (i, x) => {
+      const m = sum.months[i];
+      tip.textContent = `${sum.monthsLabel[i]}: solar ${kwh(m.gen)} · use ${kwh(m.use)} · saves ${money(m.saving)}`;
+      tip.hidden = false; tip.style.left = `${Math.min(Math.max(0, x - 80), box.clientWidth - 170)}px`;
+    };
+    box.querySelectorAll('.sc-hit').forEach((r) => {
+      const i = Number(r.dataset.m);
+      r.addEventListener('pointerenter', (e) => show(i, e.offsetX));
+      r.addEventListener('pointerdown', (e) => show(i, e.offsetX));
+    });
+    box.addEventListener('pointerleave', () => { tip.hidden = true; });
+    return box;
+  }
+
+  function solarCard() {
+    const sol = ctx.solar?.();
+    const card = el('section', { class: 'sol-card', id: 'solarCard', 'aria-label': 'Your solar design' });
+    if (!sol) return card;
+    const sum = sol.summary();
+    const st = sol.state;
+    const sel = st.arrays[st.sel];
+    const btn = (text, fn, props = {}) => el('button', { type: 'button', class: 'btn', ...props, onclick: fn }, text);
+    const step = (label, dr, dc) => el('span', { class: 'sol-step' }, el('span', { class: 'sf-k' }, label),
+      btn('−', () => sol.resize(-dr, -dc), { 'aria-label': `Fewer ${label.toLowerCase()}`, disabled: !sel || (dr ? sel.rows : sel.cols) <= 1 }),
+      el('b', {}, sel ? String(dr ? sel.rows : sel.cols) : '–'),
+      btn('+', () => sol.resize(dr, dc), { 'aria-label': `More ${label.toLowerCase()}`, disabled: !sel }));
+    const p = sum.price;
+    put(card, 
+      el('div', { class: 'sol-head' },
+        el('div', {}, el('p', { class: 'sf-k' }, 'Your solar design'),
+          el('p', { class: 'sol-big' }, `${sum.kw.toFixed(2)} kW · ${sum.panels} panel${sum.panels === 1 ? '' : 's'}`),
+          el('p', { class: 'hint' }, `${st.panel.name || 'Panel'} · ${st.panel.watts} W${st.panel.price != null ? ` · ${money(st.panel.price)} each` : ' · generic price'}`)),
+        btn('Watch it go together', () => sol.play(), { class: 'btn primary', id: 'solPlay', disabled: !sum.panels })),
+      solarFarWarning(),
+      sum.misfit ? el('p', { class: 'sol-warn' }, `${sum.misfit} panel${sum.misfit === 1 ? '' : 's'} (red) hang off the roof or into the edge clearance and are not counted: drag the array or make it smaller.`) : null,
+      el('div', { class: 'sol-arrays' }, st.arrays.map((a, i) => {
+        const s = sum.arrays[i];
+        return el('button', { type: 'button', class: 'mat-chip sol-arr', 'aria-pressed': String(i === st.sel), onclick: () => sol.select(i) }, `Array ${i + 1} · faces ${s.faces} · ${s.n}`);
+      }), btn('+ Array', () => sol.addArray(), { class: 'mat-pill' })),
+      el('div', { class: 'sol-ctl' }, step('Rows', 1, 0), step('Columns', 0, 1),
+        btn(sel?.portrait === false ? 'Landscape' : 'Portrait', () => sol.rotate(), { class: 'btn', title: 'Turn the panels', disabled: !sel })),
+      el('div', { class: 'sol-ctl' },
+        btn('Match my use', () => sol.sizeToUse(1)), btn('Fill this roof face', () => sol.fillPlane(), { disabled: !sel }),
+        btn('Remove array', () => sol.removeArray(), { disabled: !sel }),
+        btn(st.show ? 'Hide panels' : 'Show panels', () => sol.show(!st.show))),
+      el('p', { class: 'hint' }, 'Drag a panel on the roof to move its array (drag it onto another roof face to move it there). Drag the blue ball at the array\'s corner to grow or shrink it.'),
+      el('div', { class: 'sol-kpis' },
+        kpi('Generates', `${kwh(sum.annualGen)} / yr`, `about ${kwh(sum.annualGen / 12)} a month`),
+        kpi('Your use', `${kwh(sum.annualUse)} / yr`, `solar covers ${Math.round(sum.offset * 100)} %`),
+        kpi('Saves', `${money(sum.annualSaving)} / yr`, `about ${money(sum.annualSaving / 12)} a month`),
+        kpi(sum.install === 'pro' ? 'Installed price' : 'Parts price', money(p.chosen), sum.payback ? `pays back in about ${sum.payback.toFixed(1)} yrs` : 'no payback')),
+      sum.panels && sum.method !== 'monthly_net' ? el('p', { class: 'hint' },
+        `About ${Math.round((sum.annualUsed / Math.max(1, sum.annualGen)) * 100)} % of the solar is used in the house as it is made and saves the full retail rate; `
+        + `the rest goes to Xcel at ${(sum.buyback * 100).toFixed(2)}¢/kWh (South Dakota has no net metering), so panels beyond your daytime use add little.`) : null,
+      el('div', { class: 'sc-legend' }, el('span', {}, el('i', { class: 'sw sc-use' }), 'Your use'), el('span', {}, el('i', { class: 'sw sc-gen' }), 'Solar generation'), el('span', { class: 'hint' }, 'kWh per month')),
+      solarChart(sum),
+      el('div', { class: 'sol-inputs' },
+        el('label', { for: 'solUse' }, 'Average monthly use'),
+        el('input', { id: 'solUse', type: 'number', min: '50', max: '5000', step: '10', inputmode: 'numeric', value: Math.round(sum.annualUse / 12),
+          onchange: (e) => sol.setUse(Math.max(50, Number(e.target.value) || 0)) }), el('span', { class: 'hint' }, 'kWh (from your Xcel bill)'),
+        segmented([['pro', 'Installed by a pro'], ['diy', 'Parts only (DIY)']], () => sol.state.install, (v) => sol.setInstall(v), 'Price')),
+      el('details', { class: 'sol-more' }, el('summary', {}, 'Price and month-by-month details'),
+        el('table', { class: 'takeoff sol-tbl' },
+          el('tbody', {},
+            trow('Panels', money(p.panels)), trow(`Inverter${st.inverter ? `: ${st.inverter.name}` : ' (estimate)'}`, money(p.inverters)),
+            trow(`Racking${st.racking ? `: ${st.racking.name}` : ' (estimate)'}`, money(p.racking)), trow('Wiring, disconnects, permit (estimate)', money(p.bos)),
+            trow('Parts total', money(p.materials)), trow('Installed by a pro (estimate)', money(p.pro)),
+            p.incentive ? trow('Federal tax credit', `−${money(p.incentive)}`) : null)),
+        el('table', { class: 'takeoff sol-tbl' },
+          el('thead', {}, el('tr', {}, ['Month', 'Solar', 'Use', 'From grid', 'Saves'].map((h) => el('th', {}, h)))),
+          el('tbody', {}, sum.months.map((m, i) => el('tr', {}, el('td', {}, sum.monthsLabel[i]), el('td', {}, Math.round(m.gen).toLocaleString()), el('td', {}, Math.round(m.use).toLocaleString()), el('td', {}, Math.round(m.fromGrid).toLocaleString()), el('td', {}, money(m.saving)))))),
+        el('p', { class: 'hint' }, solarNotes(sum))));
+    return card;
+  }
+  /** The sun table and the utility rates are for one place: say so when the house on screen is elsewhere. */
+  function solarFarWarning() {
+    const D = ctx.solarData?.();
+    const lat = S.sun?.lat;
+    if (!D?.pvgis || !Number.isFinite(lat) || Math.abs(lat - D.pvgis.lat) < 0.75) return null;
+    return el('p', { class: 'sol-warn' }, `Generation and savings use Sioux Falls sun data and Xcel South Dakota rates; this house is elsewhere, so treat them as rough until local sun and utility data are added.`);
+  }
+  const kpi = (k, v, sub) => el('div', { class: 'sol-kpi' }, el('span', { class: 'sf-k' }, k), el('b', {}, v), el('small', {}, sub));
+  const trow = (a, b) => el('tr', {}, el('td', {}, a), el('td', {}, b));
+
+  function solarNotes(sum) {
+    const D = ctx.solarData?.() || {};
+    const R = D.rates || {};
+    const parts = [];
+    parts.push(`Generation: ${D.pvgis?.source || 'PVGIS'} for Sioux Falls, by each roof face's pitch and facing; no tree or snow shading.`);
+    if (R.residential?.effective_date) parts.push(`Bill savings at Xcel Energy South Dakota residential rates (${R.residential.effective_date}).`);
+    if (R.export?.notes) parts.push(`Extra power sent to the grid: ${R.export.notes}`);
+    if (R.federal && !R.federal.itc_25d_available) parts.push('No federal tax credit is counted: the 30 % homeowner credit ended for systems paid for after 2025.');
+    if (D.assumptions?.notes) parts.push(D.assumptions.notes);
+    return parts.join(' ');
+  }
+
+  function renderSolarCard() {
+    const old = $('solarCard');
+    if (!old) return;
+    const focusId = document.activeElement?.id;
+    old.replaceWith(solarCard());
+    if (focusId) $(focusId)?.focus({ preventScroll: true });
+  }
+
+  async function tapProduct(sp, slot, color) {
+    const role = solarRole(sp);
+    if (role) { useSolarProduct(sp, role); $('sfResults')?.querySelector(`[data-id="${CSS.escape(sp.id)}"] .sf-row`)?.focus({ preventScroll: true }); return; }
+    if (!slot) nav.expanded = nav.expanded === sp.id ? null : sp.id;
+    if (!slot) renderResults();
+    else await choose(slot, sp, color);
+    $('sfResults')?.querySelector(`[data-id="${CSS.escape(sp.id)}"] .sf-row`)?.focus({ preventScroll: true });
+  }
+
+  function refDetail(sp) {
+    return el('div', { class: 'sf-detail' },
+      el('p', { class: 'sf-approx' }, 'Listed for reference: the materials list has no line for it, so it cannot be chosen.'),
+      el('p', { class: 'sf-l3' }, cleanName(sp.name), sp.url ? ' · ' : '', sp.url ? el('a', { href: sp.url, target: '_blank', rel: 'noopener noreferrer' }, 'Store page') : null));
+  }
+
+  /** Scroll to the chosen row of a store for the current type, clearing search and filters that hide it. */
+  function revealRow(store) {
+    const t = curType();
+    const c = t?.slot && job().selections[t.slot]?.[store];
+    if (!c) return;
+    let items = listItems();
+    if (!items.some((p) => p.id === c.productId)) { clearAll(); items = listItems(); }
+    const i = items.findIndex((p) => p.id === c.productId);
+    if (i < 0) return;
+    if (i >= nav.limit) { nav.limit = Math.ceil((i + 1) / PAGE) * PAGE; renderResults(); }
+    const row = $('sfResults').querySelector(`[data-id="${CSS.escape(c.productId)}"]`);
+    row?.scrollIntoView({ block: 'center' });
+    row?.querySelector('button')?.focus({ preventScroll: true });
+  }
+
+  /** From the List tab, the Layers tab or a roof tap: open the type of the product chosen for this line and store. */
+  function jumpToPicker(slot, store) {
+    ctx.selectTab('materials');
+    const c = job().selections[slot]?.[store];
+    const sp = c && findProduct(catalog, c.productId);
+    const t = sp ? typeOf(sp) : findType(DEFAULT_TYPE_FOR_SLOT[slot]);
+    if (!t) return;
+    nav.opened[1] = store; nav.opened[2] = t.project.id; nav.opened[3] = t.type.id;
+    go({ level: 4, supplier: store, project: t.project.id, type: t.type.id, search: null });
+    clearAll();
+    revealRow(store);
+  }
+
+  // ---- filters and sort sheets -----------------------------------------------
+
+  function sheet() {
+    let d = $('matSheet');
+    if (!d) {
+      d = el('dialog', { id: 'matSheet', class: 'sf mat-sheet', 'aria-labelledby': 'matSheetT' });
+      d.addEventListener('click', (e) => { if (e.target === d) d.close(); });
+      d.addEventListener('close', () => { sheetReturn?.focus({ preventScroll: true }); });
+      document.body.append(d);
+    }
+    d.classList.remove('sort');
+    return d;
+  }
+
+  const sheetHead = (title, d) => el('div', { class: 'mat-shead' }, el('h3', { id: 'matSheetT' }, title),
+    el('button', { type: 'button', class: 'mat-x', 'aria-label': 'Close', onclick: () => d.close() }, '✕'));
+  const group = (label, ...kids) => el('fieldset', { class: 'mat-group' }, el('legend', {}, label), ...kids);
+
+  function openFilters() {
+    const d = sheet();
+    sheetReturn = $('matFilters');
+    const draft = JSON.parse(JSON.stringify(nav.filters));
+    const sc = scope();
+    const hasHD = sc.some((p) => p.store === HD);
+    const priced = sc.some((p) => p.price?.shelf != null);
+    const render = () => {
+      const focusKey = document.activeElement?.dataset?.fk;
+      d.innerHTML = '';
+      const n = applyFilters(sc, draft, nav.q, { inStock }).length;
+      const fs = facets(sc, draft, nav.q, { inStock, supplier: listSupplier(), typeFixed: !!curType() });
+      const body = el('div', { class: 'mat-sbody' });
+      const sw = (key, label) => el('label', { class: 'mat-switch' }, el('input', { type: 'checkbox', 'data-fk': key, checked: draft[key], onchange: (e) => { draft[key] = e.target.checked; render(); } }), el('span', {}, label));
+      put(body, group('Availability', sw('priced', 'Priced only'), hasHD && !crewLocked ? sw('inStock', 'In stock at Home Depot') : null));
+      for (const f of fs) {
+        const opts = el('div', { class: `mat-opts${f.id === 'colours' ? ' col' : ''}`, role: 'group', 'aria-label': f.label });
+        for (const o of f.options) {
+          const on = f.id === 'store' ? draft.store === o.value : draft[f.id].includes(o.value);
+          opts.append(el('button', { type: 'button', class: `mat-opt${!o.count && !on ? ' zero' : ''}`, 'aria-pressed': String(on), 'data-fk': `${f.id}:${o.value}`,
+            onclick: () => {
+              if (f.id === 'store') draft.store = on ? 'both' : o.value;
+              else draft[f.id] = on ? draft[f.id].filter((v) => v !== o.value) : [...draft[f.id], o.value];
+              render();
+            } },
+          o.hex ? el('span', { class: 'mat-sw', style: `background:${o.hex}` }) : null, o.label, el('small', {}, String(o.count))));
+        }
+        put(body, group(f.label, opts));
+      }
+      if (priced && !crewLocked) {
+        const num = (key, label) => el('label', { class: 'mat-num' }, label, el('input', { type: 'number', min: '0', step: '1', inputmode: 'decimal', 'data-fk': key, value: draft[key] ?? '', placeholder: key === 'priceMin' ? '0' : 'any',
+          onchange: (e) => { draft[key] = e.target.value === '' ? null : Math.max(0, Number(e.target.value)); render(); } }));
+        put(body, group('Price per item', el('div', { class: 'mat-nums' }, num('priceMin', 'Min $'), num('priceMax', 'Max $'))));
+      }
+      d.append(sheetHead('Filters', d), body,
+        el('div', { class: 'mat-sfoot' },
+          el('button', { type: 'button', class: 'btn', id: 'matReset', onclick: () => { Object.assign(draft, defaultFilters()); render(); } }, 'Reset'),
+          el('button', { type: 'button', class: 'btn primary', id: 'matApply', disabled: n === 0,
+            onclick: () => { nav.filters = draft; nav.limit = PAGE; d.close(); renderResults(); } }, n ? `Show ${n} product${n === 1 ? '' : 's'}` : 'No matches')));
+      (focusKey && d.querySelector(`[data-fk="${CSS.escape(focusKey)}"]`))?.focus({ preventScroll: true });
+    };
+    render();
+    if (!d.open) d.showModal();
+    d.querySelector('.mat-sbody input, .mat-sbody button')?.focus({ preventScroll: true });
+  }
+
+  function sortOptions() {
+    const t = curType();
+    const hasHD = scope().some((p) => p.store === HD);
+    return SORTS.filter(([id]) => !(crewLocked && /price|unit/i.test(id)) && !(id === 'stock' && (!hasHD || crewLocked)))
+      .map(([id, label]) => [id, id === 'unitAsc' && t?.linear ? 'Price per foot: low to high' : label]);
+  }
+
+  function openSort() {
+    const d = sheet();
+    d.classList.add('sort');
+    sheetReturn = $('matSort');
+    d.innerHTML = '';
+    const radios = sortOptions().map(([id, label]) => el('button', { type: 'button', role: 'radio', class: 'mat-radio', 'aria-checked': String(nav.sort === id), tabindex: nav.sort === id ? '0' : '-1',
+      onclick: () => { nav.sort = id; try { localStorage.setItem('rls.mat', JSON.stringify({ sort: id })); } catch (_) { /* storage blocked */ } d.close(); renderResults(); } }, label));
+    const rg = el('div', { class: 'mat-sbody', role: 'radiogroup', 'aria-labelledby': 'matSheetT' }, radios,
+      el('p', { class: 'hint' }, 'Unit price uses the coverage the store states; "gross" is coverage before overlap. Items without the value go last.'));
+    rg.addEventListener('keydown', (e) => {
+      const i = radios.indexOf(document.activeElement);
+      if (i < 0 || !['ArrowDown', 'ArrowUp'].includes(e.key)) return;
+      e.preventDefault();
+      radios[(i + (e.key === 'ArrowDown' ? 1 : radios.length - 1)) % radios.length].focus();
+    });
+    d.append(sheetHead('Sort by', d), rg);
+    d.showModal();
+    (radios.find((r) => r.getAttribute('aria-checked') === 'true') || radios[0])?.focus({ preventScroll: true });
+  }
+
+  /** Studio samples > a type (after an import or upload: My products). */
+  function showStudio(type = 'supplier') {
+    nav.opened[1] = 'studio'; nav.opened[3] = type;
+    go({ level: 4, supplier: 'studio', project: null, type, search: null });
+  }
+
+  /** The List tab's "On the roof" store switch (the Materials tab uses the header chip). */
   function roofSwitch() {
     const w = segmented([[MN, 'Menards'], [HD, 'Home Depot']], () => job()?.shownStore, (v) => showStore(v), 'Store whose products are on the roof');
     w.classList.add('sf-roofsw');
@@ -238,86 +977,7 @@ export function createStoreUI(ctx) {
     return w;
   }
 
-  function setSource(v) {
-    pick.source = v;
-    $('sfSource')?.sync?.();
-    if ($('builtinSec')) $('builtinSec').hidden = v !== 'builtin';
-    if ($('sfStoreSec')) $('sfStoreSec').hidden = v === 'builtin';
-  }
-
-  function setSlot(slot) {
-    if (!SLOTS.includes(slot)) return;
-    pick.slot = slot; pick.brand = ''; pick.limit = PAGE;
-    if ($('sfSlot')) $('sfSlot').value = slot;
-    filtersChanged();
-  }
-
-  const slotProducts = () => (catalog?.products || []).filter((p) => p.layer === pick.slot && !LEFT_OUT.has(p.kind));
   const inStock = (p) => p.stock?.qty > 0 || (p.stock?.inStock === true && p.stock?.qty == null);
-
-  function filtered({ brand = true, search = true } = {}) {
-    const words = search ? pick.q.toLowerCase().split(/\s+/).filter(Boolean) : [];
-    return slotProducts().filter((p) => {
-      if (pick.store !== 'both' && p.store !== pick.store) return false;
-      if (pick.slot === 'covering' && pick.type !== 'all' && p.category !== pick.type) return false;
-      if (pick.priced && p.price?.shelf == null) return false;
-      if (pick.inStock && p.store === HD && !inStock(p)) return false;
-      if (brand && pick.brand && (p.brand || '') !== pick.brand) return false;
-      if (words.length) {
-        const hay = `${p.name} ${p.brand || ''} ${(p.colors || []).map((c) => c.name || '').join(' ')}`.toLowerCase();
-        if (!words.every((w) => hay.includes(w))) return false;
-      }
-      return true;
-    });
-  }
-
-  /** Store, type, priced or stock changed: rebuild the brand list, then the rows. */
-  function filtersChanged() {
-    if (!$('sfStoreSec')) return;
-    $('sfTypeRow').hidden = pick.slot !== 'covering';
-    $('sfStoreSeg')?.sync(); $('sfTypeSeg')?.sync();
-    const brands = [...new Set(filtered({ brand: false, search: false }).map((p) => p.brand).filter(Boolean))].sort((a, b) => a.localeCompare(b));
-    if (pick.brand && !brands.includes(pick.brand)) pick.brand = '';
-    const sel = $('sfBrand');
-    sel.innerHTML = '';
-    sel.add(new Option('All brands', ''));
-    for (const b of brands) sel.add(new Option(b, b, false, b === pick.brand));
-    pick.limit = PAGE;
-    renderResults();
-  }
-
-  function renderPicker() {
-    if (!$('sfStoreSec') || !job()) return;
-    renderResults();
-  }
-
-  function renderResults() {
-    const box = $('sfResults');
-    if (!box || !job()) return;
-    renderChosen();
-    const items = filtered();
-    const counts = new Map();
-    for (const p of items) counts.set(short(p), (counts.get(short(p)) || 0) + 1);
-    box.innerHTML = '';
-    for (const p of items.slice(0, pick.limit)) box.append(productRow(p, counts.get(short(p)) > 1));
-    if (!items.length) box.append(el('p', { class: 'hint' }, 'No store products match. Clear the search or the filters.'));
-    $('sfMore').hidden = items.length <= pick.limit;
-    $('sfCount').textContent = `${items.length} ${LINE_LABELS[pick.slot].toLowerCase()} product${items.length === 1 ? '' : 's'}${items.length > pick.limit ? `, showing the first ${pick.limit}` : ''}. Tap one to choose it for its store.`;
-  }
-
-  function renderChosen() {
-    const box = $('sfChosen');
-    box.innerHTML = '';
-    box.append(el('p', { class: 'sf-k' }, `Chosen for ${LINE_LABELS[pick.slot]}`));
-    for (const s of STORE_IDS) {
-      const c = job().selections[pick.slot]?.[s];
-      const sp = c && findProduct(catalog, c.productId);
-      box.append(el('button', { type: 'button', class: 'sf-cho', onclick: () => revealRow(s), title: sp ? 'Show it in the list' : 'Pick one below' },
-        sp ? chip(colorEntry(sp, c.color), { sampled: SAMPLED.has(pick.slot) }) : el('span', { class: 'sf-chip kind', 'aria-hidden': 'true' }),
-        el('span', { class: 'sf-cn' }, storeTag(s), ' ', el('b', {}, sp ? `${short(sp)}${c.color ? `, ${c.color}` : ''}` : 'not chosen'),
-          sp && c.source === 'suggested' ? [' ', tag('suggested')] : null)));
-    }
-  }
 
   function priceText(sp) {
     if (crewLocked) return null;
@@ -343,24 +1003,6 @@ export function createStoreUI(ctx) {
     return null;
   }
 
-  function productRow(sp, showFull) {
-    const c = job().selections[pick.slot]?.[sp.store];
-    const chosen = c?.productId === sp.id;
-    const color = chosen ? c.color : defaultColor(sp);
-    const entry = colorEntry(sp, color);
-    const sampled = SAMPLED.has(pick.slot);
-    const facts = [priceText(sp), coverageText(sp), sp.brand, stockText(sp), sampled && !entry.hex ? 'color not sampled' : null].filter(Boolean);
-    const wrap = el('div', { class: `sf-item${chosen ? ' on' : ''}`, role: 'listitem', 'data-id': sp.id });
-    wrap.append(el('button', { type: 'button', class: 'sf-row', 'aria-pressed': String(chosen), title: cleanName(sp.name), onclick: () => choose(pick.slot, sp, color) },
-      chip(entry, { sampled }),
-      el('span', { class: 'sf-rt' },
-        el('span', { class: 'sf-l1' }, el('b', {}, short(sp)), color ? `, ${color}` : '', chosen ? [' ', tag(c.source === 'suggested' ? 'suggested' : 'chosen')] : null),
-        el('span', { class: 'sf-l2' }, storeTag(sp.store), ' ', facts.join(' · ')),
-        showFull ? el('span', { class: 'sf-l3' }, cleanName(sp.name)) : null)));
-    if (chosen) wrap.append(chosenDetail(sp, c));
-    return wrap;
-  }
-
   function approxNotes(sp, color) {
     if (sp.layer === 'covering') return toStudioProduct(sp, color, catalog).approx;
     if (!SAMPLED.has(sp.layer)) return [];
@@ -372,49 +1014,24 @@ export function createStoreUI(ctx) {
     return out;
   }
 
-  function chosenDetail(sp, c) {
+  function chosenDetail(sp, c, slot = slotOf(sp)) {
     const d = el('div', { class: 'sf-detail' });
     const colors = (sp.colors || []).filter((x) => x.name != null);
     if (colors.length > 1) {
       const g = el('div', { class: 'sf-colors', role: 'group', 'aria-label': `Colors of ${short(sp)}` });
       for (const x of colors) {
         const e = colorEntry(sp, x.name);
-        g.append(el('button', { type: 'button', class: 'sf-color', 'aria-pressed': String(x.name === c.color), title: e.hex ? `${x.name} (${e.hex})` : `${x.name}: color not sampled`, onclick: () => choose(pick.slot, sp, x.name) },
-          chip(e, { sampled: SAMPLED.has(pick.slot) }), el('span', {}, x.name)));
+        g.append(el('button', { type: 'button', class: 'sf-color', 'aria-pressed': String(x.name === c.color), title: e.hex ? `${x.name} (${e.hex})` : `${x.name}: color not sampled`, onclick: () => choose(slot, sp, x.name) },
+          chip(e, { sampled: SAMPLED.has(slot) }), el('span', {}, x.name)));
       }
       d.append(g);
     }
     const notes = approxNotes(sp, c.color);
     if (notes.length) d.append(el('p', { class: 'sf-approx' }, notes.join(' · ')));
+    const pr = sp.price || {};
+    if (!crewLocked && pr.afterRebate != null) d.append(el('p', { class: 'sf-approx' }, `${fmtMoney(pr.afterRebate)} after mail-in rebate${pr.rebateThrough ? ` through ${pr.rebateThrough}` : ''} (store credit; the list uses the shelf price).`));
     d.append(el('p', { class: 'sf-l3' }, cleanName(sp.name), sp.url ? ' · ' : '', sp.url ? el('a', { href: sp.url, target: '_blank', rel: 'noopener noreferrer' }, 'Store page') : null));
     return d;
-  }
-
-  /** Scroll to the chosen row of a store, clearing filters that hide it. */
-  function revealRow(store) {
-    const c = job().selections[pick.slot]?.[store];
-    if (!c) return;
-    let items = filtered();
-    if (!items.some((p) => p.id === c.productId)) {
-      Object.assign(pick, { store: 'both', brand: '', type: 'all', q: '', inStock: false });
-      const sp = findProduct(catalog, c.productId);
-      if (sp?.price?.shelf == null) pick.priced = false;
-      $('sfSearch').value = ''; $('sfPriced').checked = pick.priced; $('sfStock').checked = false;
-      filtersChanged();
-      items = filtered();
-    }
-    const i = items.findIndex((p) => p.id === c.productId);
-    if (i >= pick.limit) { pick.limit = Math.ceil((i + 1) / PAGE) * PAGE; renderResults(); }
-    const row = $('sfResults').querySelector(`[data-id="${CSS.escape(c.productId)}"]`);
-    row?.scrollIntoView({ block: 'center' });
-    row?.querySelector('button')?.focus({ preventScroll: true });
-  }
-
-  function jumpToPicker(slot, store) {
-    ctx.selectTab('materials');
-    setSource('stores');
-    setSlot(slot);
-    revealRow(store);
   }
 
   // -------------------------------------------------------------------------
@@ -926,9 +1543,15 @@ export function createStoreUI(ctx) {
 
   async function init() {
     catalog = await ctx.catalog();
-    if (catalog) S.job = newJob();
+    if (catalog) {
+      // solar products (separate capture): browsed under Materials > Solar, never on the materials list
+      try {
+        const sol = await (await fetch('catalog/suppliers/solar.json', { cache: 'no-store' })).json();
+        if (Array.isArray(sol?.products)) { catalog.products.push(...sol.products); catalog.solarNotes = sol.notes || []; catalog.solarStores = sol.stores || {}; }
+      } catch (_) { /* no solar capture */ }
+      S.job = newJob();
+    }
     buildPicker(); buildList(); buildProjectFile(); buildBlenderButton();
-    if (!catalog) setSource('builtin');
     return catalog;
   }
 
@@ -967,6 +1590,8 @@ export function createStoreUI(ctx) {
   return {
     init, firstProduct, afterBuild, onLayers, onRoof, refresh, applyJob,
     openPicker: (slot) => { if (catalog && job()) jumpToPicker(slot, job().shownStore); else ctx.selectTab('materials'); },
+    showStudio,
+    onSolar: () => renderSolarCard(),
     api: {
       quote: () => { ensure(); return currentQuote(); },
       project: () => { ensure(); return project(); },
@@ -989,6 +1614,8 @@ export function createStoreUI(ctx) {
         return showStore(sp.store);
       },
       blenderCommand: () => blenderCommands(),
+      /** Materials browser state for tests: get, or go to { level, supplier, project, type, search }. */
+      materialsNav: (patch) => { if (patch) go(patch); return { level: nav.level, supplier: nav.supplier, project: nav.project, type: nav.type, search: nav.search, q: nav.q, sort: nav.sort, filters: JSON.parse(JSON.stringify(nav.filters)) }; },
       listText: (crew) => { ensure(); return listText(currentQuote(), crew); },
     },
   };

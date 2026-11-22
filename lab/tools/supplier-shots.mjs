@@ -37,7 +37,8 @@ async function open(browser, size) {
   });
   const page = await context.newPage();
   const errors = [];
-  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  // houses/index.json is optional (real jobs are kept out of the repo); the studio hides Measured jobs without it
+  page.on('console', (m) => { if (m.type() === 'error' && !/\/houses\/index\.json$/.test(m.location()?.url || '')) errors.push(m.text()); });
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(String(f.url), { waitUntil: 'load', timeout: 180000 });
   await page.waitForFunction(() => window.roofStudio, null, { timeout: 180000 });
@@ -51,7 +52,7 @@ const tab = (id) => `document.querySelector('.tab[data-tab="${id}"]').click(); d
 const closeDialogs = 'document.querySelectorAll("dialog[open]").forEach((d) => d.close()); document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));';
 const VIEW_CODE = {
   picker: `${closeDialogs} roofStudio.setCrewView(false); ${tab('materials')}`,
-  colors: `${closeDialogs} roofStudio.setCrewView(false); ${tab('materials')} document.querySelector('#sfChosen .sf-cho').click();`,
+  colors: `${closeDialogs} roofStudio.setCrewView(false); roofStudio.openPicker('covering'); document.querySelector('#sfChosen .sf-cho').click();`,
   list: `${closeDialogs} roofStudio.setCrewView(false); ${tab('list')}`,
   full: `${closeDialogs} roofStudio.setCrewView(false); ${tab('list')} [...document.querySelectorAll('#sfLBtns button')].find((b) => b.textContent === 'Open full list').click();`,
   crew: `${closeDialogs} ${tab('list')} roofStudio.setCrewView(true);`,
@@ -146,18 +147,33 @@ try {
     // walk every picker slot and the list, then look for store-image requests
     const hot = await page.evaluate(async () => {
       document.querySelector('.tab[data-tab="materials"]').click();
-      const sel = document.getElementById('sfSlot');
-      for (const o of sel.options) { sel.value = o.value; sel.dispatchEvent(new Event('change')); await new Promise((r) => setTimeout(r, 50)); }
-      sel.value = 'covering'; sel.dispatchEvent(new Event('change'));
+      // the Materials tab is a drill-down: suppliers > projects > material types > products. Open every product list.
+      const pause = (ms = 30) => new Promise((r) => setTimeout(r, ms));
+      const keys = (sel) => [...document.querySelectorAll(`#matBody ${sel}:not([aria-disabled="true"]):not([disabled])`)].map((b) => b.dataset.key);
+      const open = async (sel, key) => { document.querySelector(`#matBody ${sel}[data-key="${CSS.escape(key)}"]`)?.click(); await pause(); };
+      const back = async () => { document.getElementById('matBack').click(); await pause(); };
+      let lists = 0, rows = 0;
+      for (const s of keys('.mat-card.sup')) {
+        await open('.mat-card.sup', s);
+        const projects = keys('.mat-card.proj');
+        if (!projects.length) { rows += document.querySelectorAll('#sfResults > *').length; lists++; await back(); continue; }
+        for (const p of projects) {
+          await open('.mat-card.proj', p);
+          for (const t of keys('.mat-type')) { await open('.mat-type', t); lists++; rows += document.querySelectorAll('#sfResults > *').length; await back(); }
+          await back();
+        }
+        await back();
+      }
+      window.__walk = { lists, rows };
       document.querySelector('.tab[data-tab="list"]').click();
       [...document.querySelectorAll('#sfLBtns button')].find((b) => b.textContent === 'Open full list').click();
       await new Promise((r) => setTimeout(r, 300));
       document.getElementById('sfFull').close();
       const res = performance.getEntriesByType('resource').filter((r) => /menardc|thdstatic/.test(r.name)).length;
       const imgs = document.querySelectorAll('#storePicker img, #quotePane img, #sfFull img').length;
-      return { res, imgs };
+      return { res, imgs, ...window.__walk };
     });
-    record('No hotlinks in the picker', hot.res === 0 && hot.imgs === 0, `${hot.res} store-image requests, ${hot.imgs} img elements in the picker, list and dialog`);
+    record('No hotlinks in the picker', hot.lists > 10 && hot.res === 0 && hot.imgs === 0, `walked ${hot.lists} product lists (${hot.rows} rows): ${hot.res} store-image requests, ${hot.imgs} img elements in the picker, list and dialog`);
     // crew view: no price anywhere in the pane or the crew CSV
     const crew = await page.evaluate(async () => {
       roofStudio.setCrewView(true);

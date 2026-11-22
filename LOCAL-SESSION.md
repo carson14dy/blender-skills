@@ -130,8 +130,8 @@ If `python` opens the Microsoft Store, Python is not installed: run `winget inst
 
 1. Start the studio in the background: `cd roof-visualizer && npm start`. It serves http://127.0.0.1:8080.
 2. Ask the user to open it:
-   - pick **Menards Pro-Rib** on the Materials tab ("Choosing for: Shingles / panels");
-   - pick the **Style-D** drip edge ("Choosing for: Drip edge");
+   - pick **Pro-Rib** on the Materials tab (Menards > Roof > Ribbed metal panels);
+   - pick the **Style-D** drip edge (Menards > Roof accessories > Drip edge & rake trim);
    - press **Blender command** on the Project tab and paste the commands to you.
 3. With Blender open, run those commands. Then render twice in the background, and record the second time:
    ```bash

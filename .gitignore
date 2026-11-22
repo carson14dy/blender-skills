@@ -6,3 +6,6 @@ __pycache__/
 *.blend1
 # graphify code graph: rebuilt locally in seconds (graphify update .)
 graphify-out/
+
+# real RoofTec jobs (addresses, photos, reports) pulled from the studio page: kept out of this public repo
+roof-visualizer/viewer/houses/
