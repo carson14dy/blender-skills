@@ -10,6 +10,7 @@ Research and testing sandbox for RoofTec 3D-home features before they go into th
 
 - `roof-visualizer/`: Roof Layer Studio, the Three.js web app ([SKILL.md](roof-visualizer/SKILL.md))
 - `roof-blender/`: the same layer stack in Blender ([SKILL.md](roof-blender/SKILL.md))
+- `property-model-pipeline/`: snapshot of branch `claude/upbeat-franklin-at23bw` (`SNAPSHOT.md`): LiDAR roof pitch, photo matching and fusion for existing homes (`scripts/pm.py`)
 - `.claude/skills/blender-suite/`: the one Blender skill (modeling to rendering, films, QA); loads by itself in every session
 - `lab/NEXT.md`: what each session does next, plus the Windows setup steps
 - `lab/GOALS.md`: research tracks, what "done" means, experiment backlog
@@ -37,7 +38,7 @@ When a task needs the other kind of session, write it under **Needs local** or *
 4. End every session with a `lab/LOG.md` entry: date, cloud or local, what changed, results, next steps, needs.
 5. Do not commit supplier images unless their rights are recorded (see roof-visualizer/SKILL.md, "Supplier images: rights").
 6. To promote a change: branch from `main`, copy only that change, open a pull request. Do not merge `rooftec-lab` into `main`.
-7. **Accuracy first.** Before building anything (a model, a roof, a studio feature), write down what it must measure: sizes, counts, quantities, each with its source and tolerance. Check the result against that list with a command, not by eye. Report every shortcut and assumption. Speed work comes after, and must not change a check result. Blender builds: `build-accuracy` in the blender-suite skill. Studio features: `roof-visualizer/SKILL.md`, "Accuracy rules".
+7. **Accuracy first.** Before building anything (a model, a roof, a studio feature), write down what it must measure: sizes, counts, quantities, each with its source and tolerance. Check the result against that list with a command, not by eye. Report every shortcut and assumption. Roof pitch is never assumed or asked: it is measured or worked out by rule, with its uncertainty (`roof-pitch` in the blender-suite skill). Detail is construction grade unless the user agreed a simplification first. Speed work comes after, and must not change a check result. Blender builds: `build-accuracy` in the blender-suite skill. Studio features: `roof-visualizer/SKILL.md`, "Accuracy rules".
 
 ## Commands
 

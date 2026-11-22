@@ -66,7 +66,8 @@ CHECKS = [
      "source": "standard"},
     {"id": "roof-on-walls", "type": "gap", "a": "Shed_Wall*", "b": "Shed_Roof*", "source": "given"},
     {"id": "ridge", "type": "extent", "objects": "Shed_Roof", "expect": 10.5, "source": "assumed", "note": "6/12"},
-    {"id": "pitch", "type": "slope", "objects": "Shed_Roof", "expect": "6/12", "source": "assumed", "note": "no answer"},
+    {"id": "pitch", "type": "slope", "objects": "Shed_Roof", "expect": "6/12", "tol": 0.48, "why": "2 sigma",
+     "source": "measured", "note": "roof_pitch.py photo: 6/12 (measured 6.01 ± 0.25)"},
     {"id": "siding", "type": "material", "objects": "Shed_Wall*", "expect": "M_Siding*", "textured": True,
      "source": "given"}]
 
@@ -75,8 +76,8 @@ def test_acceptance_passes_on_a_matching_scene():
     shed()
     r = _ac().run(accept=_write("ok.json", CHECKS, forbid={"scope": "Shed_*"}))
     assert r["pass"] and r["checked"] == r["passed"] == 7 and not r["failed"] and not r["warnings"], r
-    assert r["sources"] == {"given": 4, "standard": 1, "assumed": 2}, r["sources"]
-    assert r["assumed"] == ["ridge: 6/12", "pitch: no answer"] and len(r["spec_sha"]) == 12, r
+    assert r["sources"] == {"given": 4, "standard": 1, "assumed": 1, "measured": 1}, r["sources"]
+    assert r["assumed"] == ["ridge: 6/12"] and len(r["spec_sha"]) == 12, r
     fp = r["results"][0]
     assert fp["got"] == [10.0, 12.0, 8.0] and type(fp["got"][0]) is float and type(r["pass"]) is bool, fp
 
@@ -136,6 +137,24 @@ def test_slope_and_area():
     assert res["area"]["pass"] and res["area"]["unit"] == "ft2" and abs(res["area"]["got"] - area_ft2) < 0.01, res
     assert res["sq"]["pass"] and res["sq"]["unit"] == "sq" and abs(res["sq"]["got"] - 1.3416) < 1e-3, res
     assert r["failed"] == ["deg"], r["failed"]
+
+
+def test_slope_never_assumed_and_measure_pitch():
+    shed()
+    fx.mesh_object("Shed_Board", lambda bm: bm.faces.new([bm.verts.new(p) for p in ((0, -1, 0), (1, -1, 0), (1, -1, 1),
+                                                                                    (0, -1, 1))]))  # upright: no pitch
+    pitch = {"id": "pitch", "type": "slope", "objects": "Shed_Roof", "expect": "6/12"}
+    for extra in ({"source": "assumed", "note": "common for sheds"}, {}):                  # no source counts as assumed
+        r = _ac().run(accept=_write("assumed.json", [{**pitch, **extra}]))
+        res = r["results"][0]
+        assert not r["pass"] and res["error"] == "a pitch is never assumed: run roof_pitch.py", r
+        assert res["got_rise_per_12"] == 6.0, res                                          # the scene is still measured
+    r = _ac().run(accept=_write("std.json", [{**pitch, "source": "standard", "note": "design rule"}],
+                                forbid={"scope": "x"}))
+    assert r["pass"], r
+    rows = {o["name"]: o for o in _ac().run(measure="Shed_*", units="ft")["objects"]}
+    assert rows["Shed_Roof"]["rise_per_12"] == 6.0 and rows["Shed_Wall"]["rise_per_12"] == 0.0, rows["Shed_Roof"]
+    assert "rise_per_12" not in rows["Shed_Board"], rows["Shed_Board"]
 
 
 def test_material_and_forbid():

@@ -9,9 +9,12 @@ Usage:
       (takes the last @@JSON@@, RT_RESULT or RT_QA line, else the text as JSON)
   python build_log.py shortcut --kind K --what T --why T [--effect T] [--check ID] [--approved]
   python build_log.py approve N [N ...]       (only after the user said yes)
+  python build_log.py reject N [N ...] [--why T]   (the user said no: redo the part)
+  python build_log.py resolve N --how T       (after the redo, or after building the part in full)
   python build_log.py close [--times FILE]    exit 0 done, 2 blockers left
   python build_log.py report [--json]         text for the final message
-Kinds: simplified omitted substituted assumed preview unverified tolerance brief-change.
+Kinds: simplified omitted substituted assumed preview unverified tolerance brief-change. The first three block
+`close` until the user approves them (agree them before building); a rejected shortcut blocks until resolved.
 """
 import argparse
 import datetime
@@ -23,13 +26,14 @@ import sys
 import time
 
 KINDS = ("simplified", "omitted", "substituted", "assumed", "preview", "unverified", "tolerance", "brief-change")
+SIMPLER = KINDS[:3]  # less than the brief: needs the user's yes
 LINE = re.compile(r"(?:@@JSON@@|RT_RESULT |RT_QA )(\{.*\})\s*$")
 KEEP = ("complete", "spec_sha", "partial", "failed", "assumed", "checked", "passed", "preset", "samples", "res",
         "device", "deliverable", "sec_per_image", "blender", "error", "tris")
 ARGS = {"start": "--name! --accept! --session --force?", "stage": "name --done? --note",
         "gate": "name --stdin? --result --pass? --fail? --deliverable? --note",
         "shortcut": "--kind! --what! --why! --effect --check --approved?", "approve": "numbers+",
-        "close": "--times", "report": "--json?"}
+        "reject": "numbers+ --why", "resolve": "number# --how!", "close": "--times", "report": "--json?"}
 
 
 class Fail(Exception):
@@ -137,18 +141,40 @@ def cmd_shortcut(a, log):
         raise Fail("--what and --why must say something")
     s = {"n": len(log["shortcuts"]) + 1, "kind": a.kind, "what": a.what.strip(), "why": a.why.strip(),
          "approved": a.approved, "stage": (_cur(log) or {}).get("name"),
-         **{k: getattr(a, k) for k in ("effect", "check") if getattr(a, k)}}
+         **{k: getattr(a, k) for k in ("effect", "check") if getattr(a, k)},
+         **({"after_start": True} if a.kind in SIMPLER and log["stages"] else {})}
     log["shortcuts"].append(s)
     return {"ok": True, "shortcut": s["n"], "approved": a.approved}
 
 
-def cmd_approve(a, log):
+def _pick(log, numbers):
     known = {s["n"]: s for s in log["shortcuts"]}
-    if set(a.numbers) - set(known):
-        raise Fail(f"no shortcut {sorted(set(a.numbers) - set(known))} (there are {len(known)})")
-    for n in a.numbers:
-        known[n]["approved"] = True
+    if set(numbers) - set(known):
+        raise Fail(f"no shortcut {sorted(set(numbers) - set(known))} (there are {len(known)})")
+    return [known[n] for n in numbers]
+
+
+def cmd_approve(a, log):
+    for s in _pick(log, a.numbers):
+        s.update(approved=True, rejected=False)
     return {"ok": True, "approved": a.numbers}
+
+
+def cmd_reject(a, log):  # the user said no
+    for s in _pick(log, a.numbers):
+        s.update(approved=False, rejected=True, **({"rejected_why": a.why} if a.why else {}))
+        s.pop("resolved", None)
+    return {"ok": True, "rejected": a.numbers, "next": "redo each part, then resolve N --how '<what you did>'"}
+
+
+def cmd_resolve(a, log):
+    s = _pick(log, [a.number])[0]
+    if s["approved"]:
+        raise Fail(f"shortcut {a.number} is approved: nothing to resolve")
+    if not a.how.strip():
+        raise Fail("--how must say what was redone")
+    s["resolved"] = a.how.strip()
+    return {"ok": True, "resolved": a.number}
 
 
 def _why(f):
@@ -174,7 +200,7 @@ def blockers(log):
         items += [(r, "forbidden items in the scene") for r in full[-1].get("forbidden", [])]
         out += [] if items else [f"the last acceptance run failed: {full[-1].get('error', 'no pass')}"]
         for cid, why in items:
-            mine = [s for s in cuts if s.get("check") == cid]
+            mine = [s for s in cuts if s.get("check") == cid and not s.get("rejected")]
             if not any(s["approved"] for s in mine):
                 n = mine and mine[-1]["n"]
                 out.append(f"check '{cid}' fails ({why}): " + (f"shortcut {n} needs the user's yes (approve {n})" if n
@@ -203,6 +229,14 @@ def blockers(log):
         if not any(s.get("check") == name and s["approved"] for s in cuts):
             out.append(f"gate '{name}' failed: pass it again, or log a shortcut with --check {name} "
                        "and get the user's yes")
+    for s in cuts:
+        if s.get("resolved") or s["approved"]:
+            continue
+        if s.get("rejected"):
+            out.append(f"shortcut {s['n']} rejected by the user: redo it ({s['what']})")
+        elif s["kind"] in SIMPLER:
+            out.append(f"shortcut {s['n']} is {s['kind']} ({s['what']}): a simpler part needs the user's yes "
+                       f"(approve {s['n']}), or build it in full and resolve {s['n']}")
     if _cur(log):
         out.append(f"stage '{_cur(log)['name']}' is still open: stage {_cur(log)['name']} --done")
     return out
@@ -217,6 +251,16 @@ def _stages(log):
     for s in log["stages"]:
         st[s["name"]] = round(st.get(s["name"], 0) + s.get("seconds", time.time() - s["start"]), 1)
     return st
+
+
+def _state(s):
+    if s["approved"]:
+        return "APPROVED"
+    if s.get("resolved"):
+        return ("REJECTED, redone: " if s.get("rejected") else "REDONE: ") + s["resolved"]
+    if s.get("rejected"):
+        return "REJECTED" + (f" ({s['rejected_why']})" if s.get("rejected_why") else "")
+    return "NOT APPROVED"
 
 
 def report(log):
@@ -234,7 +278,7 @@ def report(log):
     for s in cuts:
         out.append(f"  {s['n']}. {s['kind']}: {s['what'].rstrip('.')}. Why: {s['why'].rstrip('.')}."
                    + "".join(f" {k.title()}: {s[k].rstrip('.')}." for k in ("effect", "check") if s.get(k))
-                   + (" APPROVED" if s["approved"] else " NOT APPROVED"))
+                   + (" Logged after start." if s.get("after_start") else "") + " " + _state(s))
     assumed = full[-1].get("assumed", log["assumed"]) if full else log["assumed"]
     out.append(f"Assumed values ({len(assumed)}): " + "; ".join(assumed) if assumed else "Assumed values: none")
     parts = []
@@ -255,8 +299,8 @@ def report(log):
     return "\n".join(out + [f"  - {x}" for x in b]), b
 
 
-def _unapproved(log):  # shown to the user for their OK; they do not block
-    return [s["n"] for s in log["shortcuts"] if not s["approved"]]
+def _unapproved(log):  # shown to the user for their OK (simplified, omitted, substituted also block)
+    return [s["n"] for s in log["shortcuts"] if not (s["approved"] or s.get("rejected") or s.get("resolved"))]
 
 
 def cmd_close(a, log):
@@ -287,8 +331,9 @@ def main(argv=None):
         s = sub.add_parser(cmd)
         s.add_argument("--log", default="build_log.json")
         for x in spec.split():
-            kw = {"?": {"action": "store_true"}, "+": {"nargs": "+", "type": int}, "!": {"required": True}}
-            s.add_argument(x.rstrip("?+!"), **kw.get(x[-1], {}))
+            kw = {"?": {"action": "store_true"}, "+": {"nargs": "+", "type": int}, "!": {"required": True},
+                  "#": {"type": int}}
+            s.add_argument(x.rstrip("?+!#"), **kw.get(x[-1], {}))
     a = p.parse_args(argv)
     try:
         log = {}

@@ -10,14 +10,14 @@ metadata:
 
 # Blender Suite
 
-Your memory of `bpy` is probably out of date, and a mesh that looks fine in code is often wrong on screen. So use the tested scripts when one fits, check API details here before guessing, and verify results with numbers and a visual check.
+Your memory of `bpy` is probably out of date, and a mesh that looks fine in code is often wrong on screen. So use the tested scripts when one fits, check API details here before guessing, and verify with numbers and a look.
 
 ## Accuracy first
 A build is done when it matches the brief, not when it looks finished. For every build, RoofTec roofs included, follow `build-accuracy`:
-1. **First** write `acceptance.json`: each size, count, spacing, material and deliverable in the brief, with its source. Ask before assuming anything that changes the result.
+1. **First** write `acceptance.json`: each size, count, spacing, material and deliverable in the brief, with its source. Never assume a roof pitch: work it out (`roof-pitch`). Detail is construction grade (`construction-detail`); agree any simplification with the user before building.
 2. **After each stage** run `qa_check.py` and `acceptance_check.py`, then look. Fix what fails. Never edit the file to pass.
-3. **Log every shortcut** with `build_log.py` (simplified or missing part, assumed value, skipped check, preview render) and show the user the list.
-Speed comes second: a faster way is fine only if the checks still pass.
+3. **Log every shortcut** with `build_log.py` (assumed value, skipped check, preview render) and show the user the list.
+Speed comes second: faster is fine only if the checks still pass.
 
 ## Finding things
 - Paths in these documents are relative to this skill's folder, written `<skill_dir>`. When you run a script, give its full path, because the working directory is usually the user's project. In this repo the folder is `.claude/skills/blender-suite`.
@@ -26,7 +26,7 @@ Speed comes second: a faster way is fine only if the checks still pass.
 - `look`, `generate_3d`, `import_asset`, `search_assets` and `world_bounding_box` are tools that some Blender MCP servers offer. Use whatever your server has. Without them, use `review_shots.py` to look, `gpt_model_spec.py` and `build_from_spec.py` to generate, `polyhaven_fetch.py` for assets, and `ob.dimensions` or `ob.bound_box` for size.
 - `tests/` is only in the repository copy. A packaged `.skill` carries just `tests/check_skill.py`.
 - A bare script name means `scripts/<name>`. Files under `pipelines/` are the real scripts from three finished films. They are tied to those scenes, so read them, copy the folder into the project and adapt it. They are the one exception to the next rule.
-- **Run scripts instead of reading them.** Each one documents its flags in its docstring and prints one compact JSON result. They are large, and reading them wastes context.
+- **Run scripts instead of reading them.** Each one documents its flags in its docstring and prints one compact JSON result. They are large.
 
 ## Route the task
 | Task | Read | Main scripts |

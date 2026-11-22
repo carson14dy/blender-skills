@@ -4,9 +4,10 @@ The file is written BEFORE building, from the brief (references/build-accuracy.m
 Types: size extent count spacing gap position slope area material tris image, plus "forbid". A check that
 matches nothing fails. Units m cm mm in ft (area: unit squared or "sq"). Tolerance 1 mm or 0.1 %.
 Image paths: // is the .blend folder, other relative paths start at the acceptance file.
+A slope check whose source is "assumed" fails: a pitch is never assumed (roof_pitch.py works it out).
 Usage:
   blender -b f.blend -P acceptance_check.py -- --accept acceptance.json [--only id1 id2] [--fail-exit]
-  blender -b f.blend -P acceptance_check.py -- --measure "Shed_*" [--units ft]     (sizes, no judging)
+  blender -b f.blend -P acceptance_check.py -- --measure "Shed_*" [--units ft]     (sizes, pitch; no judging)
   MCP: import acceptance_check as a; print(a.run(accept="C:/work/acceptance.json"))
 Returns {"pass", "checked", "passed", "failed", "results", "assumed", "forbidden", "warnings", "spec_sha"};
 --fail-exit: exit code 2 when "pass" is false (1 = script error).
@@ -94,6 +95,16 @@ def _tri_geo(obs, dg):  # per-triangle area and unit normal (Blender units)
     if not sum(x.sum() for x in a):
         raise Bad("matched objects have no faces")
     return np.concatenate(a), np.vstack(n)
+
+
+def _slope(areas, normals):  # area-weighted median slope (degrees) of the faces that point up, or None
+    up = normals[:, 2] > 0.05
+    if not up.any():
+        return None
+    ang = np.degrees(np.arccos(np.clip(normals[up, 2], -1, 1)))
+    order = np.argsort(ang)
+    cum = np.cumsum(areas[up][order])
+    return float(ang[order][np.searchsorted(cum, cum[-1] / 2)])
 
 
 def _islands(ob, dg):
@@ -253,12 +264,9 @@ def _check(c, cx):
         areas, normals = _tri_geo(obs, cx.dg)
         up = normals[:, 2] > 0.05
         if typ == "slope":
-            if not up.any():
+            got = _slope(areas, normals)
+            if got is None:
                 raise Bad("no upward faces")
-            ang = np.degrees(np.arccos(np.clip(normals[up, 2], -1, 1)))
-            order = np.argsort(ang)
-            cum = np.cumsum(areas[up][order])
-            got = float(ang[order][np.searchsorted(cum, cum[-1] / 2)])  # area-weighted median
             e = c["expect"]
             want = math.degrees(math.atan2(*map(float, e.split("/")))) if "/" in str(e) else float(e)
             tol = float(c.get("tol", TOL_DEG))
@@ -337,6 +345,11 @@ def _measure(pattern, unit):
         rows.append({"name": o.name, "type": o.type, "size": _r((hi - lo) / k), "min": _r(lo / k), "max": _r(hi / k),
                      "tris": bx.mesh_tris(o) if o.type == "MESH" else 0,
                      "materials": [m.name if m else None for m in _mats(o)]})
+        try:  # pitch of the faces that point up (area-weighted median)
+            deg = _slope(*_tri_geo([o], dg)) if o.type == "MESH" else None
+        except Bad:  # no faces after modifiers
+            deg = None
+        rows[-1].update({"rise_per_12": _r(12 * math.tan(math.radians(deg)), 2)} if deg is not None else {})
     return {"ok": True, "unit": unit, "count": len(obs), "shown": len(rows), "objects": rows}
 
 
@@ -371,6 +384,8 @@ def run(accept=None, only=None, measure=None, units="m", **_):
         except Exception as e:  # noqa: BLE001 - a malformed check fails; it never stops the run
             r = {"pass": False, "error": str(e) if isinstance(e, Bad) else f"bad check: {type(e).__name__}: {e}",
                  "expect": c.get("expect", c.get("res"))}
+        if c.get("type") == "slope" and src == "assumed":  # whatever the scene says
+            r.update({"pass": False, "error": "a pitch is never assumed: run roof_pitch.py"})
         results.append({"id": cid, "type": c.get("type"), "source": src, **r})
     warnings += [f"--only {x}: no such check id" for x in only or [] if x not in ids]
     forbidden = [] if only else _forbid(spec.get("forbid"))

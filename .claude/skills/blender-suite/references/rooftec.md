@@ -13,6 +13,8 @@ Roof geometry, the layer stack (deck to ridge cap), supplier materials at true s
 | Geometry gate after any change to the layers | `lab/tools/roof_qa.py`, which calls this skill's `qa_check.py`; then a close-up with `review_shots.py` |
 | A house against its measurement report (squares, edge lengths, within 2 %) | `lab/tools/roof_qa.py -- --expect report.json` |
 | Roof pitch and plane area of a house model | `acceptance_check.py` with `slope` and `area` checks (`unit` "sq") |
+| Pitch of a house, never assumed: gauge, LiDAR, report, plans or photo, with its uncertainty | `roof-pitch`, `roof_pitch.py` |
+| A new building around a RoofTec roof (shed, garage), construction grade | `construction-detail` |
 | Check a house model or supplier asset that came from outside | `asset-safety`, `blend_audit.py` |
 | Marketing light: golden hour, overcast, dusk with lit windows | `blender-time-of-day`, `scene_mood.py --time golden` (or `sunset`, `blue_hour`) |
 | Storm, rain-wet or snow-covered roof | `blender-weather-fx`, `surface_weather.py`, `precipitation.py` |

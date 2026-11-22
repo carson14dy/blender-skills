@@ -54,7 +54,7 @@ What the user wants, where it stands after the first build (experiment 000), and
 
 **Goal:** a build matches its brief and the user is told every shortcut; later, the same result faster.
 
-**Now:** acceptance file, `acceptance_check.py`, `build_log.py` (experiment 024).
+**Now:** acceptance file, `acceptance_check.py`, `build_log.py` (experiment 024). Roof pitch is worked out, never assumed (`roof_pitch.py`: gauge, LiDAR, model, report, plans, photo, or the user's design rule for a new build), and detail is construction grade by default, with any simplification agreed first (experiment 027).
 
 **Done when:** three real builds (one model, one roof on a real house, one studio feature) close with every check passing or approved, and the user confirms no unreported shortcut. Then phase 2: each speed-up proven by an A/B.
 
@@ -88,3 +88,5 @@ What the user wants, where it stands after the first build (experiment 000), and
 | 024 | T7 | Accuracy-first build tooling: acceptance file, `acceptance_check.py`, `build_log.py`, a pilot shed build. **Done** (cloud), see 024; GPU rebuild open | cloud, then local |
 | 025 | T7 | Timing baseline: the same three builds on the GPU, from `lab/build-times.jsonl` | local |
 | 026 | T7 | First speed-ups, each with an A/B (same checks pass, same deliverable) | cloud, then local |
+| 027 | T7 | The shed again at construction grade: framing, sheathing, siding, trim, windows and door from rules; pitch from the approved design rule; pitch-from-photo check on a render | cloud |
+| 028 | T7/T2 | Pitch from a real inspection photo of a measured house, against its LiDAR pitch (private photo and address stay out of the repo) | local |

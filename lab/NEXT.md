@@ -25,6 +25,11 @@ The full runbook, with commands in order, is `LOCAL-SESSION.md` at the repositor
   2. With Blender open (MCP for Blender addon), run `node roof-blender/scripts/roof-blender.mjs demo --preset ranch-hip --pitch 6` once. Then, for each store, run its pair of commands and `node roof-blender/scripts/roof-blender.mjs still --output out/sf-<store>.png`. Note the `RT_RESULT` seconds and device.
   3. Compare the two renders and the studio with the store pages. Do this for the 10 best-selling shingles and the 27 name mismatches listed in experiment 016. Write corrections to `roof-visualizer/scripts/data/supplier-color-overrides.json` and rebuild the catalog (command in 016).
   4. Open the studio on a phone: pick a product, open the List tab and the full list, and tap a roof plane. Note anything hard to tap or read.
+- [ ] **Experiment 028, roof pitch from a real photo (about 20 minutes):**
+  1. Pick a house whose pitch is measured (LiDAR or a report) and an inspection photo of one gable end that shows a door or window of known size. Keep the photo, the address and the points in `out/028/` (git-ignored).
+  2. Open the photo, read rough points as `roof-pitch` (blender-suite skill) shows, then run `python .claude/skills/blender-suite/scripts/roof_pitch.py photo --image out/028/gable.jpg --points out/028/pts.json --overlay out/028/lines.png --out out/028/photo.json`.
+  3. Open the overlay: every line on its edge. Save the reference with `roof_pitch.py record --method lidar` (or `report`), then `combine` the two. Pass: the photo is within its own 2 sigma of the reference and `confidence` is ok.
+  4. Write only the numbers (no address, no photo) in `lab/experiments/028-pitch-from-photo/README.md`.
 - [ ] **Experiment 003, a real RoofTec house:**
   1. Export one house as `.glb` into `lab/experiments/003-real-house/out/` (git-ignored). Name the roof mesh `Roof` if the export tool allows it.
   2. Load it in the viewer (Project tab > Load house model).
@@ -34,7 +39,7 @@ The full runbook, with commands in order, is `LOCAL-SESSION.md` at the repositor
 
 ## Cloud session
 
-- Every build: `build-accuracy` (acceptance file first).
+- Every build: `build-accuracy` (acceptance file first). Roof pitch: `roof-pitch`, never assumed or asked.
 - [x] **Sioux Falls studio, steps 016, 017 and 018** (store picker with sampled colors, priced list, project files), plus the texture part of 019 and a read-only 022. See the experiment folders and the newest `lab/LOG.md` entry.
 - [x] **Sioux Falls studio, step 019 geometry with 020:** real ribs (Pro-Rib, Pro-Snap, corrugated), metal caps on the ribs, rake trim, edge profiles from the drip-edge product, in both apps with a parity test. See experiments 019 and 020.
 - [ ] After any change to `roof_core.py`, `roof-geometry.js` or the layer heights: run `$LAB_BPY_PYTHON lab/tools/roof_qa.py` and `npm test`.

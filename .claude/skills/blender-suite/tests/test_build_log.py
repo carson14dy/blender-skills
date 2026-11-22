@@ -148,12 +148,12 @@ def test_build_log_gate_parsing_and_report():
     assert _bl(d, "gate", "render", "--stdin", "--deliverable", stdin=json.dumps(final))[1]["pass"]
     _bl(d, "gate", "look", "--pass", "--note", "hero still, sharp, no fireflies")
     _bl(d, "stage", "render", "--done")
-    _bl(d, "shortcut", "--kind", "simplified", "--what", "Window frames are one profile.", "--why", "no drawing",
+    _bl(d, "shortcut", "--kind", "unverified", "--what", "Window frames not seen up close.", "--why", "no drawing",
         "--effect", "visible closer than 2 m", "--check", "windows")
     _bl(d, "shortcut", "--kind", "preview", "--what", "Hero at 1920x1080", "--why", "no GPU", "--approved")
     rc, text = _bl(d, "report")
     assert rc == 0 and text.startswith("Build: Shed (local, "), text
-    for part in ("Acceptance: 2 of 2 checks pass (acceptance.json ", "1. simplified: Window frames are one profile. "
+    for part in ("Acceptance: 2 of 2 checks pass (acceptance.json ", "1. unverified: Window frames not seen up close. "
                  "Why: no drawing. Effect: visible closer than 2 m. Check: windows. NOT APPROVED",
                  "2. preview: Hero at 1920x1080. Why: no GPU. APPROVED", "Assumed values (1): ridge: 6/12 pitch",
                  "qa pass (0 errors, 1 warnings); render pass, final 1920x1080 512 samples; look pass",
@@ -170,3 +170,40 @@ def test_build_log_gate_parsing_and_report():
     assert set(rows[0]["stages"]) == {"blockout", "render"} and rows[0]["gates"]["acceptance"] == 0.4, rows[0]
     assert rows[0]["renders"][-1] == {"res": [1920, 1080], "samples": 512, "sec_per_image": 3.5, "device": "CPU"}
     assert rows[0]["checks"] == 2 and rows[0]["passed"] == 2 and rows[0]["shortcuts"] == 2 and rows[0]["done"]
+
+
+def test_rejected_shortcut_blocks_until_redone():
+    d = _done("bl6")
+    _bl(d, "shortcut", "--kind", "assumed", "--what", "pitch 6/12", "--why", "not in the brief", "--check", "ridge")
+    assert _bl(d, "close")[1]["done"]                                       # an assumed value alone does not block
+    assert _bl(d, "reject", "2")[0] == 1 and _bl(d, "resolve", "1", "--how", " ")[0] == 1
+    assert _bl(d, "reject", "1", "--why", "work the pitch out")[1]["rejected"] == [1]
+    rc, r = _bl(d, "close")
+    assert rc == 2 and r["blockers"] == ["shortcut 1 rejected by the user: redo it (pitch 6/12)"], r
+    assert r["unapproved"] == [] and "REJECTED (work the pitch out)" in _bl(d, "report")[1], r
+    _bl(d, "resolve", "1", "--how", "roof_pitch.py rule: 6/12, source standard")
+    rc, r = _bl(d, "close")
+    assert rc == 0 and r["done"], r
+    assert "Check: ridge. REJECTED, redone: roof_pitch.py rule: 6/12, source standard" in _bl(d, "report")[1]
+    _bl(d, "approve", "1")
+    assert _bl(d, "resolve", "1", "--how", "x")[0] == 1                    # approved: nothing to resolve
+
+
+def test_simplified_part_needs_yes():
+    d = _done("bl7")
+    _bl(d, "shortcut", "--kind", "substituted", "--what", "stock door", "--why", "no model of the real one")
+    _bl(d, "stage", "detail")
+    _bl(d, "shortcut", "--kind", "simplified", "--what", "shingles as stepped courses", "--why", "faster")
+    _bl(d, "stage", "detail", "--done")
+    rc, r = _bl(d, "close")
+    assert rc == 2 and len(r["blockers"]) == 2 and r["unapproved"] == [1, 2], r
+    assert r["blockers"][1] == ("shortcut 2 is simplified (shingles as stepped courses): a simpler part needs the "
+                                "user's yes (approve 2), or build it in full and resolve 2"), r
+    text = _bl(d, "report")[1]
+    assert "1. substituted: stock door. Why: no model of the real one. NOT APPROVED" in text, text
+    assert "2. simplified: shingles as stepped courses. Why: faster. Logged after start. NOT APPROVED" in text, text
+    _bl(d, "approve", "1")                                                  # the user said yes to the stock door
+    _bl(d, "resolve", "2", "--how", "every shingle modelled")
+    rc, r = _bl(d, "close")
+    assert rc == 0 and r["done"] and r["unapproved"] == [], r
+    assert "Logged after start. REDONE: every shingle modelled" in _bl(d, "report")[1]
