@@ -7,6 +7,7 @@ Every skill script follows one contract:
 import argparse
 import json
 import sys
+import time
 
 import bpy
 
@@ -41,17 +42,19 @@ def parser(doc):
 
 
 def cli(run, p):
-    """CLI entry: parse args after '--', run, emit JSON. Exit 1 on failure."""
+    """CLI entry: parse args after '--', run, emit JSON with the run's "seconds". Exit 1 on failure."""
     args = p.parse_args(argv())
+    t = time.time()
     try:
         result = run(**vars(args))
+        result.setdefault("seconds", round(time.time() - t, 2))
         save = getattr(args, "save", None)
         if save:
             bpy.ops.wm.save_as_mainfile(filepath=bpy.path.abspath(save))
             result["saved"] = save
-        emit(result)
+        return emit(result)
     except Exception as e:  # report, don't dump a traceback into agent context
-        emit({"ok": False, "error": f"{type(e).__name__}: {e}"})
+        emit({"ok": False, "error": f"{type(e).__name__}: {e}", "seconds": round(time.time() - t, 2)})
         if bpy.app.background:
             sys.exit(1)
 

@@ -156,6 +156,9 @@ def check_docs(files):
     for row in re.findall(r"^\|[^|\n]+\|\s*`([a-z0-9-]+)`\s*\|", skill_md, re.M):   # routing table
         if row not in refs:
             errs.append(f"SKILL.md: routing row points to missing reference {row}")
+    for need in ("\n## Accuracy first\n", "acceptance_check.py", "build_log.py", "build-accuracy"):   # trims keep it
+        if need not in skill_md:
+            errs.append(f"SKILL.md: lacks {need.strip()!r} (the accuracy rule stays; shorten something else)")
     return skill_md
 
 

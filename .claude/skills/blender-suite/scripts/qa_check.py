@@ -4,9 +4,10 @@
 Pass the objects of ONE asset (they are checked together: islands far from all others = floating).
 Usage:
   blender -b f.blend -P qa_check.py -- [--objects A B] [--profile game|render|print|roblox]
-      [--eps 0.001] [--tol 0.002] [--no-modifiers] [--max-tris 300000]
+      [--eps 0.001] [--tol 0.002] [--no-modifiers] [--max-tris 2000000]   (0 = no limit)
   MCP: import qa_check; print(qa_check.run(objects=["Chair"], profile="game"))
-Returns {"pass": bool, "errors": [...], "warnings": [...], "objects": {name: metrics}}.
+Returns {"pass": bool, "complete": bool, "skipped": [...], "errors": [...], "warnings": [...], "objects": {...}}.
+Above --max-tris the z-fighting and floating checks do not run: that is an error and "complete": false.
 """
 import math
 import os
@@ -171,7 +172,7 @@ def _uv_stats(ob, bm_local):
             "uv_coverage_pct": round(100 * used / n / n, 1)}
 
 
-def run(objects=None, profile="game", eps=0.001, tol=0.002, no_modifiers=False, max_tris=300000,
+def run(objects=None, profile="game", eps=0.001, tol=0.002, no_modifiers=False, max_tris=2000000,
         uv=True, **_):
     bx.object_mode()
     sev = PROFILES[profile]
@@ -320,9 +321,10 @@ def run(objects=None, profile="game", eps=0.001, tol=0.002, no_modifiers=False, 
             errors.append(f"{ob.name}: {m['tris']} tris > {profile} limit {lim}")
         per[ob.name] = m
 
-    if len(tris) > max_tris:
-        warnings.append(f"{len(tris)} tris > max_tris {max_tris}: z-fighting/floating checks skipped")
-        return _result(errors, warnings, per, min_z, tol, [], [], [])
+    if max_tris and len(tris) > max_tris:  # a skipped check is not a pass
+        errors.append(f"{len(tris)} tris > max_tris {max_tris}: z-fighting and floating checks did not run. "
+                      "Re-run with --max-tris 0, or check per part.")
+        return _result(errors, warnings, per, min_z, tol, [], [], [], skipped=["zfighting", "floating"])
 
     bvh = BVHTree.FromPolygons(verts, tris, epsilon=0.0)
     tri_sets = [set(t) for t in tris]
@@ -408,11 +410,12 @@ def run(objects=None, profile="game", eps=0.001, tol=0.002, no_modifiers=False, 
     return _result(errors, warnings, per, min_z, tol, zf, floating, contact, enclosed)
 
 
-def _result(errors, warnings, per, min_z, tol, zf, floating, contact, enclosed=()):
+def _result(errors, warnings, per, min_z, tol, zf, floating, contact, enclosed=(), skipped=()):
     ground = None if min_z == math.inf else round(min_z, 4)
     if ground is not None and abs(ground) > max(tol, 1e-3):
         warnings.append(f"asset lowest point z={ground} (not resting on ground plane z=0)")
-    return {"ok": True, "pass": not errors, "errors": errors, "warnings": warnings,
+    return {"ok": True, "pass": not errors, "complete": not skipped, "skipped": list(skipped),
+            "errors": errors, "warnings": warnings,
             "ground_z": ground, "zfighting": zf, "floating": floating,
             "back_to_back": contact, "enclosed": list(enclosed), "objects": per}
 
@@ -423,6 +426,6 @@ if __name__ == "__main__":
     p.add_argument("--eps", type=float, default=0.001, help="z-fight plane distance (m)")
     p.add_argument("--tol", type=float, default=0.002, help="contact tolerance for detached parts (m)")
     p.add_argument("--no-modifiers", action="store_true")
-    p.add_argument("--max-tris", type=int, default=300000)
+    p.add_argument("--max-tris", type=int, default=2000000, help="0 = no limit")
     p.add_argument("--no-uv", dest="uv", action="store_false")
     bx.cli(run, p)

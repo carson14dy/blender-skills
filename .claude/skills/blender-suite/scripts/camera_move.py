@@ -9,7 +9,7 @@ Usage:
       [--focus X Y Z | --focus-object Logo] [--tightness 0.45] [--azimuth 0] [--sweep 90]
       [--faces 4] [--hold 0.7] [--tilt 30] [--fill 1.0] [--res 1920 1080] [--save out.blend]
   MCP: import camera_move; print(camera_move.run(objects=["Hero"], move="crane"))
-Then render with scripts/render_batch.py (--frames 1-N).
+Preview with scripts/render_batch.py --preset preview, then deliver with --preset final (or product).
 """
 import math
 import os

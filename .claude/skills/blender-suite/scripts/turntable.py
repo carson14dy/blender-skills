@@ -5,7 +5,7 @@ Usage:
   blender -b f.blend -P turntable.py -- --objects Hero [--rig studio|hdri|both] [--hdri path.exr]
       [--hdri-strength 1] [--frames 120] [--lens 85] [--backdrop] [--elevation 15] [--save out.blend]
   MCP: import turntable; print(turntable.run(objects=["Hero"], rig="studio", frames=120))
-Then render with scripts/render_batch.py (e.g. --frames 1-120 --format MP4).
+Preview with scripts/render_batch.py --preset preview, then deliver with --preset final (or product).
 """
 import math
 import os

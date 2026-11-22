@@ -8,8 +8,10 @@ Usage:
       [--out //render/shot_####] [--format PNG] [--frames 1-120 | 1,12,24] [--cameras CamA CamB]
       [--view AgX|"Khronos PBR Neutral"|Standard] [--look "AgX - Punchy"] [--transparent] [--device GPU|CPU]
   MCP: import render_batch as r; print(r.run(preset="preview", frames="1"))
-Returns written files and seconds per image.
+Returns written files, seconds per image and the quality rendered: preset, samples, percent, "reduced" and
+"deliverable" (false for the preview preset or under 100 %: for looking, not for delivery).
 """
+import glob
 import os
 import sys
 import time
@@ -69,6 +71,7 @@ def _frames(spec, sc):
 def run(engine=None, preset="preview", res=None, percent=None, samples=None, out="//render/####",
         format="PNG", frames=None, cameras=None, view=None, look=None, transparent=None,  # noqa: A002
         device="GPU", **_):
+    t0 = time.time()
     sc = bpy.context.scene
     r = sc.render
     if engine:
@@ -111,8 +114,7 @@ def run(engine=None, preset="preview", res=None, percent=None, samples=None, out
         r.ffmpeg.format = "MPEG4" if format == "MP4" else "WEBM"
         r.ffmpeg.codec = "H264" if format == "MP4" else "AV1"
         r.ffmpeg.constant_rate_factor = "HIGH"
-    if r.film_transparent and fmt == "JPEG":
-        info["warning"] = "JPEG has no alpha; use PNG/EXR for transparent renders"
+    warn = ["JPEG has no alpha; use PNG/EXR for transparent renders"] if r.film_transparent and fmt == "JPEG" else []
     cams = [bpy.data.objects[c] for c in cameras] if cameras else [sc.camera]
     if cams[0] is None:
         raise ValueError("scene has no camera (see blender-lighting-lookdev)")
@@ -129,7 +131,8 @@ def run(engine=None, preset="preview", res=None, percent=None, samples=None, out
             t = time.time()
             bpy.ops.render.render(animation=True)
             times.append(time.time() - t)
-            files.append(stem + ext)
+            files += sorted(f for f in glob.glob(glob.escape(stem) + "*" + ext)  # Blender adds the frame range
+                            if os.path.getsize(f) > 0 and os.path.getmtime(f) >= t - 1)
             continue
         for f in _frames(frames, sc):
             sc.frame_set(f)
@@ -139,11 +142,29 @@ def run(engine=None, preset="preview", res=None, percent=None, samples=None, out
             bpy.ops.render.render(write_still=True)
             times.append(time.time() - t)
             files.append(path)
-    info.update({"ok": all(os.path.exists(f) for f in files) or media == "VIDEO", "files": files,
-                 "sec_per_image": round(sum(times) / max(len(times), 1), 2),
-                 "res": [r.resolution_x * r.resolution_percentage // 100,
-                         r.resolution_y * r.resolution_percentage // 100],
-                 "view": sc.view_settings.view_transform})
+    eng = {"CYCLES": (sc.cycles, "samples", "cycles"), "BLENDER_EEVEE": (sc.eevee, "taa_render_samples", "eevee")}
+    pct, size = r.resolution_percentage, [r.resolution_x * r.resolution_percentage // 100,
+                                          r.resolution_y * r.resolution_percentage // 100]
+    spp, reduced = None, []
+    if r.engine in eng:
+        owner, key, group = eng[r.engine]
+        ref = preset if preset != "preview" else "final"
+        spp, want = getattr(owner, key), PRESETS[ref][group][key]
+        if spp < want:
+            reduced.append(f"samples {spp} < {ref} preset {want}")
+    if pct < 100:
+        reduced.append(f"resolution {pct}%")
+    deliverable = preset != "preview" and pct >= 100
+    if not deliverable:
+        info["quality"] = "preview"
+        warn.insert(0, f"preview quality ({f'{spp} samples, ' if spp else ''}{pct}% = {size[0]}x{size[1]}): "
+                       "for looking, not for delivery. Use --preset final or product.")
+    if warn:
+        info["warning"] = "; ".join(warn)
+    info.update({"ok": bool(files) and all(os.path.exists(f) and os.path.getsize(f) > 0 for f in files),
+                 "files": files, "sec_per_image": round(sum(times) / max(len(times), 1), 2), "res": size,
+                 "view": sc.view_settings.view_transform, "preset": preset, "samples": spp, "percent": pct,
+                 "deliverable": deliverable, "reduced": reduced, "seconds_total": round(time.time() - t0, 2)})
     return info
 
 
