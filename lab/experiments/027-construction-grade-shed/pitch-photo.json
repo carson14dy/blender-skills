@@ -1,29 +1,31 @@
 {
  "ok": true,
  "method": "photo",
- "source": "gable_0001.png, door casing outline (36 x 80 slab + jambs + 3.5 in. casing; foot to drip-cap top) 44.75in x 84.875in",
- "slope": 0.50488,
- "rise_per_12": 6.06,
+ "source": "gable_0001.png, gable wall between the corner boards' inner edges (116.105 in.: 120 + 2 x (7/16 sheathing + 0.115 wrap + 1 in. trim) - 2 x 3.5 in.) by the siding butt lines 31 and 80 in. above grade (7 courses x 7 in.) 116.105in x 49in",
+ "slope": 0.50021,
+ "rise_per_12": 6.0,
  "sigma_per_12": 0.25,
- "degrees": 26.79,
+ "degrees": 26.57,
  "sigma_degrees": 0.95,
  "nearest_whole": "6/12",
  "whole_within_2_sigma": true,
- "label": "6/12 (measured 6.06 \u00b1 0.25)",
- "confidence": "ok",
+ "label": "6/12 (measured 6.00 \u00b1 0.25)",
+ "confidence": "low",
  "checks": {
   "rakes_rise_per_12": [
-   6.06,
-   6.05
+   6.0,
+   6.0
   ],
-  "rake_spread_per_12": 0.01,
-  "diagonals_disagree_pct": 0.01,
-  "line_rms_px": 0.1,
+  "rake_spread_per_12": 0.0,
+  "diagonals_disagree_pct": 0.08,
+  "line_rms_px": 0.09,
   "lines": 10,
-  "fewest_edge_points": 40
+  "fewest_edge_points": 26,
+  "rect_second_edge": 1.27
  },
  "notes": [
-  "open out/gable-overlay.png: each line must sit on its edge (green wall, red rake)",
-  "sigma raised to the 0.25/12 photo floor (fit 0.028)"
+  "rect_second_edge > 0.75",
+  "open out/gable-overlay.png: is each line on its edge? (green wall, red rake)",
+  "sigma raised to the 0.25/12 photo floor (fit 0.025)"
  ]
 }

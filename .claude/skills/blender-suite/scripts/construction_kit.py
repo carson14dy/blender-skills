@@ -25,7 +25,8 @@ WID = {"2": 1.5, "3": 2.5, "4": 3.5, "6": 5.5, "8": 7.25, "10": 9.25, "12": 11.2
 # IRC R602.7(1) roof + ceiling, 2 members: spans (in.) at ground snow 30/50/70 psf x width 12/24/36 ft
 HDR = {"2x4": (48, 37, 31, 41, 31, 26, 36, 28, 24), "2x6": (72, 55, 46, 61, 47, 39, 54, 42, 35)}
 NJ2 = {("2x6", 50, 36), ("2x6", 70, 24), ("2x6", 70, 36)}       # cells needing 2 jack studs
-RAF70 = {"2x4": 56, "2x6": 83, "2x8": 105, "2x10": 128, "2x12": 148}   # R802.4.1(7): SPF #2, 24 in., 70 psf
+RAF70 = {"2x4": 52, "2x6": 77, "2x8": 98, "2x10": 117, "2x12": 137}   # R802.4.1(7) 70 psf, 24 in.: least of SPF, DF-L, SP #2
+RULES_FILE = os.path.join("lab", "data", "design-rules.json")
 STAGES = ("pad", "walls", "roof_frame", "sheathing", "roofing")
 
 
@@ -69,6 +70,7 @@ def load(path):
     got = [pr.get("rise_per_12")] + ([rise(pr["nearest_whole"])] if pr.get("whole_within_2_sigma") else [])
     if all(g is None or abs(float(g) - want) > 0.005 for g in got):
         raise Bad(f"roof.pitch {r['pitch']} does not match {src} ({pr.get('label')})")
+    used = _rules(s, path)
     fr, pad, tr = (s.get(k) or {} for k in ("framing", "pad", "trim"))
     u = 12.0 if s.get("units", "ft") == "ft" else 1.0
     W, D, sl = fp[0] * u, fp[1] * u, want / 12
@@ -76,7 +78,7 @@ def load(path):
              pad=need(pad, "thickness_in", "pad"), mg=pad.get("margin_in", 0), oc=need(fr, "oc_in", "framing"),
              roc=need(fr, "rafter_oc_in", "framing"), ti=lum(fr.get("tie", "2x4")), ove=need(r, "overhang_eave_in", "roof"),
              ovr=need(r, "overhang_rake_in", "roof"), tsh=(s.get("sheathing") or {}).get("thickness_in", 0.4375),
-             tso=tr.get("soffit_in", 0.25) if tr.get("soffit", True) else 0.0, src=src, pr=pr)
+             tso=tr.get("soffit_in", 0.25) if tr.get("soffit", True) else 0.0, src=src, pr=pr, rules=used, dw=0.115)
     for k, d, n in (("st", fr, "stud"), ("ra", fr, "rafter"), ("ri", fr, "ridge"), ("hd", fr, "header"),
                     ("fa", tr, "fascia"), ("rk", tr, "rake")):
         G[k] = lum(need(d, n, "framing" if d is fr else "trim"))
@@ -85,6 +87,44 @@ def load(path):
     G["zt"] = lambda x: G["zb"](x) + G["Dp"]                         # top of rafters = the Roof planes
     _code(s, G, fr)
     return s, G
+
+
+def _rules(s, path):
+    """Fill what building.json leaves out from the user's approved design rules (the file roof_pitch.py rule reads);
+    returns each value used with its rule: source "standard", not an assumption."""
+    here = os.path.join(os.path.dirname(os.path.abspath(__file__)), *[".."] * 4, RULES_FILE)
+    f = os.path.join(os.path.dirname(path), s["rules"]) if s.get("rules") else next(
+        (p for p in (RULES_FILE, here) if os.path.isfile(p)), None)
+    with open(f or os.devnull, encoding="utf-8") as fh:
+        d = json.loads(fh.read() or "{}")
+    d = d if d.get("approved_by") and d.get("approved_on") else {}
+    b, lay, used, ops = need(s, "building", "building"), d.get("layout") or {}, [], s.get("openings") or []
+
+    def put(o, k, v, why):
+        if o.get(k) is None and v is not None:
+            o[k] = v
+            used.append(f"{k} = {v}: design rule, {why}")
+    ov = (d.get("overhang_in") or {}).get(b) or {}
+    for k in ("eave", "rake"):
+        put(s.setdefault("roof", {}), f"overhang_{k}_in", ov.get(k), f"{b} overhang")
+    put(s.setdefault("pad", {}), "margin_in", lay.get("pad_margin_in"), "slab flush with the framing")
+    door, dr = next((o for o in ops if o.get("type") == "door"), None), (d.get("doors") or {}).get(b) or {}
+    if door:
+        put(door, "panels", int(str(dr.get("style", "x")).split("-")[0]) if dr.get("style") else None, dr.get("style"))
+        put(door, "swing", dr.get("swing"), f"door swings {dr.get('swing')}")
+        put(door, "hinges", str(dr.get("hinges", "")).split(",")[0] or None, f"hinges {dr.get('hinges')}")
+        put(door, "knob_in", lay.get("door_knob_in"), "knob height above the floor")
+        put(door, "color", (s.get("trim") or {}).get("color") if "trim" in str(lay.get("door_color")) else None,
+            "door colour matches the trim")
+    for w in WALLS:
+        win = [o for o in ops if o.get("type") == "window" and o.get("wall") == w]
+        for i, o in enumerate(win, 1):
+            L = s["footprint"][w in ("left", "right")] * (1 if s.get("units", "ft") == "ft" else 1 / 12)
+            put(o, "center_ft", round(L * i / (len(win) + 1), 4) if "equal" in str(lay.get("windows")) else None,
+                f"windows equally spaced along the {w} wall")
+            put(o, "sill_in", door["height_in"] + 2.25 - o["height_in"] if door and "door" in str(lay.get("window_head"))
+                else None, "window head level with the door head (rough-opening tops, one header height)")
+    return used
 
 
 def _code(s, G, fr):
@@ -96,7 +136,7 @@ def _code(s, G, fr):
     tests = [(col is None, f"ground snow {snow} psf: above the tables read (70 psf)"),
              (fr["stud"] != "2x4" or G["H"] - 4.5 > 120 or G["oc"] > 24, "studs: 2x4, <= 24 in., <= 10 ft (R602.3(5))"),
              (G["W"] / 2 > RAF70.get(fr["rafter"], 0) or G["roc"] > 24, f"rafter {fr['rafter']} does not span "
-              f"{G['W'] / 2:.0f} in. at {G['roc']} in. (R802.4.1(7), SPF #2, 70 psf)"),
+              f"{G['W'] / 2:.0f} in. at {G['roc']} in. (R802.4.1(7), 70 psf)"),
              (G["ri"][1] < G["Dp"] - 1e-6, f"ridge shallower than the plumb cut ({G['Dp']:.2f} in.), R802.3"),
              (G["ti"][1] > G["zt"](0) - G["ztp"], "rafter tie above the roof plane: deeper rafter"),
              (G["fa"][1] < G["Dp"] + G["tv"] - G["fa"][0] * G["s"], "fascia shallower than rafter tail + soffit"),
@@ -121,9 +161,10 @@ def colors(s):
 
 # ---------------------------------------------------------------------------- framing rules
 
-def frame_wall(L, H, oc, ops, st=(1.5, 3.5), lap=0.0, hd=(1.5, 5.5)):
+def frame_wall(L, H, oc, ops, st=(1.5, 3.5), lap=0.0, hd=(1.5, 5.5), off=0.0):
     """A stud wall's members (name stem, u0, u1, z0, z1, d0, d1); z = 0 under the bottom plate, H plate to plate.
-    ops: {"c", "w" (rough opening), "zb", "zt", "door"}; the upper top plate runs `lap` past each end."""
+    ops: {"c", "w" (rough opening), "zb", "zt", "door"}; the upper top plate runs `lap` past each end; the layout
+    is pulled from `off` before the wall's start (the sheathing corner, so panel joints land on studs)."""
     t, dp = st
     out, zones, top = [], [], H - 2 * t
 
@@ -153,7 +194,7 @@ def frame_wall(L, H, oc, ops, st=(1.5, 3.5), lap=0.0, hd=(1.5, 5.5)):
             m("Header_{w}_", r0 - t, r1 + t, o["zt"], o["zt"] + hd[1], d0, d0 + hd[0])
         if not o["door"]:
             m("Sill_{w}_", r0, r1, o["zb"] - t, o["zb"])
-    p = oc
+    p = oc - off
     while p + t / 2 < L - t:                         # touching the end stud: dropped
         lo, hi = p - t / 2, p + t / 2
         z = next((z for z in zones if lo < z[1] and hi > z[0]), None)
@@ -181,11 +222,12 @@ def ro(o, w=None, dp=0.0):
 def walls(sk, s, G):
     P, W, D, dp = G["P"], G["W"], G["D"], G["st"][1]
     for w in WALLS:
-        side, f = w in ("left", "right"), skin(w, G)   # long walls run through
+        side, f = w in ("left", "right"), skin(w, G, 0)   # long walls run through
         ops = [ro(o, w, dp) for o in s.get("openings") or [] if o["wall"] == w]
         n = {}
         for kind, u0, u1, z0, z1, d0, d1 in sorted(frame_wall(D if side else W - 2 * dp, G["H"], G["oc"], ops, G["st"],
-                                                              -dp if side else dp, G["hd"]), key=lambda q: q[:2] + q[3:6:2]):
+                                                              -dp if side else dp, G["hd"], 0 if side else dp + G["tsh"]),
+                                                   key=lambda q: q[:2] + q[3:6:2]):
             stem = kind.format(w=w)
             n[stem] = n.get(stem, 0) + 1
             sk.add(f"{P}_{stem}{n[stem]}", ext(rect(u0, u1, z0 + G["pad"], z1 + G["pad"]),
@@ -216,7 +258,7 @@ def roof_frame(sk, s, G):
            "RoofFrame")
     st, rx = G["st"][0], (xr, xr + G["ri"][0])
     for w, y0 in (("front", 0.0), ("back", D - dp)):
-        p, n = G["oc"], 0
+        p, n = G["oc"] - dp - G["tsh"], 0
         while p + st / 2 < W - 2 * dp - st:
             x0, x1 = dp + p - st / 2, dp + p + st / 2
             xs = [x1, *([W / 2] if x0 < W / 2 < x1 else []), x0]
@@ -235,26 +277,32 @@ def roof_frame(sk, s, G):
         coll(f"{P}_RoofFrame").objects.link(bpy.data.objects.new("Roof", me))
 
 
-def sheathing(sk, s, G):
-    P, W, D, o = G["P"], G["W"], G["D"], G["tsh"]
+def sheets(s, G):
+    """(wall, name, convex pieces) of each sheathing panel: 4 ft from each corner, cut at the rough openings, up to
+    the roof planes on the gables and notched round the ridge's end."""
+    W, D, o = G["W"], G["D"], G["tsh"]
     k0 = G["ztp"] - G["st"][1] * G["s"] + G["Dp"]
-    gable = [(-G["s"], 1, k0), (G["s"], 1, k0 + W * G["s"])]   # up to the roof planes
-    notch = (W / 2 - G["ri"][0] / 2, W / 2 + G["ri"][0] / 2, G["zb"](W / 2), 1e9)   # the ridge's end
+    gable = [(-G["s"], 1, k0), (G["s"], 1, k0 + W * G["s"])]
+    notch = (W / 2 - G["ri"][0] / 2, W / 2 + G["ri"][0] / 2, G["zb"](W / 2), 1e9)
     for w in WALLS:
-        side, f = w in ("left", "right"), skin(w, G)
-        u0, u1 = (0.0, D) if side else (-o, W + o)
+        side = w in ("left", "right")
         holes = [(r["c"] - r["w"] / 2, r["c"] + r["w"] / 2, G["pad"] + r["zb"], G["pad"] + r["zt"])
                  for r in (ro(op) for op in s.get("openings") or [] if op["wall"] == w)]
-        bands = [("", G["pad"], G["ztp"], (), holes)] + ([] if side else [("G", G["ztp"], G["zt"](W / 2), gable, [notch])])
-        for tag, h0, h1, reg, cut in bands:
-            x, n = u0, 0
-            while x < u1 - 1e-6:
-                ps = pieces(x, min(x + 48, u1), h0, h1, reg, cut)
+        for tag, h0, h1, reg, cut in [("", G["pad"], G["ztp"], (), holes)] + ([] if side else [
+                ("G", G["ztp"], G["zt"](W / 2), gable, [notch])]):
+            x, n = (0.0, 0) if side else (-o, 0)
+            while x < (D if side else W + o) - 1e-6:
+                ps = pieces(x, min(x + 48, D if side else W + o), h0, h1, reg, cut)
                 if ps:
                     n += 1
-                    sk.add(f"{P}_Sheathing_{w}_{tag}{n}", merge(on(f, q, -o, 0) for q in ps), "M_OSB",
-                           [f"{P}_Sheathing_{w}_*"], "Sheathing")
+                    yield w, f"{tag}{n}", ps
                 x += 48
+
+
+def sheathing(sk, s, G):
+    for w, n, ps in sheets(s, G):
+        sk.add(f"{G['P']}_Sheathing_{w}_{n}", merge(on(skin(w, G, 0), q, -G["tsh"], 0) for q in ps), "M_OSB",
+               [f"{G['P']}_Sheathing_{w}_*"], "Sheathing")
 
 
 def pad(sk, s, G):
@@ -268,18 +316,11 @@ def roofing(s, G, path=None):
     if rc_path is None:
         return None
     sys.path.insert(0, os.path.dirname(os.path.abspath(rc_path)))
-    import bmesh
     import roof_core as rc
     r = s["roof"]   # ice barrier (R905.1.2): eave to 24 in. inside the wall line, 36 in. rolls lapped 3 in.
     ice = 1 + max(0, math.ceil(((G["ove"] + G["tsh"] + 24) * G["k"] - 36) / 33)) if need(r, "ice_barrier", "roof") else 0
-    res = rc.run({"cmd": "layers", "roof": "Roof", "old_roof": False, "deck_repair": False, "ice_rows": ice,
-                  "ridge_vent": bool(need(r, "ridge_vent", "roof")), "exposure_in": need(r, "exposure_in", "roof")})
-    for lid in res["layers"]:   # roof_core's clip keeps a corner twice where a clip line meets it: drop the slivers
-        bm, me = bmesh.new(), bpy.data.objects[f"RT_layer_{lid}"].data
-        bm.from_mesh(me)
-        bmesh.ops.dissolve_degenerate(bm, dist=1e-6, edges=bm.edges[:])
-        bm.to_mesh(me)
-    return res
+    return rc.run({"cmd": "layers", "roof": "Roof", "old_roof": False, "deck_repair": False, "ice_rows": ice,
+                   "ridge_vent": bool(need(r, "ridge_vent", "roof")), "exposure_in": need(r, "exposure_in", "roof")})
 
 
 BUILD = {"pad": (pad, "Pad"), "walls": (walls, "Framing"), "roof_frame": (roof_frame, "RoofFrame"),
@@ -292,6 +333,8 @@ def plan(s, G):
     for fn, _ in BUILD.values():
         fn(sk, s, G)
     cf.build_all(sk, s, G)
+    import construction_extras as cx
+    cx.build_all(sk, s, G)
     for p in sk.parts:
         for g in p[1]:
             groups.setdefault(g, []).append(p)
@@ -328,8 +371,10 @@ def plan(s, G):
             g = p[0][:-10] + "*" if win else f"{P}_Door_*"
             chk("tris-" + g[len(P) + 1:-2].lower().replace("_", "-"), "tris", g, min=150 if win else 400,
                 note="detail floor: " + RULES["Window" if win else "Door"])
+    for g, (n, note) in getattr(sk, "islands", {}).items():
+        chk("nails-" + g[len(P) + 7:].lower().replace("_", "-"), "count", g, of="islands", expect=n, note=note)
     return {"ok": True, "name": s.get("name"), "parts": len(sk.parts), "tris": sum(p[4] for p in sk.parts),
-            "counts": {g: len(ps) for g, ps in groups.items()}, "checks": out}
+            "counts": {g: len(ps) for g, ps in groups.items()}, "rules": G["rules"], "checks": out}
 
 
 def run(plan=None, build=None, only=None, roof_core=None, **_):

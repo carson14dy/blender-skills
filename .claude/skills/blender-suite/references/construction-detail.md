@@ -2,64 +2,61 @@
 
 Detail is construction grade by default. A simpler build is agreed with the user before building, never chosen during it.
 
-Every stud, plate, header, rafter, sheathing panel, siding board and trim piece is its own object, sized from the lumber standard and placed by the rule a framer uses. The rules give the counts; the counts go into the acceptance file before anything is built (`build-accuracy`); `acceptance_check.py` then counts the scene. Two scripts read one `building.json`:
+Every stud, plate, header, rafter, panel, board, trim piece and nail is its own part, sized from the lumber standard and placed by the rule a framer uses. The rules give the counts; the counts go into the acceptance file before anything is built (`build-accuracy`); `acceptance_check.py` then counts the scene. Three scripts read one `building.json`:
 
 | Command | Does |
 |---|---|
-| `construction_kit.py -- --plan building.json` | No geometry. Prints `counts` (every part, by name pattern) and ready `checks` (count, size, spacing, extent, slope, tris) with the rule in `note`. Paste them into the acceptance file. |
-| `construction_kit.py -- --build building.json [--only pad walls roof_frame sheathing roofing] --save F` | Pad, wall framing, roof framing, wall sheathing, the `Roof` planes, then the roofing (roof_core.py, when the RoofTec repo is there). |
-| `construction_finish.py -- --build building.json [--only siding trim windows doors] --save F` | Siding boards, trim, window and door assemblies. |
+| `construction_kit.py -- --plan building.json` | No geometry. Prints `counts`, the design-rule values used (`rules`) and ready `checks` (count, size, spacing, extent, slope, tris; nails as `count` of islands) with the rule in `note`. |
+| `construction_kit.py -- --build building.json [--only pad walls roof_frame sheathing roofing] --save F` | Pad, wall framing, roof framing, wall sheathing, the `Roof` planes, then roof_core.py's roofing (when the RoofTec repo is there). |
+| `construction_finish.py -- --build building.json [--only siding trim windows doors] --save F` | Siding, trim, windows, door. |
+| `construction_extras.py -- --build building.json [--only wrap blocking hardware nails] --save F` | House wrap and flashing tape, rake lookouts and frieze blocks, sash locks and screens, nails. |
 
-`--plan` runs the same builders as `--build` without making objects, so its counts are what the build makes. Repeated parts are linked duplicates (one mesh, many objects); `acceptance_check.py` still counts and sizes each one. Each stage is one headless call that reports `seconds`; nothing needs a window, so the same commands run on a GPU server.
+`--plan` runs the same builders without making objects. Repeated parts share one mesh. Scope: a rectangle, a gable roof along y, rectangular openings, one door, double-hung windows; anything else, or a size the code tables read do not cover, fails with a message.
 
-Scope for now: a rectangular footprint, a gable roof with the ridge along y, rectangular openings, one door, double-hung windows. A hip roof, an L-shaped plan, a size the code tables below do not cover, or a missing value fails with a message; nothing is approximated silently.
-
-## building.json
+## building.json and the design rules
 
 ```json
-{"name": "Garden shed", "prefix": "Shed", "units": "ft", "footprint": [10, 12], "wall_height": 8,
- "pad": {"thickness_in": 4, "margin_in": 2}, "site": {"ground_snow_psf": 55},
+{"name": "Garden shed", "prefix": "Shed", "units": "ft", "building": "accessory", "footprint": [10, 12],
+ "wall_height": 8, "pad": {"thickness_in": 4}, "site": {"ground_snow_psf": 55},
  "framing": {"stud": "2x4", "oc_in": 16, "rafter": "2x6", "rafter_oc_in": 24, "ridge": "1x8", "header": "2x6"},
- "roof": {"pitch": "6/12", "pitch_source": "pitch.json", "overhang_eave_in": 6, "overhang_rake_in": 6,
-          "exposure_in": 5.625, "ice_barrier": false, "ridge_vent": false},
+ "roof": {"pitch": "6/12", "pitch_source": "pitch.json", "exposure_in": 5.625, "ice_barrier": false, "ridge_vent": false},
  "siding": {"board_in": 8.25, "exposure_in": 7, "thickness_in": 0.3125, "color": "#9CAF88"},
  "trim": {"corner_in": 3.5, "casing_in": 3.5, "fascia": "1x8", "rake": "1x8", "color": "#FFFFFF"},
- "openings": [{"wall": "front", "type": "door", "center_ft": 5, "width_in": 36, "height_in": 80, "panels": 6},
-              {"wall": "left", "type": "window", "center_ft": 4, "sill_in": 44, "width_in": 24, "height_in": 36}]}
+ "openings": [{"wall": "front", "type": "door", "center_ft": 5, "width_in": 36, "height_in": 80},
+              {"wall": "left", "type": "window", "width_in": 24, "height_in": 36}]}
 ```
 
-- `footprint` is [width across the ridge, depth along it]; x runs across, y along the ridge. Walls: `front` (y = 0), `back`, `left` (x = 0), `right`. `center_ft` is measured from the corner with the smaller x (front, back) or y (left, right). `wall_height` is plate to plate.
-- `roof.pitch_source` names a saved `roof_pitch.py` result (`roof-pitch`) whose pitch equals `roof.pitch`; without it the scripts refuse to run. `ice_barrier` and `ridge_vent` come from the user's design rules (R905.1.2 exempts unheated detached buildings).
-- Optional, with their defaults: `framing.tie` 2x4; `sheathing.thickness_in` 0.4375; `siding.clear_in` 1; `trim.thickness_in` 1 (5/4 trim), `trim.soffit` true, `trim.soffit_in` 0.25; a door's `color` (else the trim colour).
-- Overhangs are measured to the outer face of the fascia and rake board; the roof deck ends there.
+- x runs across the ridge, y along it. Walls: `front` (y = 0), `back`, `left` (x = 0), `right`. `center_ft` is from the corner with the smaller x or y. `wall_height` is plate to plate.
+- `roof.pitch_source` names a saved `roof_pitch.py` result (`roof-pitch`) whose pitch equals `roof.pitch`.
+- A value left out comes from the user's approved `lab/data/design-rules.json` (the file `roof_pitch.py rule` reads; `"rules": "file"` names another): overhangs by `building`, a flush slab, windows equally spaced along their wall with their rough-opening tops level with the door's, the door's style, swing, hinge side, knob height and colour. `--plan` lists each as a design rule, source `standard`. A value in neither fails.
+- Optional, with defaults: `framing.tie` 2x4; `sheathing.thickness_in` 0.4375; `siding.lap_in` 1, `siding.clear_in` 1; `trim.thickness_in` 1, `trim.soffit` true, `trim.soffit_in` 0.25.
 
 ## Parts and rules
 
-| Part | Rule (counts, sizes) | Source |
+| Part | Rule | Source |
 |---|---|---|
-| Lumber | Actual dry sizes: 1x = 3/4 in., 5/4 = 1 in., 2x = 1-1/2 in.; widths 4 = 3-1/2, 6 = 5-1/2, 8 = 7-1/4 in. | PS 20-20 Table 3 |
-| Plates | Bottom plate, cut at a door; double top plate; the gable walls' upper plate laps 3.5 in. over the long walls | R602.3.2 |
-| Studs | End stud at each end; layout studs every `oc_in` from the wall's start (centres); one touching an end stud, king or jack is dropped; one inside a rough opening becomes cripples. Long walls run through, gable walls fit between. Studs = wall height - 4.5 in. 2x4 only, <= 24 in. o.c., <= 10 ft | R602.3(5) |
-| Openings | Rough opening: door + 2 in. wide, + 2.5 in. high; window + 1/2 in. each way. One king and one jack each side; header = two members on edge, checked against the span table at the site's snow load and building width; rough sill and cripples under a window | Pease Doors and JELD-WEN install guides; R602.7(1), R602.7.5 |
-| Rafters | Pairs at each end and every `rafter_oc_in`; birdsmouth seat on the plate's full width, heel cut flush with the sheathing; tails cut plumb inside the fascia; a barge pair at each rake. Span checked (SPF #2, 70 psf, 24 in.) | R802.4.1(7) |
-| Ridge | One board, at least as deep as the plumb cut, out to the barge rafters; past the gable walls it is cut to the rafter line | R802.3 |
-| Ties | A 2x4 tie beside each pair between the gable walls, on the plates; the gable walls tie the end pairs | R802.5.2.2 |
-| Gable studs | On the wall layout, from the top plate to the end rafter | trade practice |
-| Sheathing | 4 ft panels from each corner, cut at rough openings, up to the roof planes on the gables, notched at the ridge | trade practice |
-| Roofing | roof_core.py on `Roof`: deck, drip edge, underlayment, starter, stepped courses, nails (4 a shingle), ridge cap; ice barrier and ridge vent per the rules | R905.2.8.5, R905.2.6, R905.1.2 |
-| Siding | Starter strip (board - exposure) under the first course; courses = ceil(covered height / exposure); each course cut at corner boards, casings and the rake; every board tilted so it rests on the one below. Bottom 1 in. above the slab | James Hardie catalog and HZ10 install instructions |
-| Trim | Two corner boards per corner (the gable-face board covers the other's edge); fascia (top bevelled to the roof), rake boards, soffits under the rafters at eaves and rakes. The fascia and rake board must cover the rafter plus soffit, or the kit fails | trade practice |
-| Window | Frame (head, sill, jambs), two sashes each with two stiles, two rails and a glass pane (meeting rails overlap 1.5 in.), picture-frame casing, drip cap; 150+ triangles | |
-| Door | Jambs, stops, threshold, slab with raised panels on both faces, three hinges (7 in. from the top, 11 from the bottom), knob with rose on both sides (36 in. up, 2-3/8 in. backset), casing, drip cap; 400+ triangles | |
+| Lumber | Dry sizes: 1x = 3/4, 5/4 = 1, 2x = 1-1/2 in.; widths 4, 6, 8 = 3-1/2, 5-1/2, 7-1/4 in. | PS 20-20 Table 3 |
+| Plates | Bottom plate cut at a door; double top plate, the gable walls' upper plate lapping the long walls | R602.3.2 |
+| Studs | End studs; layout every `oc_in` (long walls from their corner, gable walls from the sheathing's corner so panel joints land on studs); dropped if touching an end stud, king or jack; cripples inside an opening. 2x4, <= 24 in., <= 10 ft | R602.3(5) |
+| Openings | Rough opening: door + 2 x 2-1/2 in., window + 1/2 in.; 1 king, 1 jack each side; two-member header checked by span, snow load and width | Pease Doors, JELD-WEN; R602.7(1), R602.7.5 |
+| Roof framing | Rafter pairs at the ends and every `rafter_oc_in`, birdsmouth on the plate, barge pairs at the rakes (span: least of SPF, DF-L, SP No. 2); ridge as deep as the plumb cut; a 2x4 tie beside each inner pair; gable studs on the wall layout | R802.4.1(7), R802.3, R802.5.2.2 |
+| Sheathing, wrap, tape | 4 ft panels from each corner, cut at openings, up to the roof planes; house wrap over all of it; tape lining each rough opening (sill pan, jambs, head) | R703.2, R703.4 |
+| Roofing | roof_core.py on `Roof` (deck, drip edge, underlayment, starter, courses, 4 nails a shingle, ridge cap; ice barrier, vent per the rules) | R905.2.8.5, R905.2.6, R905.1.2 |
+| Siding | Starter strip; courses = ceil(covered height / exposure), cut at corner boards, casings, rakes; tilted to rest on the course below; on a flush slab it laps 1 in. below the plate, else stops 1 in. above the slab | James Hardie catalog, HZ10 instructions |
+| Trim, blocking | 2 corner boards a corner, fascia, rake boards, soffits (fascia and rake must cover rafter + soffit); lookouts 24 in. along each rake from 12 in.; a frieze block in each rafter bay, clear of the ties | trade practice |
+| Window, door | Frame, two sashes, glass, casing, drip cap, sash lock, half screen; door jambs, stops, threshold, 6-panel slab, 3 hinges, knobs, casing, drip cap, swing and hinge side as given | |
+| Nails | Wall: R602.3(1) items 17 (2-16d end nails each stud end at a plate or sill; gable studs 3 toe nails), 13 (top plates 16d at 16 in.), 18 (2 at each corner lap), 10 (headers 16d at 16 in. each edge), 12 (3-16d king to header), 8 (jack to king 16d at 24 in.). Sheathing: item 31, 6d, 6 in. at panel edges, 12 in. at studs. Siding: R703.3(1) note f, one 6d through the lap at each stud. Trim: Hardie Trim Table 1, 2 nails every 16 in. on 4 in. boards, 3 on 8 in. fascia and rake, 1 in. from ends. Roof: items 6 (3 toe nails a rafter seat), 7 (3-10d toe nails at the ridge), 1 (3-8d a frieze block); Table R802.5.2(1) tie heel joints 7-16d (its 5:12 row: there is no 6:12 row) | IRC 2024; Hardie Trim (2025) |
+
+Drawing tolerances, for `qa_check.py`'s 1 mm coplanar test: nail heads sit 1.2 mm under the surface they are driven into (real: flush); house wrap is 1.8 mm thick, 1.1 mm off the sheathing, so siding and trim sit 2.9 mm out; tape is 1.1 mm thick.
 
 ## Hand-over to roof_core.py
 
-The kit makes a mesh object named exactly `Roof`: two planes on the top of the rafters, out to the fascia and rake faces. The `roofing` stage runs `{"cmd": "layers", "roof": "Roof", "old_roof": false, "deck_repair": false, "ridge_vent": ..., "ice_rows": ...}` and hides `Roof`. No other part may have "roof" or "shingle" in its name: roof_core.py falls back to such objects. Its result carries `pitches_per_12` per plane; `roof_qa.py --expect` checks squares and edge lengths against the hand values. After roofing the kit removes zero-area sliver faces that roof_core's polygon clipping leaves where a clip line meets a corner (one tripped `qa_check.py`'s z-fighting test on a shed).
+The kit makes a mesh object named exactly `Roof`: two planes on the top of the rafters, out to the fascia and rake faces, and runs `{"cmd": "layers", "roof": "Roof", "old_roof": false, "deck_repair": false, "ridge_vent": ..., "ice_rows": ...}` on it, which hides `Roof`. No other part may have "roof" or "shingle" in its name. The result carries `pitches_per_12`; `roof_qa.py --expect` checks squares and lengths.
 
 ## Names
 
-`<prefix>_Stud_<wall>_<n>` (end studs `_E1`, `_E2`), `_Plate_<wall>_B<n>` / `_T<n>`, `_King_`, `_Jack_`, `_Cripple_`, `_Header_`, `_Sill_<wall>_<n>`, `_Rafter_<nn>_<L|R>`, `_Rafter_Barge_<front|back>_<L|R>`, `_Ridge`, `_Tie_<n>`, `_GableStud_<wall>_<n>`, `_Sheathing_<wall>_<n>` (gable pieces `G<n>`), `_Starter_<wall>_<n>`, `_Siding_<wall>_<course>_<piece>`, `_Trim_Corner_<n>`, `_Trim_Fascia_`, `_Trim_Rake_`, `_Trim_Soffit_...`, `_Window_<n>_<part>`, `_Door_<part>`, `_Pad`. Collections: `<prefix>_Pad`, `_Framing`, `_RoofFrame`, `_Sheathing`, `_Siding`, `_Trim`, `_Windows`, `_Doors`.
+`<prefix>_Stud_<wall>_<n>` (end studs `_E1`, `_E2`), `_Plate_<wall>_B<n>` / `_T<n>`, `_King_`, `_Jack_`, `_Cripple_`, `_Header_`, `_Sill_<wall>_<n>`, `_Rafter_<nn>_<L|R>`, `_Rafter_Barge_<end>_<L|R>`, `_Ridge`, `_Tie_<n>`, `_GableStud_<wall>_<n>`, `_Sheathing_<wall>_<n>`, `_Wrap_<wall>`, `_Tape_<n>`, `_Lookout_<n>`, `_Frieze_<n>`, `_Starter_<wall>_<n>`, `_Siding_<wall>_<course>_<piece>`, `_Trim_Corner_<n>`, `_Trim_Fascia_`, `_Trim_Rake_`, `_Trim_Soffit_...`, `_Window_<n>_<part>` (with `_Lock`, `_Screen`), `_Door_<part>`, `_Nails_<Frame|Sheathing|Siding>_<wall>`, `_Nails_Trim`, `_Nails_Roof`, `_Pad`.
 
 ## Still not modelled
 
-Each is listed for the user, not chosen as a shortcut: house wrap and flashing tape, nails and screws in walls and trim, rake ladder blocking (lookouts) and frieze blocks between rafter tails (both hidden behind the soffits), window locks and screens, electrical, interior finish. Shingles are stepped courses with every nail; one piece per shingle is the user's choice, scheduled as its own experiment (roof_core.py and the web studio together).
+Fasteners for lookouts (no row in R602.3(1)) and soffits (HardieSoffit instructions not read), electrical, interior finish. Shingles are stepped courses with every nail; one piece per shingle is the user's choice, its own experiment.

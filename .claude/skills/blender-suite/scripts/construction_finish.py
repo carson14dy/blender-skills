@@ -24,7 +24,8 @@ JT, GAP, TH, SWEEP, CAP = 0.75, 0.125, 1.0, 0.25, 0.75   # jamb, slab gap, thres
 KNOB = [(0, 0), (1.25, 0), (1.25, 0.375), (0.4, 0.375), (0.4, 1.0), (0.95, 1.1), (1.1, 1.45), (1.0, 1.85),
         (0.6, 2.1), (0, 2.15)]                          # rose, neck, knob: radius, distance off the slab
 MATS = {"M_Concrete": ("#8c8a84", .9, 0), "M_Lumber": ("#c8a36a", .8, 0), "M_OSB": ("#b38b52", .85, 0),
-        "M_Window": ("#f1f0ea", .4, 0), "M_Glass": ("#dfe8ea", .02, 0), "M_Hardware": ("#a9a79f", .35, 1)}
+        "M_Window": ("#f1f0ea", .4, 0), "M_Glass": ("#dfe8ea", .02, 0), "M_Hardware": ("#a9a79f", .35, 1),
+        "M_Wrap": ("#e9e9e4", .7, 0), "M_Tape": ("#3a3a3a", .5, 0), "M_Screen": ("#2e2e2e", .8, 0)}
 RULES = {
     "Pad": "footprint + margin each side", "Plate": "bottom plate (cut at doors), double top plate lapped "
     "3.5 in. at corners (R602.3.2)", "Stud": "end stud each end; layout studs every oc from the wall's start "
@@ -109,9 +110,9 @@ def pieces(u0, u1, h0, h1, region=(), cuts=()):
     return out
 
 
-def skin(w, G):
-    """(u, d, h) -> xyz on a wall's sheathing face: u along +x or +y, d outward, h up."""
-    o, W, D = G["tsh"], G["W"], G["D"]
+def skin(w, G, off=None):
+    """(u, d, h) -> xyz: u along +x or +y, d outward, h up; d = 0 on the house wrap's face (off=0: the sheathing's)."""
+    o, W, D = G["tsh"] + (G["dw"] if off is None else off), G["W"], G["D"]
     return {"front": lambda u, d, h: (u, -o - d, h), "back": lambda u, d, h: (u, D + o + d, h),
             "left": lambda u, d, h: (-o - d, u, h), "right": lambda u, d, h: (W + o + d, u, h)}[w]
 
@@ -191,6 +192,7 @@ def material(name, colors):
     p.inputs["Base Color"].default_value = (*[c / 12.92 if c <= 0.04045 else ((c + .055) / 1.055) ** 2.4 for c in rgb], 1)
     p.inputs["Roughness"].default_value, p.inputs["Metallic"].default_value = rough, metal
     p.inputs["Transmission Weight"].default_value = 1.0 if name == "M_Glass" else 0.0
+    p.inputs["Alpha"].default_value = .4 if name == "M_Screen" else 1.0   # insect screen: mostly see-through
     return m
 
 
@@ -200,7 +202,9 @@ def dims(s, G):
     sd, tr = s.get("siding") or {}, s.get("trim") or {}
     d = dict(Wb=need(sd, "board_in", "siding"), E=need(sd, "exposure_in", "siding"), t=need(sd, "thickness_in", "siding"),
              cw=need(tr, "corner_in", "trim"), cs=need(tr, "casing_in", "trim"), ct=tr.get("thickness_in", 1.0),
-             h0=G["pad"] + sd.get("clear_in", 1.0))
+             h0=G["pad"] - sd.get("lap_in", 1.0) if G["mg"] <= 0 else G["pad"] + sd.get("clear_in", 1.0))
+    # flush slab: the first course laps 1 in. below the bottom plate, so no plate or sheathing edge shows; a slab
+    # that sticks out past the wall: siding and trim stop 1 in. above it (James Hardie)
     d["a"] = d["t"] * d["Wb"] / d["E"]   # the butt stands off the wall so each board lies on the one below
     if d["ct"] < d["a"] + d["t"]:
         raise Bad(f"trim {d['ct']} in. is thinner than the siding ({d['a'] + d['t']:.2f} in.): use 5/4 trim")
@@ -230,7 +234,7 @@ def zones(s, G, w, d):
 
 
 def siding(sk, s, G):
-    d, P, W, D, o, sl = dims(s, G), G["P"], G["W"], G["D"], G["tsh"], G["s"]
+    d, P, W, D, o, sl = dims(s, G), G["P"], G["W"], G["D"], G["tsh"] + G["dw"], G["s"]
     Wb, E, t, a, h0 = d["Wb"], d["E"], d["t"], d["a"], d["h0"]
     for w in WALLS:
         f = skin(w, G)
@@ -257,7 +261,7 @@ def siding(sk, s, G):
 
 
 def trim(sk, s, G):
-    d, P, W, D, o, zb, zt = dims(s, G), G["P"], G["W"], G["D"], G["tsh"], G["zb"], G["zt"]
+    d, P, W, D, o, zb, zt = dims(s, G), G["P"], G["W"], G["D"], G["tsh"] + G["dw"], G["zb"], G["zt"]
     ct, cw, n = d["ct"], d["cw"], 0
     for w in WALLS:                                  # corner boards: the gable-face board covers the other's edge
         side, f = w in ("left", "right"), skin(w, G)
@@ -341,16 +345,19 @@ def doors(sk, s, G):
             part(name, on(f, rect(u0, u1, h0, h1), d0, d1), mat)
         part("Threshold", ext([(-jd, hb), (.75, hb), (.75, hb + .3), (-1.25, hb + TH), (-jd, hb + TH)],
                               lambda p, u: f(u, p[0], p[1]), ul, ur), "M_Hardware")
-        sl_, sr_, ss = ul + JT + GAP, ur - JT - GAP, 0.4375
+        sl_, sr_, ss, out = ul + JT + GAP, ur - JT - GAP, 0.4375, need(o, "swing", "door") == "out"
+        e, i = (-0.25, -2.0) if out else (-1.25, -3.0)       # the slab's exterior and interior faces
+        sd = (-jd, i) if out else (e, 0)                       # stops: on the side the slab closes against
+        lo = (need(o, "hinges", "door") == "left") == (o["wall"] in ("front", "right"))   # hinges on the low-u side
         for nm, q in (("Jamb_L", (ul, ul + JT, hb + TH, top - JT, -jd, 0)), ("Jamb_R", (ur - JT, ur, hb + TH, top - JT, -jd, 0)),
-                      ("Jamb_Head", (ul, ur, top - JT, top, -jd, 0)), ("Stop_L", (ul + JT, ul + JT + ss, hb + TH, top - JT, -1.25, 0)),
-                      ("Stop_R", (ur - JT - ss, ur - JT, hb + TH, top - JT, -1.25, 0)),
-                      ("Stop_Head", (ul + JT + ss, ur - JT - ss, top - JT - ss, top - JT, -1.25, 0)),
+                      ("Jamb_Head", (ul, ur, top - JT, top, -jd, 0)), ("Stop_L", (ul + JT, ul + JT + ss, hb + TH, top - JT, *sd)),
+                      ("Stop_R", (ur - JT - ss, ur - JT, hb + TH, top - JT, *sd)),
+                      ("Stop_Head", (ul + JT + ss, ur - JT - ss, top - JT - ss, top - JT, *sd)),
                       ("Casing_L", (ul - cs, ul, d["h0"], top, 0, ct)), ("Casing_R", (ur, ur + cs, d["h0"], top, 0, ct)),
                       ("Casing_Head", (ul - cs, ur + cs, top, top + cs, 0, ct))):
             bxd(*q, name=nm)
-        bxd(sl_, sr_, sb, se, -3.0, -1.25, "M_Door", "Slab")
-        npan = o.get("panels", 6)
+        bxd(sl_, sr_, sb, se, i, e, "M_Door", "Slab")
+        npan = need(o, "panels", "door")
         if npan % 2 or npan > 6:
             raise Bad(f"door panels {npan}: 0, 2, 4 or 6 (two columns)")
         rows, rails = npan // 2, [8, 4.75][:max(0, npan // 2 - 1)]   # lock rail, then intermediate rail
@@ -360,18 +367,20 @@ def doors(sk, s, G):
             ph = free * wts[r] / sum(wts)
             for c in range(2):
                 u0, k = sl_ + 4.75 + c * (pw + 4), k + 1
-                part(f"Panel_E{k}", frustum(f, u0, u0 + pw, h, h + ph, -1.25, -1.0, 1.0))
-                part(f"Panel_I{k}", frustum(f, u0, u0 + pw, h, h + ph, -3.0, -3.25, 1.0))
+                part(f"Panel_E{k}", frustum(f, u0, u0 + pw, h, h + ph, e, e + .25, 1.0))
+                part(f"Panel_I{k}", frustum(f, u0, u0 + pw, h, h + ph, i, i - .25, 1.0))
             h += ph + (rails[r] if r < len(rails) else 0)
-        hu = ul + JT
-        for i, hc in enumerate((se - 9, (se + sb + 4) / 2, sb + 13), 1):   # 7 in. from the top, 11 from the bottom
-            part(f"Hinge_{i}", merge([on(f, rect(hu, hu + .06, hc - 2, hc + 2), -3.0, -1.6),
-                                      on(f, rect(hu + .065, hu + GAP, hc - 2, hc + 2), -3.0, -1.6),
+        hu, sg = (ul + JT, 1) if lo else (ur - JT, -1)
+        bf = e if out else i                               # knuckles on the side the door swings to
+        dl = sorted((bf, bf + (-1.4 if out else 1.4)))
+        for n, hc in enumerate((se - 9, (se + sb + 4) / 2, sb + 13), 1):   # 7 in. from the top, 11 from the bottom
+            part(f"Hinge_{n}", merge([on(f, rect(*sorted((hu, hu + sg * .06)), hc - 2, hc + 2), *dl),
+                                      on(f, rect(*sorted((hu + sg * .065, hu + sg * GAP)), hc - 2, hc + 2), *dl),
                                       lathe([(0, hc - 2.1), (.25, hc - 2.1), (.25, hc + 2.1), (0, hc + 2.1)], 12,
-                                            lambda x, y, z: f(hu + GAP / 2 + x, -3.0 + y, z))]), "M_Hardware")
-        ku, kh = sr_ - 2.375, sb + 36                     # 2-3/8 in. backset, 36 in. up
-        part("Knob_Ext", lathe(KNOB, 16, lambda x, y, z: f(ku + x, -1.25 + z, kh + y)), "M_Hardware")
-        part("Knob_Int", lathe(KNOB, 16, lambda x, y, z: f(ku + x, -3.0 - z, kh + y)), "M_Hardware")
+                                            lambda x, y, z: f(hu + sg * GAP / 2 + x, bf + y, z))]), "M_Hardware")
+        ku, kh = (sr_ - 2.375) if lo else (sl_ + 2.375), hb + need(o, "knob_in", "door")   # 2-3/8 in. backset
+        part("Knob_Ext", lathe(KNOB, 16, lambda x, y, z: f(ku + x, e + z, kh + y)), "M_Hardware")
+        part("Knob_Int", lathe(KNOB, 16, lambda x, y, z: f(ku + x, i - z, kh + y)), "M_Hardware")
         part("DripCap", cap(f, ul - cs, ur + cs, top + cs, ct), "M_Trim")
 
 

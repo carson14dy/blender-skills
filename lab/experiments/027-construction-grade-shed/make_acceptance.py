@@ -26,8 +26,10 @@ zt = lambda x: 100 + (x - 3.5) * 0.5 + Dp   # noqa: E731  top of rafters: 4 in. 
 run_ = 60 + 6                          # half width + eave overhang, to the fascia face
 std, asm = "standard", "assumed"
 extra = [
-    {"id": "pad", "type": "size", "objects": "Shed_Pad", "expect": [124, 148, 4], "unit": "in", "source": asm,
-     "note": "not in the brief: 4 in. slab, 2 in. past the framing (the pilot's values)"},
+    {"id": "pad", "type": "size", "objects": "Shed_Pad", "expect": [120, 144, 4], "unit": "in", "source": asm,
+     "note": "4 in. thick: not in the brief or the rules (IRC R506.1: at least 3-1/2 in.); flush with the framing: design rule"},
+    {"id": "siding-lap", "type": "extent", "objects": ["Shed_Siding_*", "Shed_Starter_*"], "axis": "z", "side": "min",
+     "expect": 3, "unit": "in", "source": std, "note": "flush slab: the first course laps 1 in. below the bottom plate (4 in.)"},
     {"id": "roof-area", "type": "area", "objects": "Roof", "hidden": True, "facing": "up", "unit": "sq",
      "expect": round(2 * 156 * run_ * k / 14400, 4), "source": std,
      "note": "2 planes x 156 in. (144 + 2 x 6 rake) x 73.79 in. (66 in. run x 1.1180) = 23,022.6 sq in."},
@@ -50,21 +52,22 @@ extra = [
      "source": std, "note": "door size not in the brief: standard 3 ft 0 in. x 6 ft 8 in. slab"},
     {"id": "door-center", "type": "position", "objects": "Shed_Door_Slab", "at": [60, None, None], "unit": "in",
      "source": "given", "note": "brief: in the middle of the front"},
-    {"id": "window-heads", "type": "extent", "objects": "Shed_Window_*_Frame_*", "axis": "z", "expect": 84, "unit": "in",
-     "source": asm, "note": "not in the brief: heads line up with the door slab top (4 + 44 + 36 in.)"},
+    {"id": "window-heads", "type": "extent", "objects": "Shed_Window_*_Frame_*", "axis": "z", "expect": 86.25,
+     "unit": "in", "source": std, "note": "design rule: window head level with the door head: rough-opening tops at "
+     "82.5 in. (80 + 2.5), so the unit's top at 82.25 in. above the slab, 4 in. pad"},
 ]
 for n, (wall, y) in enumerate((("left", 48), ("left", 96), ("right", 48), ("right", 96)), 1):
     extra += [{"id": f"window-{n}-size", "type": "size", "objects": f"Shed_Window_{n}_Frame_*", "sorted": True,
                "expect": [3.9375, 24, 36], "unit": "in", "source": "given", "note": "brief: 2 ft x 3 ft; wall depth"},
               {"id": f"window-{n}-at", "type": "position", "objects": f"Shed_Window_{n}_Frame_*", "at": [None, y, None],
-               "unit": "in", "source": asm, "note": f"{wall} wall; positions not in the brief: 4 and 8 ft (the pilot's)"}]
+               "unit": "in", "source": std, "note": f"design rule: windows equally spaced along the {wall} wall (12 ft / 3)"}]
 mats = [("siding", ["Shed_Siding_*", "Shed_Starter_*"], "M_Siding", "given"), ("trim", ["Shed_Trim_*",
          "Shed_Window_*_Casing_*", "Shed_Door_Casing_*"], "M_Trim", "given"), ("shingles", "RT_layer_covering",
          "RT_covering*", "given"), ("pad-material", "Shed_Pad", "M_Concrete", "given"),
         ("lumber", ["Shed_Stud_*", "Shed_Rafter_*"], "M_Lumber", std), ("glass", "Shed_Window_*_Glass", "M_Glass", std),
-        ("door-material", "Shed_Door_Slab", "M_Door", asm)]
-extra += [{"id": i, "type": "material", "objects": o, "expect": e, "source": s,
-           **({"note": "door colour not in the brief: white like the trim"} if s == asm else {})} for i, o, e, s in mats]
+        ("door-material", "Shed_Door_Slab", "M_Door", std)]
+extra += [{"id": i, "type": "material", "objects": o, "expect": e, "source": s} for i, o, e, s in mats]
+extra[-1]["note"] = "design rule: the door colour matches the trim (#FFFFFF)"
 extra.append({"id": "hero", "type": "image", "file": "//render/hero_0001.png", "res": [1920, 1080], "source": "given"})
 spec = {"name": "Garden shed (027, construction grade)", "units": "in", "checks": checks + extra,
         "forbid": {"scope": "Shed_*"}}

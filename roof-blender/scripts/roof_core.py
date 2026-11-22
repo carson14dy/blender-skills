@@ -104,9 +104,19 @@ def clip_half(poly, hp):
         if (fp >= 0) != (fq >= 0):
             t = fp / (fp - fq)
             out.append((p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t))
+    # a corner on the clip line comes out twice, under a micrometre apart (kept, then as the crossing): keep it once
+    # (10 micrometres; no roof edge is that short), or it leaves a zero-area sliver that qa_check reads as z-fighting
+    out = [p for i, p in enumerate(out) if abs(p[0] - out[i - 1][0]) + abs(p[1] - out[i - 1][1]) > 1e-5] if len(out) > 1 else out
     if len(out) >= 3 and poly_area2(out) < 0:
         out.reverse()
     return out
+
+
+def seg_dist2(u, v, a, b):
+    """Distance from (u, v) to the segment a-b."""
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    t = max(0.0, min(1.0, ((u - a[0]) * dx + (v - a[1]) * dy) / (dx * dx + dy * dy or 1e-12)))
+    return math.hypot(u - (a[0] + dx * t), v - (a[1] + dy * t))
 
 
 def point_in_tri(u, v, t, margin=0.0):
@@ -171,7 +181,12 @@ class Plane:
         return (p - self.origin).dot(self.n)
 
     def contains2(self, u, v, margin=0.0):
-        return any(point_in_tri(u, v, t, margin) for t in self.tris)
+        """Is (u, v) on the plane? A positive margin keeps the point that far inside the plane's OUTER boundary;
+        the diagonals between its triangles are ignored (as the web studio's contains2). A negative margin is a
+        tolerance."""
+        if margin <= 0 or not getattr(self, "edges", None):
+            return any(point_in_tri(u, v, t, min(0.0, margin)) for t in self.tris)
+        return self.contains2(u, v) and all(seg_dist2(u, v, e["a"], e["b"]) >= margin for e in self.edges)
 
     def region(self, half_planes=()):
         out = []

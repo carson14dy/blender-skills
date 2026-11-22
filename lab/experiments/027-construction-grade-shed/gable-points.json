@@ -1,6 +1,5 @@
-{"view_size": [1600, 1200],
- "rect_name": "door casing outline (36 x 80 slab + jambs + 3.5 in. casing; foot to drip-cap top)", "rect": [[698, 887], [912, 875], [912, 457], [698, 450]],
- "rect_size": ["44.75in", "84.875in"],
- "rect_tol": "0.25in", "rakes": [[[530, 355], [770, 245]], [[1050, 386], [850, 253]]],
- "horizontals": [[[525, 711], [695, 710]], [[910, 705], [1040, 700]]],
- "verticals": [[[522, 450], [523, 890]], [[1043, 480], [1043, 850]]]}
+{"view_size": [1600, 1200], "rect_name": "gable wall between the corner boards' inner edges (116.105 in.: 120 + 2 x (7/16 sheathing + 0.115 wrap + 1 in. trim) - 2 x 3.5 in.) by the siding butt lines 31 and 80 in. above grade (7 courses x 7 in.)",
+ "rect": [[526, 761.5], [1036, 736.7], [1036, 510.3], [526, 498.6]], "rect_size": ["116.105in", "49in"], "rect_tol": "0.25in",
+ "rakes": [[[530, 355], [770, 245]], [[1050, 386], [850, 253]]],
+ "horizontals": [[[530, 649], [690, 646.4]], [[910, 641.6], [1030, 640]]],
+ "verticals": [[[688, 500], [688, 860]], [[912, 500], [912, 860]]]}

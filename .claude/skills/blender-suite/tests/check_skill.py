@@ -18,8 +18,8 @@ PACKAGED = not (ROOT / "tests" / "run_all.py").exists()
 MAX_SHIPPED = 199                                              # claude.ai takes at most 200 files per skill
 NAME = "blender-suite"
 # bytes: (max for one file, max for the folder)
-BUDGET = {"SKILL.md": (15000, 15000), "references": (10000, 300000), "scripts": (24000, 580000),
-          "pipelines": (20000, 270000), "tests": (16000, 180000), "assets": (4000, 8000),
+BUDGET = {"SKILL.md": (15000, 15000), "references": (10000, 300000), "scripts": (24000, 600000),
+          "pipelines": (20000, 250000), "tests": (16000, 180000), "assets": (4000, 8000),
           "LICENSE": (4000, 4000), "NOTICE.md": (4000, 4000)}
 TOTAL_MAX = 1_400_000
 ALLOWED_EXT = {".md", ".py", ".toml", ".json", ".ps1", ".sh", ".cmd", ""}

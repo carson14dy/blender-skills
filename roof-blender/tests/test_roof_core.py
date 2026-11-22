@@ -49,6 +49,12 @@ def main():
     counts = {lid: len(bpy.data.objects[f"RT_layer_{lid}"].data.polygons) for lid in ("covering", "dripEdge", "ridgeVent", "ridgeCap")}
     check(counts == {"covering": 1002, "dripEdge": 27, "ridgeVent": 8, "ridgeCap": 16},
           f"default shingle run unchanged by the metal panels and edge profiles of experiments 019/020 ({counts})")
+    # Nails on every course's nail line, every 39.375 / 4 in. (4 a shingle), at least 4 cm inside each plane's
+    # outer edge. Per plane 1406 + 1903 + 895 + 895 + 919 + 907 = 6925, the web studio's nailLayout on the same
+    # planes (roof-visualizer/tests/geometry.test.mjs). It was 6770: the 4 cm margin was applied to the diagonals
+    # between a plane's triangles too, which dropped the 155 nails that fell near them (lab experiment 027).
+    nails = len(bpy.data.objects["RT_layer_nails"].data.polygons) // 10   # 10 faces a nail: head, 6 rim, 3 shank
+    check(nails == 6925, f"ranch demo: 6925 nails, the same count as the web studio ({nails})")
     # found by blender-master's qa_check (lab experiment 014)
     for lid in ("ridgeCap", "dripEdge"):
         me = bpy.data.objects[f"RT_layer_{lid}"].data

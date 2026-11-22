@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildRoofPlanes, HOUSE_PRESETS } from '../viewer/js/house.js';
-import { analyzeRoof, measureRoof, capGeometry, ridgeVentGeometry, dripEdgeGeometry, buildSurface } from '../viewer/js/roof-geometry.js';
+import { analyzeRoof, measureRoof, capGeometry, ridgeVentGeometry, dripEdgeGeometry, buildSurface, nailLayout } from '../viewer/js/roof-geometry.js';
 
 const near = (actual, expected, tol, what) => assert.ok(Math.abs(actual - expected) <= tol, `${what}: ${actual.toFixed(3)} vs ${expected.toFixed(3)}`);
 
@@ -64,4 +64,12 @@ test('every triangle faces its normal (FrontSide materials cull the rest)', () =
     }
     assert.equal(bad, 0, `${name}: ${bad} of ${p.length / 9} triangles wound against their normal`);
   }
+});
+
+test('ranch nails: the same count as roof_core.py (6925)', () => {
+  // every course's nail line, every 39.375 / 4 in. (4 a shingle), at least 4 cm inside each plane's OUTER edge:
+  // per plane 1406 + 1903 + 895 + 895 + 919 + 907 = 6925 (roof-blender/tests/test_roof_core.py checks the same)
+  const planes = buildRoofPlanes(HOUSE_PRESETS['ranch-hip'], 6);
+  const IN = 0.0254;
+  assert.equal(nailLayout(planes, { exposure: 5.625 * IN, spacing: (39.375 * IN) / 4 }).count, 6925);
 });
