@@ -415,36 +415,122 @@ def solid_surface(local, x0, y0, nx, ny, cell=0.25, radius=0.6, min_single=0.9, 
     s1 = ok & (nret == 1)
     np.maximum.at(top, (j[s1], i[s1]), z[s1])
     solid = np.isfinite(top) & good & (frac >= min_single) & (rms < max_rms)
-    return {"Z": np.where(solid, top, np.nan), "single_frac": frac, "rms": rms, "count": n_all}
+    # per-cell statistics of the cell's own returns (merge_solid's edge growth, rock outlines)
+    low = np.full((ny, nx), np.inf)
+    np.minimum.at(low, (j[sel], i[sel]), z[sel])
+    c_all = np.zeros((ny, nx)); c_one = np.zeros((ny, nx))
+    np.add.at(c_all, (j[ok], i[ok]), 1.0); np.add.at(c_one, (j[s1], i[s1]), 1.0)
+    return {"Z": np.where(solid, top, np.nan), "single_frac": frac, "rms": rms, "count": n_all,
+            "top": np.where(np.isfinite(top), top, np.nan), "low": np.where(np.isfinite(low), low, np.nan),
+            "cell_single": np.where(c_all > 0, c_one / np.maximum(c_all, 1), np.nan), "cell_count": c_all,
+            "q90_single": cell_quantile(i[s1], j[s1], z[s1], nx, ny, 0.9)}
 
 
-def merge_solid(Zg, Zs, cell, rise=1.0, min_patch=0.75, max_rise=None):
+def cell_quantile(i, j, z, nx, ny, q):
+    """Per-cell quantile ``q`` (0..1, linear between order statistics) of values z at cells (i, j);
+    nan where a cell has no value."""
+    out = np.full((ny, nx), np.nan)
+    if len(z) == 0:
+        return out
+    k = j.astype(np.int64) * nx + i
+    o = np.lexsort((z, k))
+    k, zs = k[o], z[o]
+    starts = np.r_[0, np.nonzero(np.diff(k))[0] + 1]
+    ends = np.r_[starts[1:], len(k)]
+    pos = starts + q * (ends - starts - 1)
+    lo = np.floor(pos).astype(int); hi = np.minimum(lo + 1, ends - 1); t = pos - lo
+    out.ravel()[k[starts]] = zs[lo] * (1 - t) + zs[hi] * t
+    return out
+
+
+def merge_solid(Zg, Zs, cell, rise=1.0, min_patch=0.75, max_rise=None, grow=None, grow_iter=0, grow_single=0.9,
+                grow_above=0.3, mask=None):
     """Terrain = max(ground surface, solid surface). Solid cells that stand more than ``rise`` above the
     ground are kept only in 8-connected patches of at least ``min_patch`` m^2 (a lone tall cell is a
-    post, a sign or a bird, a boulder is a patch); ``max_rise`` drops anything taller. Returns
-    (Z, accepted mask)."""
+    post, a sign or a bird, a boulder is a patch); ``max_rise`` drops anything taller.
+
+    Edge growth (``grow`` = the solid_surface() dict, ``grow_iter`` > 0): the planarity window of the solid
+    surface fails on every boulder / outcrop edge, so tall patches come out shrunk by about the window
+    radius. For ``grow_iter`` rounds (use ceil(radius / cell) + 1), 8-neighbours of an accepted tall patch
+    are accepted too when the cell's own returns are at least ``grow_single`` single-return pulses, its
+    lowest last return stands more than ``grow_above`` above the ground (and less than ``max_rise``) and it
+    is not in ``mask`` (bool grid: never solid). A grown cell takes its highest single return.
+    Returns (Z, accepted mask)."""
     from scipy import ndimage
     d = Zs - Zg
     acc = np.isfinite(d) & (d > 0)
     if max_rise is not None:
         acc &= d < max_rise
+    if mask is not None:
+        acc &= ~mask
     tall = acc & (d > rise)
     lab, n = ndimage.label(tall, np.ones((3, 3)))
     if n:
         area = ndimage.sum(tall, lab, range(1, n + 1)) * cell * cell
         small = np.isin(lab, [q + 1 for q, a in enumerate(area) if a < min_patch])
         acc &= ~small
-    # sampling holes inside an accepted patch (an empty cell, one rough window on a boulder top) would
-    # drop to the ground below as a pit: fill cells the closing of the patch covers from their neighbours
+        tall &= ~small
     Zm = np.where(acc, Zs, Zg)
-    holes = ndimage.binary_closing(acc, np.ones((3, 3)), iterations=2) & ~acc
+    if grow is not None and grow_iter > 0 and tall.any():
+        top, low, frac = grow["top"], grow["low"], grow["cell_single"]
+        with np.errstate(invalid="ignore"):
+            up = low - Zg
+            ok = np.isfinite(top) & np.isfinite(up) & (np.nan_to_num(frac) >= grow_single) & (up > grow_above)
+            if max_rise is not None:
+                ok &= up < max_rise
+        if mask is not None:
+            ok &= ~mask
+        region = tall.copy(); grown = np.zeros_like(tall)
+        for _ in range(int(grow_iter)):
+            ring = ndimage.binary_dilation(region, np.ones((3, 3))) & ~region & ok
+            if not ring.any():
+                break
+            region |= ring; grown |= ring
+        Zm = np.where(grown, np.maximum(top, Zg), Zm)
+        acc = acc | grown
+    # sampling holes inside a raised patch (an empty cell, one rough window on a boulder top) would drop to
+    # the ground below as a pit: fill cells the closing of the raised patch covers from their raised
+    # neighbours -- but not a cell whose own lowest return is at ground level (the foot around a boulder)
+    raised = acc & ((Zm - Zg) > 0.3)
+    holes = ndimage.binary_closing(raised, np.ones((3, 3)), iterations=2) & ~raised
+    if mask is not None:
+        holes &= ~mask
+    if grow is not None:
+        with np.errstate(invalid="ignore"):
+            holes &= ~(np.isfinite(grow["low"]) & ((grow["low"] - Zg) <= grow_above))
     if holes.any():
-        w = ndimage.uniform_filter(acc.astype(float), 3)
-        v = ndimage.uniform_filter(np.where(acc, Zs, 0.0), 3) / np.maximum(w, 1e-9)
+        w = ndimage.uniform_filter(raised.astype(float), 3)
+        v = ndimage.uniform_filter(np.where(raised, Zm, 0.0), 3) / np.maximum(w, 1e-9)
         fill = holes & (w > 0.3) & (v > Zg)
         Zm = np.where(fill, v, Zm)
         acc = acc | fill
     return Zm, acc
+
+
+def despike(Z, nodes, cell, above=0.3, sigma=0.25, max_change=None, edge_nodes=None, passes=1):
+    """Knock down single-node spikes on rough raised terrain (boulder fields, outcrop tops): on ``nodes``
+    (bool grid) z = min(z, median of the 3x3 neighbourhood + ``above``), then a Gaussian of ``sigma`` m
+    over those nodes only (the rest of the grid is untouched). ``max_change`` (m) limits how far the
+    Gaussian may move a node, so measured rough rock tops keep their relief (spikes are already capped by
+    the median step) -- except on ``edge_nodes`` (bool grid; e.g. the outline of the raised patches, whose
+    cell-sized teeth render as dark shards): they take the full Gaussian, ``passes`` times.
+    Returns the new grid."""
+    from scipy import ndimage
+    if not nodes.any():
+        return Z
+    med = ndimage.median_filter(Z, size=3, mode="nearest")
+    Z1 = np.where(nodes, np.minimum(Z, med + above), Z)
+    if sigma <= 0:
+        return Z1
+    G = ndimage.gaussian_filter(Z1, sigma / cell, mode="nearest")
+    Gc = np.clip(G, Z1 - max_change, Z1 + max_change) if max_change is not None else G
+    out = np.where(nodes, Gc, Z1)
+    if edge_nodes is not None and edge_nodes.any():
+        e = edge_nodes & nodes
+        for _ in range(max(1, int(passes))):
+            G = ndimage.gaussian_filter(out, sigma / cell, mode="nearest")
+            out = np.where(e, G, out)
+    return out
 
 
 def accept_planes(planes, xyz, min_pts=150, max_rms=0.06, max_slope=1.0, min_area=8.0, cell=0.5):

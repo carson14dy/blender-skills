@@ -43,3 +43,46 @@ def test_solve_camera_recovers_pose():
     assert np.allclose(cam2["centre"], C, atol=0.6)
     bc = photo.blender_camera(cam, 4000, 3000)
     assert bc["lens"] == pytest.approx(2800 / 4000 * 36, rel=1e-6)
+
+
+def test_blender_camera_matches_the_pinhole_for_portrait_and_off_centre_images():
+    """The Blender camera made by blender_camera() puts a 3-D point where K, R, t project it, also for a portrait
+    image whose principal point lies outside the frame (a crop of a larger photo)."""
+    import importlib.util
+    import json
+    import subprocess
+    import sys
+    import numpy as np
+    import pytest
+    from propmodel import photo
+    if importlib.util.find_spec("bpy") is None:
+        pytest.skip("needs the bpy module")
+    W, H = 180, 240
+    K = np.array([[850.0, 0, 225.0], [0, 850.0, 140.0], [0, 0, 1]])
+    C = np.array([30.0, -15.0, 2.0]); T = np.array([10.0, -3.0, 3.0])
+    f = (T - C) / np.linalg.norm(T - C); r = np.cross(f, [0, 0, 1.0]); r /= np.linalg.norm(r); u = np.cross(f, r)
+    R = np.vstack([r, u, f]); t = -R @ C
+    X = np.array([[12.0, -4.0, 4.0], [14.0, -6.0, 1.0], [9.0, -1.0, 6.5]])
+    q, _ = photo.project(K, R, t, X)
+    b = photo.blender_camera({"K": K.tolist(), "R": R.tolist(), "t": t.tolist()}, W, H)
+    script = r"""
+import bpy, json, sys
+from mathutils import Matrix, Vector
+from bpy_extras.object_utils import world_to_camera_view
+b, X, W, H = json.loads(sys.argv[1])
+bpy.ops.wm.read_factory_settings(use_empty=True)
+sc = bpy.context.scene
+cd = bpy.data.cameras.new("c"); co = bpy.data.objects.new("c", cd); sc.collection.objects.link(co)
+co.matrix_world = Matrix.Translation(b["location"]) @ Matrix(b["matrix_rotation"]).to_4x4()
+cd.lens, cd.sensor_width, cd.sensor_fit = b["lens"], b["sensor_width"], b["sensor_fit"]
+cd.shift_x, cd.shift_y = b["shift_x"], b["shift_y"]
+sc.render.resolution_x, sc.render.resolution_y = W, H
+out = []
+for x in X:
+    v = world_to_camera_view(sc, co, Vector(x)); out.append([v.x * W, (1 - v.y) * H])
+print("UV" + json.dumps(out))
+"""
+    r = subprocess.run([sys.executable, "-c", script, json.dumps([b, X.tolist(), W, H])], capture_output=True, text=True,
+                       timeout=120)
+    uv = np.array(json.loads(r.stdout.split("UV", 1)[1].splitlines()[0]))
+    assert np.abs(uv - q).max() < 0.5, (uv, q)

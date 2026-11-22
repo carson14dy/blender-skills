@@ -455,15 +455,156 @@ def cmd_obs(a):
             print(f"{i:3d} {o['target']:<24} {str(v):<18} σ={o.get('sigma')!s:<10} {o.get('source')}")
 
 
+CAVEAT_WORDS = ("assumed", "extrapolated", "estimated", "approximate", "approx", "unverified", "by eye", "±", "+/-")
+
+
+def wing_notes_md(wings, caveats=None):
+    """Markdown 'Wings and caveats' section: every wing's id, type and label (labels are where a wing's
+    measured/assumed status is written), plus spec-level ``caveats`` strings. Labels containing a caveat
+    word (assumed, extrapolated, ±, ...) are also repeated in the caveat list so they cannot be missed."""
+    rows, flagged = [], []
+    for w in wings:
+        d = w if isinstance(w, dict) else w.to_dict()
+        lab = str(d.get("label", "") or "")
+        shape = "measured outline" if d.get("outline") else "rectangle"
+        if d.get("walls"):
+            shape += " + measured walls"
+        rows.append(f"| {d['id']} | {d.get('type', '')} | {shape} | {lab.replace('|', '/')} |")
+        if any(k in lab.lower() for k in CAVEAT_WORDS):
+            flagged.append(f"wing {d['id']}: {lab}")
+    if not rows:
+        return []
+    lines = ["## Wings and caveats", "", "| Wing | Roof | Plan shape | Label |", "|---|---|---|---|", *rows]
+    items = flagged + [str(c) for c in (caveats or [])]
+    if items:
+        lines += ["", "**Caveats** (not fully measured):", *[f"- {c}" for c in items]]
+    return lines + [""]
+
+
+def _grade_levels(project, wings, offset=0.6):
+    """``levels`` for roofgeom.build: finished grade along every wall from data/ground_surface.npz (pm.py lidar
+    --ground-mode surface), sampled ``offset`` m outside the wall face (NaN where that point falls inside the
+    house or off the grid: under a cantilever the grade comes from the walls beside it), and the siding line
+    from details.json "foundation" as add_details.py draws it (per-wall top, else wall bottom + default_reveal;
+    wings / walls in "skip" are sided from grade). None when neither file exists (plain-ground jobs)."""
+    from shapely import contains_xy
+    from shapely.ops import unary_union
+    gs = P(project, "data/ground_surface.npz")
+    det = load(project, "details.json", {}) or {}
+    fnd = det.get("foundation")
+    if not os.path.exists(gs) and fnd is None:
+        return None
+    G = np.load(gs) if os.path.exists(gs) else None
+    house = unary_union([w.wall_polygon() for w in wings if not w.roof_only]).buffer(0.05)
+    fnd = fnd or {}
+    skip, tops, reveal = set(fnd.get("skip", [])), fnd.get("walls", {}), float(fnd.get("default_reveal", 0.25))
+
+    def grade(xy):
+        if G is None:
+            return np.full(len(xy), np.nan)
+        Z, c = G["Z"], float(G["cell"])
+        fx = (xy[:, 0] - float(G["x0"])) / c - 0.5; fy = (xy[:, 1] - float(G["y0"])) / c - 0.5   # cell centres
+        i0, j0 = np.floor(fx).astype(int), np.floor(fy).astype(int)
+        ok = (i0 >= 0) & (j0 >= 0) & (i0 < Z.shape[1] - 1) & (j0 < Z.shape[0] - 1)
+        i0, j0 = np.clip(i0, 0, Z.shape[1] - 2), np.clip(j0, 0, Z.shape[0] - 2)
+        tx, ty = fx - i0, fy - j0
+        z = (Z[j0, i0] * (1 - tx) * (1 - ty) + Z[j0, i0 + 1] * tx * (1 - ty) + Z[j0 + 1, i0] * (1 - tx) * ty
+             + Z[j0 + 1, i0 + 1] * tx * ty)
+        return np.where(ok, z, np.nan)
+
+    def levels(key, pts, outward, bottom):
+        q = np.asarray(pts, float) + offset * np.asarray(outward, float)
+        g = grade(q)
+        g[contains_xy(house, q[:, 0], q[:, 1])] = np.nan
+        if key in skip or key.split(":")[0] in skip:
+            s_ = np.full(len(q), np.nan)                       # no band: sided from grade
+        elif key in tops:
+            s_ = np.maximum(np.full(len(q), float(tops[key])), bottom)
+        else:
+            s_ = np.asarray(bottom, float) + reveal
+        return g, s_
+    levels.grade = grade
+    levels.house = house
+    return levels
+
+
+def _details_openings(project, model):
+    """details.json openings -> report entries {"facade", "area_m2", "zone": siding|foundation, "label"};
+    openings on details "extra_walls" (e.g. a concrete garage front) are returned with those walls:
+    ([openings], [{"name", "facade", "area_m2", "material", "openings_m2"}])."""
+    from propmodel.report import compass
+    det = load(project, "details.json", {}) or {}
+    if not det:
+        return None, []
+    fnd = det.get("foundation") or {}
+    skip, tops, reveal = set(fnd.get("skip", [])), fnd.get("walls", {}), float(fnd.get("default_reveal", 0.25))
+    walls = {f"{w.wing}:{w.side}": w for w in model.walls}
+    extra = {}
+    for e in det.get("extra_walls", []):
+        (x0, y0, z0), (x1, y1, z1) = e["bottom"][0], e["bottom"][-1]
+        L = math.hypot(x1 - x0, y1 - y0)
+        extra[e["name"]] = {"name": e["name"], "facade": compass(e.get("bearing")),
+                            "material": e.get("material", "siding"),
+                            "area_m2": max(L * (e["top_z"] - (z0 + z1) / 2), 0.0), "openings_m2": 0.0}
+    out = []
+    for o in det.get("openings", []):
+        a_ = float(o["width"]) * float(o["height"]) * float(o.get("count", 1))
+        k = o.get("wall")
+        if k in extra:
+            extra[k]["openings_m2"] += a_
+            continue
+        w = walls.get(k)
+        if w is None:
+            continue
+        zb = min(p[2] for p in w.bottom) if w.bottom else 0.0
+        line = zb if (k in skip or k.split(":")[0] in skip) else max(float(tops.get(k, zb + reveal)), zb)
+        mid = float(o.get("sill_z", zb)) + float(o["height"]) / 2
+        out.append({"facade": compass(w.bearing), "area_m2": a_, "zone": "siding" if mid >= line else "foundation",
+                    "label": o.get("label", o.get("kind", ""))})
+    return out, list(extra.values())
+
+
+def _build_for_report(project, spec, wings_dicts):
+    """The model for the report: walls split by finished grade / siding line (_grade_levels), plus the grade
+    in front of details.json extra_walls (a garage under a deck stands lower than any wing wall)."""
+    from shapely import contains_xy
+    from propmodel import roofgeom
+    wings = [roofgeom.Wing.from_dict(w) for w in wings_dicts]
+    levels = None if spec.get("ground") else _grade_levels(project, wings)
+    model = roofgeom.build(wings, ground=spec.get("ground"), levels=levels)
+    if levels is not None:
+        extra = []
+        for e in (load(project, "details.json", {}) or {}).get("extra_walls", []):
+            if e.get("bearing") is None:
+                continue
+            a_, b_ = np.array(e["bottom"][0][:2], float), np.array(e["bottom"][-1][:2], float)
+            out = np.array([math.sin(math.radians(e["bearing"])), math.cos(math.radians(e["bearing"]))])
+            q = a_ + np.outer(np.linspace(0.05, 0.95, 19), b_ - a_) + 0.6 * out
+            g = levels.grade(q)
+            g[contains_xy(levels.house, q[:, 0], q[:, 1])] = np.nan
+            extra += [float(v) for v in g[np.isfinite(g)]]
+        model.grade_extra = extra or None
+    return model
+
+
 def _finish(project, model, fit=None):
     from propmodel import report, roofgeom, plot
     save(project, "model.json", {**roofgeom.to_mesh_json(model), "site": load(project, "site.json")})
     site = load(project, "site.json")
     spec = load(project, "spec.json", {}) or {}
-    md = report.build_report(model, fit, site, openings=spec.get("openings"))
+    det_open, extra_walls = _details_openings(project, model)
+    md = report.build_report(model, fit, site, openings=det_open if det_open is not None else spec.get("openings"),
+                             extra_walls=extra_walls)
+    notes = wing_notes_md(model.wings, spec.get("caveats"))
+    if notes:
+        md = md.rstrip("\n") + "\n\n" + "\n".join(notes)
     with open(P(project, "report.md"), "w") as f:
         f.write(md)
-    save(project, "report.json", report.report_json(model, fit, site))
+    rj = report.report_json(model, fit, site)
+    rj["wings"] = [{"id": w.id, "type": w.type, "label": w.label} for w in model.wings]
+    if spec.get("caveats"):
+        rj["caveats"] = list(spec["caveats"])
+    save(project, "report.json", rj)
     _plot(project, model)
     print(md)
 
@@ -503,7 +644,7 @@ def cmd_fit(a):
     fitted = dict(spec)
     fitted["wings"] = res["wings"]
     save(a.project, "spec_fitted.json", fitted)
-    model = roofgeom.build([roofgeom.Wing.from_dict(w) for w in res["wings"]], ground=spec.get("ground"))
+    model = _build_for_report(a.project, spec, res["wings"])
     _finish(a.project, model, res)
     if a.accept:
         save(a.project, "spec.json", fitted)
@@ -512,7 +653,7 @@ def cmd_fit(a):
 def cmd_build(a):
     from propmodel import roofgeom
     spec = load(a.project, "spec.json")
-    model = roofgeom.build([roofgeom.Wing.from_dict(w) for w in spec["wings"]], ground=spec.get("ground"))
+    model = _build_for_report(a.project, spec, spec["wings"])
     _finish(a.project, model, load(a.project, "fit.json") if a.with_fit else None)
 
 

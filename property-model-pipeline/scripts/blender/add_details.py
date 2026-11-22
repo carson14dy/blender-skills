@@ -9,7 +9,11 @@ geometry, placed from photo measurements. details.json (metres, model frame):
 
 {
   "model_json": "path/to/model.json",
-  "siding": {"exposure": 0.1803, "color": [0.42, 0.42, 0.30]},
+  "siding": {"style": "lap", "exposure": 0.1803, "color": [0.42, 0.42, 0.30]},
+            # style "lap": horizontal shadow lines every `exposure` m (material "Siding (lap)");
+            # "vertical": grooves every `spacing` m (default 0.203, T1-11 / board siding) running up each wall,
+            #   spaced along that wall's own tangent ("Siding (vertical)"); "groove": groove width (default 0.012);
+            # "smooth": plain colour, no texture ("Siding (smooth)") - use it when a photo shows no lines
   "roof": {"exposure": 0.1429, "color": [0.17, 0.17, 0.18]},          # shingle course lines
   "trim_color": [0.85, 0.85, 0.82], "deck_color": [0.07, 0.12, 0.09],
   "window_frame_color": [80, 68, 52],                                  # window/slider frames (default: trim)
@@ -54,10 +58,20 @@ geometry, placed from photo measurements. details.json (metres, model frame):
               # overrides the tip's distance outside the edge line
   "wall_boxes": [ {"wall": "M:+u", "u": 1.5, "z": 0.4, "size": [w, h, depth], "color": [r,g,b], "name": "AC sleeve"} ],
               # wall-mounted boxes (through-wall AC, vents, meters); z = bottom
-  "downspouts": [ {"xy": [x,y], "top_z": 3.5, "bottom_z": 0.2,
-                   "path": [[x,y,z],...]} ],     # optional leader from the gutter outlet to the top of the drop
+  "downspouts": [ {"xy": [x,y], "top_z": 3.5, "bottom_z": 0.2, "label": "...",
+                   "path": [[x,y,z],...],         # optional leader from the gutter outlet to the top of the drop
+                   "to_roof": false} ],           # true: the drop ends on the roof surface below top_z at xy (an
+                   # upper gutter discharging onto a lower roof); it is then named "roof drop i", not "downspout i",
+                   # so the site grounding step does not drag it down to the terrain
+                   # A downspout runs ON a wall: xy = pipe centre ~0.06 m off a wall face (model or extra wall).
+                   # The script prints a WARNING for any xy farther than "downspout_max_gap" (default 0.15 m) from
+                   # every wall face (a free-standing pole). Bring the gutter outlet to it with "path": drop below
+                   # the soffit first (soffit z = eave z - fascia_height), then run back under it to the wall.
   "corner_board_color": [r,g,b], "fascia_color": [r,g,b], "soffit_color": [r,g,b],   # default: trim / soffit white
-  "roof_vents": [ {"xy": [x,y], "size": 0.32} ],        # placed on the roof surface; ridge caps are automatic
+  "roof_vents": [ {"xy": [x,y], "size": 0.32, "height": 0.16,
+                   "shape": "box|pipe", "color": [r,g,b], "label": "..."} ],
+                 # placed on the roof surface; "pipe" = round stack of diameter `size` (plumbing vent); ridge caps
+                 # are automatic
   "skylights": [ {"xy": [x,y], "size": [across, along_slope], "curb": 0.15, "label": "..."} ],   # on the top facet at xy
   "chimneys": [ {"center": [x,y], "size": [a,b], "azimuth": deg_of_a, "top_z": 7.9, "material": "siding|brick|stone",
                  "color": [r,g,b], "label": "...",
@@ -138,9 +152,53 @@ def pick(spec, mats, default, name, rough=0.7, key="color", mkey="material"):
     return mats.get(spec.get(mkey, default), mats[default])
 
 
-def siding_material(rgb, exposure):
-    """Lap siding: colour + horizontal shadow lines every `exposure` metres (bump from world Z)."""
+SIDING_STYLES = ("lap", "vertical", "smooth")
+
+
+def siding_material(rgb, exposure=0.1803, style="lap", spacing=0.203, groove=0.012):
+    """Wall cladding material.
+
+    lap:      horizontal shadow lines every `exposure` m (bump from world Z).
+    vertical: grooves every `spacing` m running up the wall (T1-11 / board siding). The coordinate along each
+              wall is computed per face from its normal (tangent = normalize(N x Z), dot world position), so
+              walls at any bearing get grooves without UVs or one material per wall.
+    smooth:   plain colour (stucco, panel, or a wall a photo shows without lines)."""
+    if style not in SIDING_STYLES:
+        raise ValueError(f"siding style {style!r}: expected one of {SIDING_STYLES}")
     rgb = col(rgb)
+    if style == "smooth":
+        return mat("Siding (smooth)", rgb, rough=0.85)
+    if style == "vertical":
+        m = mat("Siding (vertical)", rgb, rough=0.85)
+        nt = m.node_tree
+        b = nt.nodes.get("Principled BSDF")
+        geo = nt.nodes.new("ShaderNodeNewGeometry")
+        cr = nt.nodes.new("ShaderNodeVectorMath"); cr.operation = "CROSS_PRODUCT"
+        cr.inputs[1].default_value = (0.0, 0.0, 1.0)
+        nz = nt.nodes.new("ShaderNodeVectorMath"); nz.operation = "NORMALIZE"
+        dot = nt.nodes.new("ShaderNodeVectorMath"); dot.operation = "DOT_PRODUCT"
+        div = nt.nodes.new("ShaderNodeMath"); div.operation = "DIVIDE"; div.inputs[1].default_value = spacing
+        fr = nt.nodes.new("ShaderNodeMath"); fr.operation = "FRACT"
+        lt = nt.nodes.new("ShaderNodeMath"); lt.operation = "LESS_THAN"
+        lt.inputs[1].default_value = min(max(groove / spacing, 0.0), 0.5)
+        inv = nt.nodes.new("ShaderNodeMath"); inv.operation = "SUBTRACT"; inv.inputs[0].default_value = 1.0
+        bump = nt.nodes.new("ShaderNodeBump"); bump.inputs["Strength"].default_value = 0.25
+        nt.links.new(geo.outputs["Normal"], cr.inputs[0])
+        nt.links.new(cr.outputs["Vector"], nz.inputs[0])
+        nt.links.new(nz.outputs["Vector"], dot.inputs[0])
+        nt.links.new(geo.outputs["Position"], dot.inputs[1])
+        nt.links.new(dot.outputs["Value"], div.inputs[0])
+        nt.links.new(div.outputs[0], fr.inputs[0])
+        nt.links.new(fr.outputs[0], lt.inputs[0])
+        nt.links.new(lt.outputs[0], inv.inputs[1])
+        nt.links.new(inv.outputs[0], bump.inputs["Height"])          # groove = recessed
+        nt.links.new(bump.outputs["Normal"], b.inputs["Normal"])
+        mx = nt.nodes.new("ShaderNodeMixRGB")                         # faint shadow in the groove
+        mx.inputs["Color1"].default_value = (*rgb, 1)
+        mx.inputs["Color2"].default_value = (rgb[0] * 0.7, rgb[1] * 0.7, rgb[2] * 0.7, 1)
+        nt.links.new(lt.outputs[0], mx.inputs["Fac"])
+        nt.links.new(mx.outputs["Color"], b.inputs["Base Color"])
+        return m
     m = mat("Siding (lap)", rgb, rough=0.85)
     nt = m.node_tree
     b = nt.nodes.get("Principled BSDF")
@@ -652,9 +710,21 @@ def add_roof_extras(model, D, c, mats):
         x, y = v["xy"]
         z = facet_z(model, x, y)
         if z is None:
+            print(f"roof vent {i} at ({x:.2f}, {y:.2f}) is off the roof, skipped")
             continue
         w = v.get("size", 0.32)
-        box(f"roof vent {i}", (x - w / 2, y - w / 2, z - 0.05), (x + w / 2, y + w / 2, z + v.get("height", 0.16)), c, mats["vent"])
+        h = v.get("height", 0.16)
+        nm = v.get("label", f"roof vent {i}")[:40]
+        m = pick(v, mats, "vent", nm, 0.6)
+        if v.get("shape", "box") == "pipe":       # round stack (plumbing vent): 8-sided prism of diameter w
+            k = 8
+            ring = [(x + w / 2 * math.cos(2 * math.pi * j / k), y + w / 2 * math.sin(2 * math.pi * j / k)) for j in range(k)]
+            verts = [(px, py, z - 0.05) for px, py in ring] + [(px, py, z + h) for px, py in ring]
+            faces = [list(range(k - 1, -1, -1)), list(range(k, 2 * k))] + \
+                    [[j, (j + 1) % k, k + (j + 1) % k, k + j] for j in range(k)]
+            mesh(nm, verts, faces, c, m)
+        else:
+            box(nm, (x - w / 2, y - w / 2, z - 0.05), (x + w / 2, y + w / 2, z + h), c, m)
 
 
 def facet_plane(model, x, y):
@@ -831,6 +901,61 @@ def add_wall_boxes(D, frames, c, mats):
         oriented_box(nm, p + n * 0.005, d * w, n * dep, Vector((0, 0, h)), c, pick(wb, mats, "vinyl", nm, 0.5))
 
 
+def wall_gap(xy, frames):
+    """Horizontal distance from a point to the nearest wall face (segment, clamped at its ends) of any frame."""
+    q = Vector((xy[0], xy[1], 0))
+    best = math.inf
+    for a, d, n, L, _ in frames.values():
+        rel = q - a
+        u, v = rel.dot(d), rel.dot(n)
+        best = min(best, math.hypot(v, max(0.0, -u, u - L)))
+    return best
+
+
+def roof_below(model, x, y, zmax):
+    """Highest roof surface z at (x, y) that lies below zmax (None when no facet covers the point)."""
+    best = None
+    for f in model["facets"]:
+        if not facet_z_one(f, x, y):
+            continue
+        a, b, c0 = f["plane"]
+        z = a * x + b * y + c0
+        if z < zmax and (best is None or z > best):
+            best = z
+    return best
+
+
+def add_downspouts(model, D, frames, c, mats):
+    """Downspouts on wall faces, with optional leaders from the gutter outlet (see the docstring)."""
+    tol = D.get("downspout_max_gap", 0.15)
+    for i, ds in enumerate(D.get("downspouts", [])):
+        x, y = ds["xy"]
+        gap = wall_gap((x, y), frames)
+        if gap > tol:
+            print(f"WARNING: downspout {i} at ({x:.2f}, {y:.2f}) is {gap:.2f} m from the nearest wall face "
+                  f"(> {tol:.2f} m): a free-standing pipe. Put it on a wall and bring the gutter outlet to it with 'path'.")
+        bottom, name = ds.get("bottom_z", 0.2), f"downspout {i}"
+        if ds.get("to_roof"):
+            zr = roof_below(model, x, y, ds["top_z"])
+            if zr is None:
+                print(f"WARNING: downspout {i} has to_roof but no roof below ({x:.2f}, {y:.2f}); using bottom_z")
+            else:
+                bottom, name = zr, f"roof drop {i}"
+        box(name, (x - 0.04, y - 0.04, bottom), (x + 0.04, y + 0.04, ds["top_z"]), c, mats["gutter"])
+        path = [Vector(p) for p in ds.get("path", [])]
+        if path:
+            path.append(Vector((x, y, ds["top_z"] - 0.04)))
+        for k in range(len(path) - 1):      # leader pipes (named so the grounding step leaves them alone)
+            p0, p1 = path[k], path[k + 1]
+            dv = p1 - p0
+            if dv.length < 1e-3:
+                continue
+            sx = dv.cross(Vector((0, 0, 1)))
+            sx = (sx.normalized() if sx.length > 1e-6 else Vector((1, 0, 0))) * 0.08
+            sz = sx.cross(dv).normalized() * 0.08
+            oriented_box(f"gutter leader {i}.{k}", p0 - sx / 2 - sz / 2, dv, sx, sz, c, mats["gutter"])
+
+
 def add_lights_and_text(D, frames, c, mats):
     import mathutils
     for i, l in enumerate(D.get("lights", [])):
@@ -898,7 +1023,8 @@ def main():
         "fixture": mat("Light fixture (black)", (0.02, 0.02, 0.02), 0.4, 0.5),
     }
     # siding on the existing walls
-    sm = siding_material(sid.get("color", (0.42, 0.42, 0.30)), sid.get("exposure", 0.1803))
+    sm = siding_material(sid.get("color", (0.42, 0.42, 0.30)), sid.get("exposure", 0.1803), sid.get("style", "lap"),
+                         sid.get("spacing", 0.203), sid.get("groove", 0.012))
     for ob in bpy.data.collections["Walls"].objects:
         ob.data.materials.clear()
         ob.data.materials.append(sm)
@@ -935,21 +1061,7 @@ def main():
     for pn in D.get("panels", []):
         pts = [tuple(p) for p in pn["polygon"]]
         mesh(pn.get("name", "panel"), pts, [list(range(len(pts)))], c, pick(pn, mats, "siding", pn.get("name", "panel"), 0.8))
-    for i, ds in enumerate(D.get("downspouts", [])):
-        x, y = ds["xy"]
-        box(f"downspout {i}", (x - 0.04, y - 0.04, ds.get("bottom_z", 0.2)), (x + 0.04, y + 0.04, ds["top_z"]), c, mats["gutter"])
-        path = [Vector(p) for p in ds.get("path", [])]
-        if path:
-            path.append(Vector((x, y, ds["top_z"] - 0.04)))
-        for k in range(len(path) - 1):      # leader pipes (named so the grounding step leaves them alone)
-            p0, p1 = path[k], path[k + 1]
-            dv = p1 - p0
-            if dv.length < 1e-3:
-                continue
-            sx = dv.cross(Vector((0, 0, 1)))
-            sx = (sx.normalized() if sx.length > 1e-6 else Vector((1, 0, 0))) * 0.08
-            sz = sx.cross(dv).normalized() * 0.08
-            oriented_box(f"gutter leader {i}.{k}", p0 - sx / 2 - sz / 2, dv, sx, sz, c, mats["gutter"])
+    add_downspouts(model, D, frames, c, mats)
     bpy.ops.wm.save_as_mainfile(filepath=out)
     print("details added:", len(c.objects), "objects ->", out)
 

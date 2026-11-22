@@ -99,3 +99,139 @@ def test_apron_meets_the_garage_front():
     over = build_site.align_apron(Polygon([(0, -10), (4, -10), (4, 1.0), (0, 1.0)]), front)
     assert over.bounds[3] <= 1e-6                                    # nothing under the garage
     assert abs(over.bounds[1] + 10) < 1e-6                           # rest of the driveway untouched
+
+
+def test_merge_solid_grows_a_box_boulder_back_to_its_edges():
+    """A 3 m box boulder: the planar-window test fails within ~radius of its edges, so the accepted patch
+    comes out shrunk; the edge growth brings it back to within one cell of the true footprint."""
+    rng = np.random.default_rng(7)
+    ground = lambda x, y: 0.1 * y
+    box = lambda x, y: (np.abs(x - 1.0) <= 1.5) & (np.abs(y) <= 1.5)
+    rock = lambda x, y: ground(x, y) + np.where(box(x, y), 2.0, 0.0)
+    P = _pts(rng, -8, 8, -8, 8, 0.15, rock, noise=0.02)
+    c, x0, y0, n = 0.25, -8.0, -8.0, 64
+    sol = lidar.solid_surface(P, x0, y0, n, n, cell=c, radius=0.6)
+    xs = x0 + c * (np.arange(n) + 0.5)
+    X, Y = np.meshgrid(xs, xs)
+    Zg = ground(X, Y)
+    truth = box(X, Y)
+    inner = (np.abs(X - 1.0) <= 1.5 - c) & (np.abs(Y) <= 1.5 - c)          # one cell inside the edge
+    outer = (np.abs(X - 1.0) <= 1.5 + c) & (np.abs(Y) <= 1.5 + c)          # one cell outside
+    Z0, _ = lidar.merge_solid(Zg, sol["Z"], c)
+    high0 = (Z0 - Zg) > 1.0
+    assert (inner & ~high0).sum() > 5                                      # without growth: shrunk
+    Z1, acc = lidar.merge_solid(Zg, sol["Z"], c, grow=sol, grow_iter=int(np.ceil(0.6 / c)) + 1)
+    high = (Z1 - Zg) > 1.0
+    assert not (inner & ~high).any()                                       # every cell a cell inside the edge
+    assert not (high & ~outer).any()                                       # nothing more than a cell outside
+    assert abs(high.sum() - truth.sum()) <= 0.25 * truth.sum()
+    # a masked cell is never grown into
+    mask = np.zeros_like(truth); mask[:, : int((0.0 - x0) / c)] = True     # x < 0 masked
+    Z2, _ = lidar.merge_solid(Zg, np.where(mask, np.nan, sol["Z"]), c, grow=sol, grow_iter=4, mask=mask)
+    assert not (((Z2 - Zg) > 1.0) & mask).any()
+
+
+def test_despike_caps_single_spikes_and_keeps_cliffs():
+    Z = np.zeros((20, 20)); Z[:, 10:] = 3.0                                # a 3 m cliff
+    Z[5, 4] = 1.2                                                         # a one-node spike on the low side
+    nodes = np.ones_like(Z, bool)
+    D = lidar.despike(Z, nodes, 0.25, above=0.3, sigma=0.25, max_change=0.05)
+    assert D[5, 4] <= 0.35                                                # spike capped to median + 0.3 (+ blur)
+    assert np.allclose(D[:, 12:], 3.0, atol=0.06) and np.allclose(D[:, 10], 3.0, atol=0.06)   # cliff edge kept
+    q = lidar.cell_quantile(np.array([0, 0, 0, 0, 1]), np.array([0, 0, 0, 0, 0]), np.array([1.0, 2.0, 3.0, 4.0, 7.0]), 2, 1, 0.9)
+    assert abs(q[0, 0] - 3.7) < 1e-9 and q[0, 1] == 7.0
+
+
+def test_face_walls_extrude_to_the_uphill_side():
+    item = {"kind": "retaining_wall", "line": [[-4, 0], [4, 0]], "thickness": 0.4, "line_is": "face"}
+    up_north = lambda x, y: 1.0 if y > 0 else 0.0
+    (line, th), = build_site.wall_lines({"items": [item]}, zfun=up_north)
+    assert th == 0.4 and np.allclose(np.array(line)[:, 1], 0.2)           # centre 0.2 m uphill (north) of the face
+    (line, _), = build_site.wall_lines({"items": [dict(item, uphill="right")]})
+    assert np.allclose(np.array(line)[:, 1], -0.2)                        # explicit side wins (right of +x = south)
+    (line, _), = build_site.wall_lines({"items": [dict(item, line_is="centre")]})
+    assert np.allclose(np.array(line)[:, 1], 0.0)
+    # mitred corner: both legs stay parallel to the face at half a thickness
+    bent = build_site.offset_line([[0, 0], [4, 0], [4, 4]], 0.2)
+    assert np.allclose(bent[1], [3.8, 0.2]) and np.allclose(bent[2], [3.8, 4.0])
+    pads_rock = build_site.rock_outlines({"rocks": [{"geoms": [[[0, 0], [1, 0], [1, 1]]], "props": {"top_z": 2.0}}]},
+                                         {"items": [{"kind": "boulder", "polygon": [[2, 2], [3, 2], [3, 3]], "top_z": 1.0},
+                                                    {"kind": "retaining_wall", "line": [[0, 0], [1, 1]]}]})
+    assert [t for _, t in pads_rock] == [2.0, 1.0]
+
+
+def test_overlays_lie_on_the_terrain_triangles():
+    """A twisted (non-planar) cell: the drape must follow the mesh's own two triangles, not a bilinear patch."""
+    xs = np.arange(0, 1.001, 0.5); X, Y = np.meshgrid(xs, xs)
+    Z = np.zeros_like(X); Z[1, 1] = 0.4; Z[0, 1] = -0.2                    # rough cell corners
+    geom = Polygon([(0.1, 0.1), (0.9, 0.15), (0.8, 0.9), (0.2, 0.7)])
+    v, t = build_site.drape_on_mesh(geom, X, Y, Z, 0.02)
+    v = np.array(v)
+    assert len(t) and abs(sum(Polygon(v[tri, :2]).area for tri in t) - geom.area) < 1e-6
+    for x, y, z in v:                                                     # z = the mesh triangle's plane + lift
+        i, j = min(int(x / 0.5), 1), min(int(y / 0.5), 1)
+        fx, fy = x / 0.5 - i, y / 0.5 - j
+        z00, z10, z11, z01 = Z[j, i], Z[j, i + 1], Z[j + 1, i + 1], Z[j + 1, i]
+        zt = z00 + fx * (z10 - z00) + fy * (z11 - z10) if fx >= fy else z00 + fy * (z01 - z00) + fx * (z11 - z01)
+        assert abs(z - 0.02 - zt) < 1e-3
+    for tri in t:                                                         # counter-clockwise: normals up
+        (x0, y0), (x1, y1), (x2, y2) = v[tri, :2]
+        assert (x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0) > 0
+
+
+def test_despike_edge_nodes_take_the_full_blur():
+    Z = np.zeros((20, 20)); Z[5:15, 5:15] = 2.0                           # a 2 m block
+    nodes = Z > 1.0
+    keep = lidar.despike(Z, nodes, 0.25, max_change=0.05)
+    assert np.allclose(keep[5:15, 6:14], 2.0, atol=0.051)                  # clamped: the block keeps its edges
+    assert keep[5, 5] < 0.5                                                 # (a one-node corner is a spike to the median)
+    from scipy.ndimage import binary_dilation
+    outline = nodes & binary_dilation(~nodes, np.ones((3, 3)))
+    soft = lidar.despike(Z, nodes, 0.25, max_change=0.05, edge_nodes=outline)
+    assert soft[5, 10] < 1.6 and abs(soft[10, 10] - 2.0) < 0.06             # only the outline is rounded
+
+
+def test_cells_fold_along_the_more_level_diagonal_and_drapes_follow():
+    """A ridge along the (j,i+1)-(j+1,i) diagonal: the cell is folded along it, the quad is written so its own
+    0-2 diagonal is that fold, and a drape over the cell lies on those two triangles, wound normal-up."""
+    xs = np.arange(0, 1.001, 0.5); X, Y = np.meshgrid(xs, xs)
+    Z = np.zeros_like(X); Z[0, 1] = 0.6; Z[1, 0] = 0.6; Z[1, 1] = 0.6        # cell (0,0): ridge on its 1-3 diagonal
+    alt = build_site.split_diagonals(Z)
+    assert alt[0, 0]
+    nx = X.shape[1]
+    f = build_site.quad_face(0, 0, nx, True)
+    flat = np.column_stack([X.ravel(), Y.ravel(), Z.ravel()])
+    assert {f[0], f[2]} == {1, nx}                                          # the fold is the face's 0-2 diagonal
+    q = flat[f, :2]
+    assert Polygon(q).exterior.is_ccw                                       # still counter-clockwise from above
+    # a node pulled off the grid (snapped onto a wall face) must not flip a triangle
+    NX = X.copy(); NX[1, 1] = 0.98
+    geom = Polygon([(0.05, 0.05), (0.95, 0.05), (0.95, 0.95), (0.05, 0.95)])
+    v, t = build_site.drape_on_mesh(geom, NX, Y, Z, 0.02, alt=alt)
+    v = np.array(v)
+    assert len(t) and abs(sum(Polygon(v[tri, :2]).area for tri in t) - geom.area) < 1e-6
+    for tri in t:                                                           # every overlay triangle: +z winding
+        (x0, y0), (x1, y1), (x2, y2) = v[tri, :2]
+        assert (x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0) > 0
+    for x, y, z in v:                                                       # cell (0,0) folded on its ridge: plane z
+        if x < 0.5 and y < 0.5:
+            fx, fy = x / 0.5, y / 0.5
+            zt = 0.6 * (fx + fy) if fx + fy <= 1 else 0.6
+            assert abs(z - 0.02 - zt) < 1e-3
+
+
+def test_ground_stays_under_a_cantilevered_storey():
+    """Cells inside a raised wing (an upper storey on another one) whose base is far above the grade there keep
+    their terrain (the overhang); cells inside a wing standing on the ground are dropped, whatever the fill."""
+    xs = np.arange(-4, 4.001, 0.25); X, Y = np.meshgrid(xs, xs)
+    Z = np.where(Y < 0, -3.0, 0.0)                                   # ground drops 3 m south of y = 0
+    fx = ((X[:-1, :-1] + X[1:, 1:]) / 2).ravel(); fy = ((Y[:-1, :-1] + Y[1:, 1:]) / 2).ravel()
+    lower = {"id": "L", "walls": [[-3, 0], [3, 0], [3, 3], [-3, 3]], "base_z": 1.5}     # fill inside it lower: still dropped
+    upper = {"id": "M", "walls": [[-3, -2], [3, -2], [3, 3], [-3, 3]], "base_z": 2.3}
+    keep = build_site.standing_cells([lower, upper], [], Z, fx, fy, 0.25, raised={"M"})
+    assert keep[(fy > 0.3) & (fy < 2.7) & (np.abs(fx) < 2.5)].all()      # inside the lower storey: dropped
+    assert not keep[(fy < -0.3) & (fy > -1.7) & (np.abs(fx) < 2.5)].any()   # under the overhang: ground stays
+    extra = [Polygon([(-1, -2), (1, -2), (1, -1), (-1, -1)])]          # a --house-extra garage there: dropped
+    keep2 = build_site.standing_cells([lower, upper], extra, Z, fx, fy, 0.25, raised={"M"})
+    assert build_site.standing_cells([lower, upper], [], Z, fx, fy, 0.25)[(fy < -0.3) & (fy > -1.7) & (np.abs(fx) < 2.5)].all()
+    assert keep2[(fy < -1.2) & (fy > -1.8) & (np.abs(fx) < 0.7)].all()

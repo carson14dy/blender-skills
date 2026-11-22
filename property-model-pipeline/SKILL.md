@@ -122,7 +122,7 @@ without aligning and checking it against LiDAR or tape.
 
 | File | Content |
 |---|---|
-| `report.md` / `report.json` | roof area/squares, waste, pitches, ridge/hip/valley/rake/eave/flashing lengths, facade wall areas, evidence reconciliation, fitted parameters — all ±1σ |
+| `report.md` / `report.json` | roof area/squares, waste, pitches, ridge/hip/valley/rake/eave/flashing lengths, facade wall areas, evidence reconciliation, fitted parameters — all ±1σ. Facets under 0.1 m² (slivers of hidden roofs) are dropped. Without a ground plane, heights above grade are given for the low and the high side (grade from `data/ground_surface.npz` outside the walls and in front of `details.json` extra walls, else the wall bottoms); siding is the exposed wall above grade and above the foundation line of `details.json` (`foundation`), minus its `openings`; the concrete band (and concrete extra walls) and the wall below grade are listed apart |
 | `model.json` | exact facet polygons, walls, classified edges (consumed by the Blender script) |
 | `overview.png` | orthophoto + footprints + LiDAR planes + model edges |
 | `out/model.blend`, `out/model.glb` | metric, georeferenced (ENU, 1 unit = 1 m) Blender scene / glTF |

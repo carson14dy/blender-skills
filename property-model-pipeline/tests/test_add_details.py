@@ -153,3 +153,79 @@ def test_chimney_shoulder_cap_walls_and_colours(scene):
     assert not _objs(sc, "foundation M")                                        # skipped wing
     lin = sc["materials"]["Siding (lap)"]
     assert lin == pytest.approx([0.753, 0.680, 0.457], abs=0.005)               # sRGB 225,215,180 -> linear
+
+
+WALLS_INSPECT = r"""
+import bpy, json, sys
+bpy.ops.wm.open_mainfile(filepath=sys.argv[1])
+out = {}
+for o in bpy.data.collections["Walls"].objects:
+    m = o.data.materials[0]
+    out[o.name] = {"mat": m.name, "nodes": sorted(n.bl_idname for n in m.node_tree.nodes),
+                   "ops": sorted(getattr(n, "operation", "") for n in m.node_tree.nodes if hasattr(n, "operation"))}
+json.dump(out, open(sys.argv[2], "w"))
+"""
+
+
+def _details_run(scene, tmp_path, extra, tag):
+    """Run add_details on the fixture's model with a small details.json; return (stdout, details objects, walls)."""
+    mj, D, _ = scene
+    base = os.path.dirname(D["model_json"])
+    det = {"model_json": D["model_json"], **extra}
+    (tmp_path / f"{tag}.json").write_text(json.dumps(det))
+    out = tmp_path / f"{tag}.blend"
+    r = _run([os.path.join(SCRIPTS, "add_details.py"), os.path.join(base, "out", "model.blend"), str(tmp_path / f"{tag}.json"),
+              str(out)])
+    (tmp_path / "dump_scene.py").write_text(INSPECT)
+    (tmp_path / "dump_walls.py").write_text(WALLS_INSPECT)
+    _run([str(tmp_path / "dump_scene.py"), str(out), str(tmp_path / f"{tag}_scene.json")])
+    _run([str(tmp_path / "dump_walls.py"), str(out), str(tmp_path / f"{tag}_walls.json")])
+    return (r.stdout, json.loads((tmp_path / f"{tag}_scene.json").read_text()),
+            json.loads((tmp_path / f"{tag}_walls.json").read_text()))
+
+
+@pytest.mark.parametrize("style", ["lap", "vertical", "smooth"])
+def test_siding_styles(scene, tmp_path, style):
+    _, _, walls = _details_run(scene, tmp_path, {"siding": {"style": style, "spacing": 0.2, "color": [225, 215, 180]}},
+                               f"siding_{style}")
+    assert walls
+    mats = {w["mat"] for w in walls.values()}
+    assert mats == {f"Siding ({style})"}                       # one material on every wall
+    w = next(iter(walls.values()))
+    if style == "smooth":
+        assert "ShaderNodeBump" not in w["nodes"]                # plain colour, no texture
+    else:
+        assert "ShaderNodeBump" in w["nodes"]
+    if style == "vertical":                                      # grooves spaced along each wall's own tangent
+        assert "CROSS_PRODUCT" in w["ops"] and "DOT_PRODUCT" in w["ops"]
+    else:
+        assert "CROSS_PRODUCT" not in w["ops"]
+
+
+def test_downspout_wall_gap_warning_roof_drop_and_pipe_vent(scene, tmp_path):
+    mj, _, _ = scene
+    south = next(x for x in mj["walls"] if abs(x["bearing"] - 180) < 1)
+    (x0, y0, _), (x1, y1, _) = south["bottom"]
+    xm, ym = min(x0, x1) + 0.25 * abs(x1 - x0), y0 - 0.06      # 0.06 m off the south wall face, under the eave
+    f = next(f for f in mj["facets"] if f["plane"][1] > 0)       # south slope
+    a, b, c = f["plane"]
+    extra = {"downspouts": [
+        {"xy": [xm, ym], "top_z": 2.6, "bottom_z": 0.0, "path": [[xm, ym - 0.6, 2.75]]},    # on the wall
+        {"xy": [xm, ym - 1.0], "top_z": 2.6, "bottom_z": 0.0},                                # free-standing pole
+        {"xy": [xm, ym], "top_z": 9.0, "bottom_z": 0.0, "to_roof": True}],                    # ends on the roof below
+        "roof_vents": [{"xy": [2.0, 2.5], "size": 0.1, "height": 0.3, "shape": "pipe", "label": "vent stack"}]}
+    f_n = next(f for f in mj["facets"] if f["plane"][1] < 0)     # north slope for the vent
+    stdout, sc, _ = _details_run(scene, tmp_path, extra, "spouts")
+    warn = [l for l in stdout.splitlines() if l.startswith("WARNING: downspout")]
+    assert len(warn) == 1 and warn[0].startswith("WARNING: downspout 1 ") and "1.06 m" in warn[0]
+    o = sc["objects"]
+    assert o["downspout 0"]["min"][2] == pytest.approx(0.0) and o["downspout 0"]["max"][2] == pytest.approx(2.6)
+    assert "gutter leader 0.0" in o                              # leader from the outlet to the top of the drop
+    drop = o["roof drop 2"]                                      # renamed: the site grounding leaves it alone
+    assert "downspout 2" not in o
+    assert drop["min"][2] == pytest.approx(a * xm + b * ym + c, abs=0.01) and drop["max"][2] == pytest.approx(9.0)
+    v = o["vent stack"]
+    assert v["n"] == 16                                          # 8-sided round stack
+    assert v["max"][0] - v["min"][0] == pytest.approx(0.1, abs=0.002)
+    zr = f_n["plane"][0] * 2.0 + f_n["plane"][1] * 2.5 + f_n["plane"][2]
+    assert v["max"][2] == pytest.approx(zr + 0.3, abs=0.01)

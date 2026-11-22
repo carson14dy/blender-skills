@@ -304,8 +304,9 @@ def blender_camera(cam, width, height):
     Rbw = R.T @ np.diag([1, -1, -1])
     sensor = 36.0
     lens = K[0, 0] / width * sensor
-    big = max(width, height)
+    # Blender measures lens shift in units of the sensor-fit dimension: the image WIDTH with sensor_fit
+    # HORIZONTAL (max(width, height) only with AUTO), so a portrait photo divides by the width too
     return {"location": C.tolist(), "matrix_rotation": Rbw.tolist(), "lens": lens, "sensor_width": sensor,
-            "sensor_fit": "HORIZONTAL", "shift_x": -(K[0, 2] - width / 2) / big,
-            "shift_y": (K[1, 2] - height / 2) / big, "resolution": [width, height],
+            "sensor_fit": "HORIZONTAL", "shift_x": -(K[0, 2] - width / 2) / width,
+            "shift_y": (K[1, 2] - height / 2) / width, "resolution": [width, height],
             "pixel_aspect": K[1, 1] / K[0, 0]}

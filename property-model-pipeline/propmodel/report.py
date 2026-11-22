@@ -31,17 +31,39 @@ def suggested_waste(model):
     return w, n
 
 
-def openings_by_facade(openings):
-    """spec 'openings': [{"facade": "N", "width": "36in", "height": "80in", "count": 1, "label": "door"}]."""
+def openings_by_facade(openings, zone="siding"):
+    """spec 'openings': [{"facade": "N", "width": "36in", "height": "80in", "count": 1, "label": "door"}], or
+    entries with "area_m2" and "zone" ("siding" | "foundation", default siding) as pm.py reads them from
+    details.json. Returns {facade: m2} for the openings in ``zone``."""
     from .units import parse_length
     out = {}
     for o in openings or []:
-        a = parse_length(o["width"]) * parse_length(o["height"]) * float(o.get("count", 1))
+        if o.get("zone", "siding") != zone:
+            continue
+        if "area_m2" in o:
+            a = float(o["area_m2"])
+        else:
+            a = parse_length(o["width"]) * parse_length(o["height"]) * float(o.get("count", 1))
         out[o["facade"].upper()] = out.get(o["facade"].upper(), 0.0) + a
     return out
 
 
-def build_report(model, fit=None, site=None, title="Property measurement report", openings=None):
+def _facade_table(rows_m2, op, total_sigma=0.0):
+    """Markdown rows: facade | gross | openings | net | net m2, plus the total row."""
+    lines = []
+    for k in COMPASS:
+        if rows_m2.get(k, 0) > 0.05 or op.get(k, 0) > 0.05:
+            g, o = rows_m2.get(k, 0.0), op.get(k, 0.0)
+            lines.append(f"| {k} | {U.sqft(g):.0f} | {U.sqft(o):.0f} | {U.sqft(g - o):.0f} | {g - o:.1f} |")
+    W, O = sum(rows_m2.values()), sum(op.values())
+    lines.append(f"| **Total** | **{_pm(U.sqft(W), U.sqft(total_sigma), '{:.0f}')}** | {U.sqft(O):.0f} | **{U.sqft(W - O):.0f}** | {W - O:.1f} |")
+    return lines
+
+
+def build_report(model, fit=None, site=None, title="Property measurement report", openings=None, extra_walls=None):
+    """``extra_walls``: [{"name", "facade", "area_m2", "material", "openings_m2"}] walls modelled outside the
+    wings (details.json extra_walls, e.g. a concrete garage front under a deck): concrete ones are listed with
+    the foundation, others with the siding."""
     meas = model.measurements()
     sig = (fit or {}).get("measurement_sigma", {})
     lines = [f"# {title}", ""]
@@ -60,7 +82,12 @@ def build_report(model, fit=None, site=None, title="Property measurement report"
               f"| Facets | {len(model.facets)} | |",
               f"| Predominant pitch (area-weighted) | {U.fmt_pitch(meas.get('roof.pitch_weighted', 0))} | {U.slope_to_deg(meas.get('roof.pitch_weighted', 0)):.1f}° |",
               f"| Suggested waste | {waste} % ({nhv} hips+valleys) → order {U.squares(A) * (1 + waste / 100):.2f} sq | |",
-              f"| Max height above grade | {_pm(U.ft(meas['building.height']), U.ft(sig.get('building.height', 0)))} ft | {meas['building.height']:.2f} m |",
+              *([f"| Max height above grade, low side (grade {meas['grade.low']:+.2f} m) | "
+                 f"{_pm(U.ft(meas['building.height_low_side']), U.ft(sig.get('building.height', 0)))} ft | {meas['building.height_low_side']:.2f} m |",
+                 f"| Max height above grade, high side (grade {meas['grade.high']:+.2f} m) | "
+                 f"{_pm(U.ft(meas['building.height_high_side']), U.ft(sig.get('building.height', 0)))} ft | {meas['building.height_high_side']:.2f} m |"]
+                if "building.height_low_side" in meas else
+                [f"| Max height above grade | {_pm(U.ft(meas['building.height']), U.ft(sig.get('building.height', 0)))} ft | {meas['building.height']:.2f} m |"]),
               ""]
     lines += ["## Lengths", "", "| Edge | Length (ft) | Length (m) |", "|---|---|---|"]
     for k in ("ridge", "hip", "valley", "rake", "eave", "transition", "headwall", "sidewall"):
@@ -88,20 +115,46 @@ def build_report(model, fit=None, site=None, title="Property measurement report"
         lines.append(f"| {k:g}/12 | {U.sqft(by_pitch[k]):.0f} | {100 * by_pitch[k] / max(A, 1e-9):.0f} % |")
 
     op = openings_by_facade(openings)
+    extra_walls = extra_walls or []
     lines += ["", "## Walls (siding)", "", "| Facade | Gross (ft²) | Openings (ft²) | Net (ft²) | Net (m²) |", "|---|---|---|---|---|"]
+    graded = "wall.area_siding" in meas
     fac = {}
     for w in model.walls:
-        fac[compass(w.bearing)] = fac.get(compass(w.bearing), 0) + w.area_exposed
-    for k in COMPASS:
-        if fac.get(k, 0) > 0.05:
-            o = op.get(k, 0.0)
-            lines.append(f"| {k} | {U.sqft(fac[k]):.0f} | {U.sqft(o):.0f} | {U.sqft(fac[k] - o):.0f} | {fac[k] - o:.1f} |")
-    W, Ws = meas["wall.area"], sig.get("wall.area", 0)
-    O = sum(op.values())
-    lines += [f"| **Total** | **{_pm(U.sqft(W), U.sqft(Ws), '{:.0f}')}** | {U.sqft(O):.0f} | **{U.sqft(W - O):.0f}** | {W - O:.1f} |",
-              "" if openings else "_No openings listed in spec.json → net = gross. Add `openings` to deduct doors/windows/garage doors._",
-              "", f"Footprint (outside of walls): {U.sqft(meas['footprint.area']):.0f} ft² ({meas['footprint.area']:.1f} m²), "
-                  f"perimeter {U.ft(meas['footprint.perimeter']):.1f} ft.", ""]
+        fac[compass(w.bearing)] = fac.get(compass(w.bearing), 0) + (w.area_siding if graded else w.area_exposed)
+    for e in extra_walls:
+        if e.get("material") != "concrete":
+            fac[e["facade"]] = fac.get(e["facade"], 0) + e["area_m2"]
+            op[e["facade"]] = op.get(e["facade"], 0) + e.get("openings_m2", 0.0)
+    lines += _facade_table(fac, op, 0.0 if graded else sig.get("wall.area", 0))
+    n_open = len(openings or [])
+    if graded:
+        lines += ["", f"_Siding = exposed wall above the finished grade and above the foundation / concrete line; "
+                      f"{n_open} openings deducted. The concrete band and the wall below grade are listed apart._"]
+    lines += ["" if openings else "_No openings listed (spec.json / details.json) → net = gross. Add `openings` to deduct "
+                                  "doors/windows/garage doors._"]
+    if graded or any(e.get("material") == "concrete" for e in extra_walls):
+        cf, co = {}, openings_by_facade(openings, zone="foundation")
+        for w in model.walls:
+            if w.area_foundation:
+                cf[compass(w.bearing)] = cf.get(compass(w.bearing), 0) + w.area_foundation
+        names = []
+        for e in extra_walls:
+            if e.get("material") == "concrete":
+                cf[e["facade"]] = cf.get(e["facade"], 0) + e["area_m2"]
+                co[e["facade"]] = co.get(e["facade"], 0) + e.get("openings_m2", 0.0)
+                names.append(e["name"])
+        lines += ["### Foundation / concrete (exposed, not sided)", "",
+                  "| Facade | Gross (ft²) | Openings (ft²) | Net (ft²) | Net (m²) |", "|---|---|---|---|---|"]
+        lines += _facade_table(cf, co)
+        if names:
+            lines += ["", f"_Includes the concrete walls modelled outside the wings: {', '.join(names)}._"]
+        if graded:
+            lines += ["", f"Below grade (buried, not sided): {U.sqft(meas['wall.area_buried']):.0f} ft² "
+                          f"({meas['wall.area_buried']:.1f} m²). All wing walls from their bottoms (siding + concrete + "
+                          f"buried): {U.sqft(meas['wall.area']):.0f} ft² ({meas['wall.area']:.1f} m²)."]
+        lines += [""]
+    lines += [f"Footprint (outside of walls): {U.sqft(meas['footprint.area']):.0f} ft² ({meas['footprint.area']:.1f} m²), "
+              f"perimeter {U.ft(meas['footprint.perimeter']):.1f} ft.", ""]
 
     if fit:
         lines += ["## Evidence reconciliation", "",
@@ -143,7 +196,13 @@ def report_json(model, fit=None, site=None):
         "measurement_sigma_si": (fit or {}).get("measurement_sigma", {}),
         "imperial": {"roof_area_sqft": U.sqft(meas["roof.area"]), "roof_squares": U.squares(meas["roof.area"]),
                      **{f"{k}_ft": U.ft(meas[f'edge.{k}']) for k in ("ridge", "hip", "valley", "rake", "eave", "headwall", "sidewall")},
-                     "wall_area_sqft": U.sqft(meas["wall.area"])},
+                     "wall_area_sqft": U.sqft(meas["wall.area"]),
+                     **({"siding_area_sqft": U.sqft(meas["wall.area_siding"]),
+                         "foundation_area_wing_walls_sqft": U.sqft(meas["wall.area_foundation"]),
+                         "below_grade_wall_sqft": U.sqft(meas["wall.area_buried"])} if "wall.area_siding" in meas else {}),
+                     **({"height_low_side_ft": U.ft(meas["building.height_low_side"]),
+                         "height_high_side_ft": U.ft(meas["building.height_high_side"])}
+                        if "building.height_low_side" in meas else {})},
         "facets": [{"id": f.id, "pitch": f.slope * 12, "azimuth": plane_azimuth(f.plane),
                     "area_m2": f.area_true, "area_sqft": U.sqft(f.area_true), "wings": f.wings} for f in model.facets],
         "fit": {k: v for k, v in (fit or {}).items() if k in ("params", "residuals", "chi2", "dof", "variance_factor")},

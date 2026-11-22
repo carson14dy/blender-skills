@@ -348,6 +348,12 @@ class Wall:
     area_exposed: float     # minus parts enclosed by other wings
     profile: list = field(default_factory=list)   # [(x,y,z_top)] along the wall
     bottom: list = field(default_factory=list)    # [(x,y,z)] at the two wall ends (grade or base_z)
+    # with finished-grade levels (build(levels=...)): the exposed area split into what is below grade, the
+    # exposed foundation / concrete band (grade up to the siding line) and the sided area above it
+    area_buried: Optional[float] = None
+    area_foundation: Optional[float] = None
+    area_siding: Optional[float] = None
+    grade_range: Optional[tuple] = None           # (lowest, highest) grade z outside the exposed parts of the wall
 
 
 @dataclass
@@ -357,6 +363,7 @@ class BuildingModel:
     edges: List[Edge]
     walls: List[Wall]
     ground: Optional[tuple] = None   # (a, b, c): finished grade z = a x + b y + c in the model datum
+    grade_extra: Optional[list] = None   # grade z seen at structures outside the wings (e.g. a garage under a deck)
 
     # ---- aggregate measurements (SI) -------------------------------------
     def edge_total(self, kind):
@@ -397,6 +404,18 @@ class BuildingModel:
                     best, bz = f, z
         return best
 
+    def grade_range(self):
+        """(lowest, highest) finished grade at the walls: the grade levels seen outside the exposed walls, else
+        the wall bottoms (walls standing on grade; a wing whose walls all start above another storey counts
+        too, so give levels for hillside houses); None when the model has a ground plane (heights are above it)."""
+        if self.ground is not None or not self.walls:
+            return None
+        gr = [w.grade_range for w in self.walls if w.grade_range] + [(z, z) for z in (self.grade_extra or [])]
+        if gr:
+            return min(g[0] for g in gr), max(g[1] for g in gr)
+        zs = [p[2] for w in self.walls if w.area_exposed > 1e-6 for p in w.bottom]
+        return (min(zs), max(zs)) if zs else None
+
     def max_height(self):
         best = 0.0
         for f in self.facets:
@@ -420,6 +439,15 @@ class BuildingModel:
             "wall.area": self.wall_area(),
             "building.height": self.max_height(),
         }
+        if any(w.area_siding is not None for w in self.walls):
+            m["wall.area_siding"] = sum(w.area_siding or 0.0 for w in self.walls)
+            m["wall.area_foundation"] = sum(w.area_foundation or 0.0 for w in self.walls)
+            m["wall.area_buried"] = sum(w.area_buried or 0.0 for w in self.walls)
+        lo_hi = self.grade_range()
+        if lo_hi is not None:
+            m["grade.low"], m["grade.high"] = lo_hi
+            m["building.height_low_side"] = m["building.height"] - lo_hi[0]
+            m["building.height_high_side"] = m["building.height"] - lo_hi[1]
         for k in ("ridge", "hip", "valley", "eave", "rake", "transition", "headwall", "sidewall"):
             m[f"edge.{k}"] = self.edge_total(k)
         if self.facets:
@@ -469,8 +497,15 @@ def _wing_regions(w: Wing):
     return regs
 
 
-def build(wings: List[Wing], wall_step=0.02, ground=None) -> BuildingModel:
-    """Build the exact model. ``ground`` = (a, b, c) makes wall bottoms follow a planar
+MIN_FACET_AREA = 0.1   # m2: slivers smaller than this (numerical leftovers of hidden roofs) are not facets
+
+
+def build(wings: List[Wing], wall_step=0.02, ground=None, levels=None) -> BuildingModel:
+    """Build the exact model. ``levels(key, pts, outward, bottom) -> (grade_z, siding_from_z)`` (per wall
+    "WING:side", sample points [n, 2] along it, outward unit normal, wall bottom z; NaN = unknown grade /
+    siding from grade) splits each wall's
+    exposed area into buried / foundation / siding (Wall.area_*). Facets under MIN_FACET_AREA are dropped.
+    ``ground`` = (a, b, c) makes wall bottoms follow a planar
     grade z = a x + b y + c (same datum as eave heights); ``base_z`` is then an offset
     above that grade. Without ``ground`` walls start at z = base_z."""
     wings = [w if isinstance(w, Wing) else Wing.from_dict(w) for w in wings]
@@ -523,11 +558,12 @@ def build(wings: List[Wing], wall_step=0.02, ground=None) -> BuildingModel:
                 break
         else:
             merged.append({"plane": plane, "poly": poly, "wings": [wid], "hid": hid})
+    merged = [m for m in merged if m["poly"].area * math.sqrt(1.0 + plane_slope(m["plane"]) ** 2) >= MIN_FACET_AREA]
     facets = [Facet(id=f"F{i + 1}", wings=m["wings"], plane=m["plane"], poly=m["poly"], hidden_from_above=m["hid"])
               for i, m in enumerate(merged)]
 
     edges = _classify_edges(facets, wings)
-    walls = _walls(wings, wall_step, ground)
+    walls = _walls(wings, wall_step, ground, levels)
     return BuildingModel(wings=wings, facets=facets, edges=edges, walls=walls,
                          ground=tuple(ground) if ground is not None else None)
 
@@ -658,7 +694,14 @@ def _classify_edges(facets: List[Facet], wings: List[Wing]):
     return _merge_collinear(edges)
 
 
-def _walls(wings: List[Wing], step, ground=None):
+def _interval_cover(iv, lo, hi):
+    """Length of [lo, hi] covered by the merged, sorted intervals iv."""
+    if hi <= lo:
+        return 0.0
+    return sum(max(min(b_, hi) - max(a_, lo), 0.0) for a_, b_ in iv)
+
+
+def _walls(wings: List[Wing], step, ground=None, levels=None):
     out = []
 
     def bottom_at(W, pts):
@@ -693,6 +736,7 @@ def _walls(wings: List[Wing], step, ground=None):
             # height range [its wall bottom, its roof]: a stacked storey (a main floor over a lower level on the
             # same wall line) hides nothing, an interior wall is hidden completely
             hidden = np.zeros(len(pts))
+            merged_iv = [[] for _ in range(len(pts))]
             spans = []
             for V in wings:
                 if V.id == W.id or V.roof_only:
@@ -713,14 +757,37 @@ def _walls(wings: List[Wing], step, ground=None):
                         if cur_hi is None or a_ > cur_hi:
                             if cur_hi is not None:
                                 tot += cur_hi - cur_lo
+                                merged_iv[i_].append((cur_lo, cur_hi))
                             cur_lo, cur_hi = a_, b_
                         else:
                             cur_hi = max(cur_hi, b_)
                     if cur_hi is not None:
                         tot += cur_hi - cur_lo
+                        merged_iv[i_].append((cur_lo, cur_hi))
                     hidden[i_] = tot
             exposed = float(np.sum(np.maximum(np.maximum(top - bot, 0) - hidden, 0)) * length / n)
             outward = np.array([seg[1], -seg[0]]) / (length + 1e-12)  # corners are CCW
+            split = None
+            if levels is not None:
+                g, s_ = (np.asarray(v, float) for v in levels(f"{W.id}:{names[k]}", pts, outward, bot))
+                gg = np.where(np.isfinite(g), g, bot)                   # unknown grade: the wall bottom
+                ss = np.maximum(np.where(np.isfinite(s_), s_, gg), gg)  # siding starts at or above grade
+                bur = fnd = sid = 0.0
+                seen_g = []
+                for i_ in range(len(pts)):
+                    lo_, hi_ = bot[i_], top[i_]
+                    if hi_ <= lo_:
+                        continue
+                    iv = merged_iv[i_]
+
+                    def vis(a_, b_):
+                        a_, b_ = max(a_, lo_), min(b_, hi_)
+                        return max(b_ - a_, 0.0) - _interval_cover(iv, a_, b_)
+                    bur += vis(lo_, gg[i_]); fnd += vis(gg[i_], ss[i_]); sid += vis(ss[i_], hi_)
+                    if np.isfinite(g[i_]) and vis(lo_, hi_) > 1e-6:
+                        seen_g.append(g[i_])
+                f_ = length / n
+                split = (bur * f_, fnd * f_, sid * f_, (float(min(seen_g)), float(max(seen_g))) if seen_g else None)
             bearing = (math.degrees(math.atan2(outward[0], outward[1])) + 360) % 360
             # exact top profile: wall endpoints + every place the envelope changes plane
             prof_t = {0.0, 1.0}
@@ -738,6 +805,8 @@ def _walls(wings: List[Wing], step, ground=None):
             ends = np.array([a, b])
             wall = Wall(W.id, names[k], bearing, length, gross, exposed, prof)
             wall.bottom = [(float(x), float(y), float(z)) for (x, y), z in zip(ends, bottom_at(W, ends))]
+            if split is not None:
+                wall.area_buried, wall.area_foundation, wall.area_siding, wall.grade_range = split
             out.append(wall)
     return out
 
@@ -765,7 +834,10 @@ def to_mesh_json(model: BuildingModel):
             "area_m2": f.area_true, "hidden_from_above": f.hidden_from_above,
         })
     walls = [{"wing": w.wing, "side": w.side, "bearing": w.bearing, "base_z": next(x.base_z for x in model.wings if x.id == w.wing),
-              "profile": w.profile, "bottom": w.bottom, "area_exposed_m2": w.area_exposed} for w in model.walls]
+              "profile": w.profile, "bottom": w.bottom, "area_exposed_m2": w.area_exposed,
+              **({"area_buried_m2": w.area_buried, "area_foundation_m2": w.area_foundation, "area_siding_m2": w.area_siding,
+                  "grade_range": list(w.grade_range) if w.grade_range else None} if w.area_siding is not None else {})}
+             for w in model.walls]
     edges = [{"kind": e.kind, "facets": e.facets, "p0": list(e.p0), "p1": list(e.p1), "length_m": e.length} for e in model.edges]
     return {"facets": facets, "walls": walls, "edges": edges, "wings": [w.to_dict() for w in model.wings],
             "ground": list(model.ground) if model.ground is not None else None}

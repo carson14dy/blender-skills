@@ -6,6 +6,9 @@ seen from a front corner (3/4 view, ~23 deg down), auto-cropped to 4:3.
 --front-az  compass bearing the front of the house faces (0 = N, 90 = E, 180 = S, 270 = W)
 --swing     degrees to swing the camera off square-on toward a corner (negative = to the right of the front)
 Yard surfaces (Site collection), labels, LiDAR and reference geometry are hidden; Details stay.
+With --terrain the LiDAR terrain stays and so does the hardscape that meets the house: draped paving
+(concrete, street, rock beds), curbs, retaining walls, piers, landscape steps and paths (Site objects
+tagged by add_site.py's "site_kind"), so a garage opens onto its driveway. The crop follows the house alone.
 The blend is not saved back.
 """
 import argparse, math, sys
@@ -28,11 +31,22 @@ bpy.ops.wm.open_mainfile(filepath=a.blend)
 sc = bpy.context.scene
 HIDE = ("Labels", "Roof edges", "LiDAR points", "Reference data")
 KEEP_SITE = ("AC", "pad (AC)", "gas meter", "egress window well")
+# with the terrain shown: the paving and walls the house meets (add_site.py "site_kind" tags)
+KEEP_KINDS_TERRAIN = ("overlay:concrete", "overlay:street", "overlay:rock_bed", "curb", "edging", "retaining_wall",
+                      "pier", "steps", "path", "surface")
+
+
+def keep_with_terrain(o):
+    return o.name.startswith("Terrain") or o.get("site_kind") in KEEP_KINDS_TERRAIN or o.name.endswith("(draped)")
+
+
 for o in bpy.data.objects:
     names = [c.name for c in o.users_collection]
     if o.name.startswith("Ground") or any(n in HIDE for n in names) or ("Site" in names and not o.name.startswith(KEEP_SITE)):
-        o.hide_render = not (a.terrain and o.name.startswith("Terrain"))
-house = [o for o in bpy.data.objects if o.type == "MESH" and not o.hide_render and not o.name.startswith("Terrain")]
+        o.hide_render = not (a.terrain and "Site" in names and keep_with_terrain(o))
+# the crop / framing follows the house (and its small fittings), not the yard kept with --terrain
+house = [o for o in bpy.data.objects if o.type == "MESH" and not o.hide_render and not o.name.startswith("Terrain")
+         and not ("Site" in [c.name for c in o.users_collection] and keep_with_terrain(o) and not o.name.startswith(KEEP_SITE))]
 pts = [o.matrix_world @ Vector(c) for o in house for c in o.bound_box]
 lo = Vector((min(p.x for p in pts), min(p.y for p in pts), min(p.z for p in pts)))
 hi = Vector((max(p.x for p in pts), max(p.y for p in pts), max(p.z for p in pts)))
