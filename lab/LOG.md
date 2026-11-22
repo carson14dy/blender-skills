@@ -4,6 +4,58 @@ Newest first. One entry per session: date, cloud or local, what changed, results
 
 ---
 
+## 2026-11-22 · cloud (12)
+
+**Changed** (round 2 of accuracy-first builds: Fable 5.2 planned and reviewed, Opus 5.5 built)
+- **User decisions** on pilot 024's six shortcuts:
+  - Approved: 2 mm overlaps; CPU only for now ("master the art here", GPU servers later).
+  - Rejected: an assumed pitch ("figure out roof pitch; most of the time I won't know"), bare studs, simple windows and door, and textures instead of real siding and roofing ("the detailed accuracy ... separates me from competitors").
+- **Approved design rules** in `lab/data/design-rules.json`, reported as "design rule", never "assumed":
+  - pitch: match the main house, else 6/12;
+  - unheated detached buildings: no ice barrier, no ridge vent;
+  - overhangs: 12 in. on houses, 6 in. on sheds;
+  - layout: pad flush, windows equally spaced, window heads level with the door head, knob at 36 in., door colour = trim;
+  - shed door: 6-panel, swings out, hinges left;
+  - detail includes house wrap and tape, lookouts and frieze blocks, locks and screens, and wall/sheathing/trim nails.
+- **`roof_pitch.py`** (and `references/roof-pitch.md`): pitch is worked out, never assumed or asked. Source order: gauge, LiDAR, measured model, report, permit plans, photo, design rule; `combine` flags conflicts.
+  - Photo method: vanishing points from a known-size rectangle on the gable wall, refined lines, bootstrapped sigma, overlay. A competing edge only counts against a reading when re-solving with it moves the pitch by more than max(sigma, 0.25/12).
+  - A wrong reference size cannot be detected, so: measure the reference, and cross-check with a second source.
+- **Permit records:** the city's public permit data has no pitch. Plan sets (elevations) sit in the applicant's portal. Plans are a source (design intent), always cross-checked.
+- **`property-model-pipeline/`**: a snapshot of branch `claude/upbeat-franklin-at23bw` at 8c6df1d (LiDAR pitch, photo matching, fusion). It needs scipy, which its requirements.txt omits; 63 tests pass. The aerial image was left out.
+- **Construction kit:** `construction_kit.py`, `construction_finish.py`, `construction_extras.py`, and `references/construction-detail.md`. One `building.json` builds:
+  - framing (plates, double top plate, studs 16 in. o.c., king/jack/cripple studs, headers, rafters, ridge, ties);
+  - sheathing, lap siding boards, trim, double-hung windows, a 6-panel door, and the extras.
+
+  `--plan` prints the counts each rule implies for the acceptance file. The roof is built by `roof_core.py` on the kit's `Roof` object.
+- **`build_log.py`**: `reject`/`resolve`; an unapproved simplified, omitted or substituted part blocks close. `acceptance_check.py`: a slope check with source "assumed" fails.
+- **roof_core fixes:**
+  - `contains2` ported from the web studio: it dropped nails along each plane's internal diagonal. Ranch nails 6,770 -> 6,925, now equal in both apps (new parity tests).
+  - Sliver faces fixed at source.
+  - New `deck_repair` and `pitches_per_12`; `ice_rows` 0 builds no membrane.
+- **Linter budgets:** scripts 600,000, pipelines 250,000 (total unchanged).
+
+**Results**
+- Suite: 107 passed, 0 failed, 2 skipped. Smoke: 0 failures. `test_roof_core`: pass. `npm test`: 88 of 88. Linter OK; 189 files ship. Packaged `.skill`: 495 KB.
+- Synthetic photos: 6/12 read 6.00 and 5.98 (25 degrees off square); 4/12 read 4.00; 12/12 read 12.00. A bad line and a slab snapped to its casing are flagged low.
+- **027, the shed at construction grade** (v2, under the rules):
+  - 451 parts, 124,880 tris, 142 of 142 checks, QA 0 errors and complete.
+  - 2,295 wall/sheathing/trim nails by IRC Table R602.3(1), plus 384 roofing nails.
+  - Hero 1920x1080 at 512 spp: 131 s on the CPU.
+  - Photo pitch 6.00 ± 0.25/12, confidence ok, against the 6/12 rule.
+  - `close`: done.
+  - Left for the user's OK: sage colour #9CAF88 (no product named), slab 4 in. (IRC R506.1 gives only the 3-1/2 in. minimum), drawing tolerances (nail heads 1.2 mm under the surface, wrap 1.8 mm thick).
+- **Not confirmed from a primary source:** lookout nailing, soffit fastening, nail heads other than 6d, hinge positions, window member sizes, Table R602.3(3) sheathing. The rafter heel nailing used R802.5.2(1)'s 5:12 row, since the table has no 6:12 row.
+
+**Next**
+- 029: each shingle its own piece (the user's choice), in `roof_core.py` and the web studio together.
+- 028 (local): pitch from a real inspection photo of a measured house, against its LiDAR pitch.
+- The user names a sage product, and OKs the slab and drawing tolerances.
+
+**Needs local**
+- Rebuild 027 on the GPU (Blender UI), and run 028 with a real house's photo. Private files stay out of the repo.
+
+---
+
 ## 2026-11-22 · cloud (11)
 
 **Changed**

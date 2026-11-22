@@ -10,7 +10,7 @@
  "nearest_whole": "6/12",
  "whole_within_2_sigma": true,
  "label": "6/12 (measured 6.00 \u00b1 0.25)",
- "confidence": "low",
+ "confidence": "ok",
  "checks": {
   "rakes_rise_per_12": [
    6.0,
@@ -21,11 +21,14 @@
   "line_rms_px": 0.09,
   "lines": 10,
   "fewest_edge_points": 26,
-  "rect_second_edge": 1.27
+  "rect_second_edge": 1.27,
+  "alternatives": {
+   "bottom": 5.95,
+   "top": 6.07
+  }
  },
  "notes": [
-  "rect_second_edge > 0.75",
-  "open out/gable-overlay.png: is each line on its edge? (green wall, red rake)",
+  "open out/gable-overlay.png: is each line on its edge? (green wall, red rake, yellow competing edge)",
   "sigma raised to the 0.25/12 photo floor (fit 0.025)"
  ]
 }

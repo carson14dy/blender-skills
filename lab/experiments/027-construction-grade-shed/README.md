@@ -5,7 +5,7 @@
 | Track | T7 (build accuracy, then speed; see lab/GOALS.md) |
 | Session | cloud (pip bpy 5.2.4, CPU, 4 threads) |
 | Date | 2026-11-22 |
-| Status | v2 rebuilt under the user's design rules: 142 of 142 checks, QA clean; `close` blocked only by the photo pitch check (the tool marks every rectangle on this gable low; see v2 Result) |
+| Status | v2 rebuilt under the user's design rules: 142 of 142 checks, QA clean, photo pitch 6.00 ± 0.25/12 (confidence ok); `close`: done, 4 shortcuts await the user's OK |
 
 ## Question
 
@@ -58,7 +58,7 @@ As v1 (below), from an empty .blend, with the extras stages added: `framing`, `s
 - **Roof** (`roof_qa.py --expect`): pass, 2 planes, 1.60 squares, eaves 25.98 ft, rakes 24.61 ft, ridge 12.99 ft; 384 shingle nails.
 - **Nails**: 2,295 from the schedules + 384 roofing = 2,679 in all.
 - **Render**: Cycles CPU, 1920 x 1080, 512 samples, **131.2 s** (v1 125.7 s at 13,010 triangles; the pilot 101 s at 1,036).
-- **Pitch from a photo (C5), on the new render**: three tries, every line on its edge in the overlay; 5.78, 6.13 and **6.00 ± 0.25/12**, all marked **low confidence** by `roof_pitch.py`'s new second-edge check (rect_second_edge 0.85, 0.76, 1.27 against 0.75). Each rectangle on this gable has a second strong edge inside the tool's 39 px window: the door casing's inner and outer edges (20 px), the jamb shadow under the head casing (5 px), a siding course just above the drip cap (14 px), and each siding butt's own shadow band (3 to 5 px). A low result is never used alone, so the gate is recorded as failed, and `close` is blocked by it alone. `gable-points.json` (try 3) is ready to re-run once `roof_pitch.py`'s check is revised (another builder is on it).
+- **Pitch from a photo (C5), on the new render**: **6.00 ± 0.25/12, confidence ok** (fit 0.025, raised to the 0.25 photo floor; rakes 6.00 and 6.00; diagonals 0.08 %; line residual 0.09 px). The rectangle is the gable wall between the corner boards' inner edges by the siding butt lines 31 and 80 in. above grade (116.105 x 49 in., `gable-points.json`). Every line sits on its edge in the overlay (`img/gable-overlay.jpg`). Each siding butt is a shadow band with two strong edges 1 to 2 px apart (`rect_second_edge` 1.27), so `roof_pitch.py` re-solved with the top and with the bottom line moved onto the band's other edge (yellow in the overlay): 6.07 and 5.95/12, both within 0.25/12 of the result, so the competing edges do not change the answer (`checks.alternatives`). History: the first version of the second-edge check marked every rectangle on this gable low (5.78, 6.13 and 6.00 on three tries, rect_second_edge 0.85, 0.76, 1.27), because it judged a competing edge by its strength, not by its effect. The revised check re-solves instead; the same three tries now read ok, with alternatives within 0.24/12 of each.
 
 ![Hero v2, Cycles CPU 1920x1080 (scaled)](img/hero.jpg)
 
@@ -69,7 +69,7 @@ As v1 (below), from an empty .blend, with the extras stages added: `framing`, `s
 `build_log.py report` at the final close:
 
 ```
-Build: Garden shed (027, construction grade, rebuilt under the design rules) (cloud, 10.0 min)
+Build: Garden shed (027, construction grade, rebuilt under the design rules) (cloud, 20 min)
 Acceptance: 142 of 142 checks pass (acceptance.json cf79084827a2)
 Shortcuts (4):
   1. unverified: Built and checked on the CPU only (cloud, pip bpy 5.2.4); the look gates are the builder's reading of review sheets and the Cycles render. Why: cloud sub-agent session; the user said CPU is fine for now (024, decision 6), not recorded here as an approval. Effect: the look and the GPU timing are unconfirmed. NOT APPROVED
@@ -77,10 +77,9 @@ Shortcuts (4):
   3. assumed: Slab 4 in. thick. Why: not in the brief or the design rules; IRC R506.1 sets 3-1/2 in. as the minimum, not a thickness. Effect: pad height, wall top, every height above it. Check: pad. NOT APPROVED
   4. tolerance: Drawing tolerances for qa_check's 1 mm coplanar test: nail heads 1.2 mm under the surface they are driven into (real: flush); house wrap 1.8 mm thick, 1.1 mm off the sheathing, so siding and trim sit 2.9 mm further out; flashing tape 1.1 mm thick. Why: a flush head or a 0.2 mm wrap puts same-facing faces within 1 mm, which qa_check reads as z-fighting (like the pilot's approved 2 mm overlaps). Effect: invisible at any viewing distance; casing and siding faces 2.9 mm proud of where a real 0.2 mm wrap would put them. NOT APPROVED
 Assumed values (1): pad: 4 in. thick: not in the brief or the rules (IRC R506.1: at least 3-1/2 in.); flush with the framing: design rule
-Gates: qa pass (0 errors, 1 warnings, complete); look pass; render pass, final 1920x1080 512 samples; look-hero pass; pitch-photo FAIL
+Gates: qa pass (0 errors, 1 warnings, complete); look pass; render pass, final 1920x1080 512 samples; look-hero pass; pitch-photo pass
 Time: framing 0.0 min, sheathing 0.0 min, roofing 0.0 min, siding 0.0 min, trim 0.0 min, windows 0.0 min, doors 0.0 min, wrap 0.0 min, blocking 0.0 min, hardware 0.0 min, nails 0.2 min, qa 0.1 min, look 0.5 min, light-camera 0.0 min, render 2.6 min, pitch-photo 5.8 min; gates 2.2 min
-Done: no (1 blocker); 4 shortcuts await your OK (1, 2, 3, 4)
-  - gate 'pitch-photo' failed: pass it again, or log a shortcut with --check pitch-photo and get the user's yes
+Done: yes, 4 shortcuts await your OK (1, 2, 3, 4)
 ```
 
 Timing line (appended to `lab/build-times.jsonl`):
@@ -89,11 +88,13 @@ Timing line (appended to `lab/build-times.jsonl`):
 {"name": "Garden shed (027, construction grade, rebuilt under the design rules)", "date": "2026-11-22T05:23:38", "session": "cloud", "blender": "5.2.4 LTS", "device": "CPU", "minutes": 10.0, "stages": {"framing": 1.5, "sheathing": 1.5, "roofing": 1.6, "siding": 1.6, "trim": 1.6, "windows": 0.8, "doors": 1.5, "wrap": 0.8, "blocking": 1.5, "hardware": 1.6, "nails": 14.5, "qa": 5.7, "look": 28.8, "light-camera": 0.8, "render": 158.6, "pitch-photo": 345.8}, "gates": {"acceptance": 0.58, "qa": 0, "look": 0, "render": 131.25, "look-hero": 0, "pitch-photo": 0}, "renders": [{"res": [1920, 1080], "samples": 512, "sec_per_image": 131.23, "device": "CPU"}], "tris": 124880, "checks": 142, "passed": 142, "shortcuts": 4, "done": false}
 ```
 
+That line was written at the first close, before the photo check passed (`"done": false`); the final close ran without `--times`, so no second line was added.
+
 Not logged as a shortcut, by the user's choice: individual shingle pieces, scheduled as its own experiment.
 
 ### Decision (v2)
 
-Keep. The rebuild uses the user's rules for every value the brief leaves out; the only assumptions left are the sage shade (#9CAF88, until a paint or product is named) and the slab's 4 in. (R506.1 gives only the 3-1/2 in. minimum). The drawing-tolerance shortcut (4) and the CPU-only check (1) wait for the user's OK. The photo pitch check is the one blocker: re-run it when `roof_pitch.py`'s second-edge check is revised, then `close` again.
+Keep. The rebuild uses the user's rules for every value the brief leaves out; the only assumptions left are the sage shade (#9CAF88, until a paint or product is named) and the slab's 4 in. (R506.1 gives only the 3-1/2 in. minimum). The drawing-tolerance shortcut (4) and the CPU-only check (1) wait for the user's OK. The photo pitch check passed once `roof_pitch.py` judged competing edges by their effect (6.00 ± 0.25/12, alternatives 5.95 and 6.07), and `close` now reports done, with shortcuts 1 to 4 awaiting the user's OK.
 
 ## v1: first build (history)
 

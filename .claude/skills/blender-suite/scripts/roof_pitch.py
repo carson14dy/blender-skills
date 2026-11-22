@@ -123,10 +123,14 @@ def refine_line(g, p0, p1):
                 break
             q = q[keep]
         c, d = _fit(q)[:2]
-    s = ((p0 + p1) / 2 - c) @ [-d[1], d[0]] + np.arange(-19.5, 20, 0.5)  # rival edge: window around the clicks
-    gr, near = np.abs(_across(g, c, d, L, s)[2]), np.abs(s[3:-3]) <= 2
-    rival = np.median(gr[:, ~near].max(1) / np.maximum(gr[:, near].max(1), 1e-9)) if near.any() else 9
-    return {"points": q, "rms": float(np.sqrt(np.mean(_fit(q)[2] ** 2))), "n": len(q), "rival": float(rival)}
+    s = ((p0 + p1) / 2 - c) @ [-d[1], d[0]] + np.arange(-19.5, 20, 0.5)  # competing edge: window around the clicks
+    t, n, gr = _across(g, c, d, L, s)
+    gr, s, near = np.abs(gr), s[3:-3], np.abs(s[3:-3]) <= 2
+    far = np.where(near, 0, gr)
+    rival = np.median(far.max(1) / np.maximum(gr[:, near].max(1), 1e-9)) if near.any() else 9
+    o = s[far.argmax(1)]  # where it is at each station; kept where they agree
+    return {"points": q, "rms": float(np.sqrt(np.mean(_fit(q)[2] ** 2))), "n": len(q), "rival": float(rival),
+            "alt": (c + t[:, None] * d + o[:, None] * n)[np.abs(o - np.median(o)) < 1.5]}
 
 
 def _hline(pts):
@@ -169,18 +173,18 @@ def read_image(path):  # RGB 0-1, top row first: Pillow, else bpy
     return a[..., :3] if c >= 3 else np.repeat(a[..., :1], 3, 2)
 
 
-def _overlay(path, img, lines, n_rakes):  # green wall, red rakes; PNG by zlib
+def _overlay(path, img, lines):  # lines: (points, colour); PNG by zlib
     out = (np.dstack([img] * 3) if np.ndim(img) == 2 else np.asarray(img)[..., :3]) * 255.0
     h, w = out.shape[:2]
     r = max(1, round(min(h, w) / 700))
-    for j, f in enumerate(lines):
-        c, d, _ = _fit(f["points"])
-        t = (f["points"] - c) @ d
+    for pts, col in lines:
+        c, d, _ = _fit(pts)
+        t = (pts - c) @ d
         q = np.rint(c + np.linspace(1.1 * t.min(), 1.1 * t.max(), int(3 * np.ptp(t)) + 2)[:, None] * d).astype(int)
         for o in np.ndindex(2 * r + 1, 2 * r + 1):
             x, y = (q + o - r).T
             ok = (x >= 0) & (x < w) & (y >= 0) & (y < h)
-            out[y[ok], x[ok]] = (255, 0, 40) if j >= len(lines) - n_rakes else (0, 230, 0)
+            out[y[ok], x[ok]] = col
     raw = np.hstack([np.zeros((h, 1)), np.clip(out, 0, 255).reshape(h, -1)]).astype(np.uint8).tobytes()
     with open(path, "wb") as f:
         f.write(b"\x89PNG\r\n\x1a\n")
@@ -205,8 +209,14 @@ def photo(image, points, overlay=None, synthetic=False, **_):
     ln = [refine_line(g, *v) for v in [(bl, br), (br, tr), (tl, tr), (bl, tl)] + [
         np.array(v, float).reshape(2, 2) * k for v in hor + ver + rk]]
     (sw, sh), tol = [_len(x) for x in rs], _len(sp.get("rect_tol", "0.25in"))
-    fit = lambda pick, ratio: _solve([_hline(pick(f["points"])) for f in ln], len(hor), len(ver), ratio)  # noqa: E731
+    fit = lambda pick, ratio, L=ln: _solve([_hline(pick(f["points"])) for f in L], len(hor), len(ver), ratio)  # noqa
     slopes, gap = fit(lambda p: p, sw / sh)
+    slope, alts, yel = float(np.mean(slopes)), {}, []
+    for j, f in enumerate(ln[:4]):  # a rect line moved to a competing edge at least 0.75 as strong: its pitch
+        if f["rival"] >= .75 and len(f["alt"]) > 7:
+            yel.append((f["alt"], (255, 200, 0)))
+            a = np.mean(fit(lambda p: p, sw / sh, ln[:j] + [{"points": f["alt"]}] + ln[j + 1:])[0])
+            alts[("bottom", "right", "top", "left")[j]] = round(float(a) * 12, 2)
     rng = np.random.default_rng(0)
     sims = [fit(lambda p: p[rng.integers(0, len(p), len(p))], (sw + rng.normal(0, tol)) / (sh + rng.normal(0, tol)))[0]
             for _ in range(200)]
@@ -215,19 +225,21 @@ def photo(image, points, overlay=None, synthetic=False, **_):
     ch = {"rakes_rise_per_12": [round(float(s) * 12, 2) for s in slopes], "rake_spread_per_12": round(spread * 12, 2),
           "diagonals_disagree_pct": round(float(gap) * 100, 2), "line_rms_px": round(max(f["rms"] for f in ln), 2),
           "lines": len(ln), "fewest_edge_points": min(f["n"] for f in ln),
-          "rect_second_edge": round(max(f["rival"] for f in ln[:4]), 2)}
-    low = [f"{k} > {v}" for k, v in (("line_rms_px", 1.5), ("rake_spread_per_12", .5), ("diagonals_disagree_pct", 1),
-                                     ("rect_second_edge", .75)) if ch[k] > v] + ["fewest_edge_points < 8"] * (
-        ch["fewest_edge_points"] < 8)
-    notes = [f"open {overlay}: is each line on its edge? (green wall, red rake)" if overlay else
-             "no --overlay: write one and look at it"]
+          "rect_second_edge": round(max(f["rival"] for f in ln[:4]), 2), "alternatives": alts}
+    off = [f"{k} {v}/12" for k, v in alts.items() if abs(v / 12 - slope) > max(sigma, FLOOR / 12)]
+    low = [f"{k} > {v}" for k, v in (("line_rms_px", 1.5), ("rake_spread_per_12", .5), ("diagonals_disagree_pct", 1))
+           if ch[k] > v] + ["fewest_edge_points < 8"] * (ch["fewest_edge_points"] < 8) + [
+        "edge_ambiguity: a competing edge gives " + ", ".join(off)] * bool(off)
+    notes = [f"open {overlay}: is each line on its edge? (green wall, red rake, yellow competing edge)" if overlay
+             else "no --overlay: write one and look at it"]
     if not synthetic and sigma * 12 < FLOOR:
         notes.append(f"sigma raised to the {FLOOR}/12 photo floor (fit {sigma * 12:.3f})")
         sigma = FLOOR / 12
     if overlay:
-        _overlay(overlay, img, ln, len(rk))
+        _overlay(overlay, img, yel + [(f["points"], (255, 0, 40) if j >= len(ln) - len(rk) else (0, 230, 0))
+                                      for j, f in enumerate(ln)])
     name = os.path.basename(image) if isinstance(image, str) else "array"
-    return result(float(np.mean(slopes)), sigma, "photo", f"{name}, {sp.get('rect_name', 'rect')} {rs[0]} x {rs[1]}",
+    return result(slope, sigma, "photo", f"{name}, {sp.get('rect_name', 'rect')} {rs[0]} x {rs[1]}",
                   ch, notes, low)
 
 

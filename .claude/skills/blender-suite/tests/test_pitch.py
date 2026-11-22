@@ -34,11 +34,12 @@ def _fill(img, poly, value, ss=3):
     img[y0:y1, x0:x1] = img[y0:y1, x0:x1] * (1 - cov) + value * cov
 
 
-def scene(pitch12=6.0, yaw_deg=25.0, overhang=0.3, casing=False, W=2400, H=1800, f=1900.0):
+def scene(pitch12=6.0, yaw_deg=25.0, overhang=0.3, casing=False, butts=False, W=2400, H=1800, f=1900.0):
     """Gable wall in the plane y=0, 8 m wide, eave 2.7 m, seen yaw_deg off square from 12 m. The rake boards hang
     `overhang` in front of the wall. casing: a white door slab in a white casing 3.5 in. wide, with a 1/2 in. shadow
-    gap between them (experiment 027). Returns the gray image (0-1) and the true pixel positions of its edges."""
-    key = (pitch12, yaw_deg, overhang, casing)
+    gap between them (experiment 027). butts: siding lines drawn as 3 cm dark shadow bands, each a pair of strong
+    parallel edges. Returns the gray image (0-1) and the true pixel positions of its edges."""
+    key = (pitch12, yaw_deg, overhang, casing, butts)
     if key in _SCENES:
         return _SCENES[key]
     s, half, eave, yaw = pitch12 / 12, 4.0, 2.7, math.radians(yaw_deg)
@@ -60,7 +61,8 @@ def scene(pitch12=6.0, yaw_deg=25.0, overhang=0.3, casing=False, W=2400, H=1800,
     for i in range(1, 20):                                                                     # lap siding lines
         z = i * 0.18
         if z < eave - 0.05:
-            _fill(img, P([[0.12, 0, z], [7.88, 0, z], [7.88, 0, z + 0.012], [0.12, 0, z + 0.012]]), 0.47)
+            b = 0.03 if butts else 0.012
+            _fill(img, P([[0.12, 0, z], [7.88, 0, z], [7.88, 0, z + b], [0.12, 0, z + b]]), 0.3 if butts else 0.47)
     for x in (0.0, 7.9):                                                                       # corner boards
         _fill(img, P([[x, 0, 0], [x + 0.1, 0, 0], [x + 0.1, 0, eave], [x, 0, eave]]), 0.9)
     door = [[1.0, 0, 0.05], [1.914, 0, 0.05], [1.914, 0, 2.082], [1.0, 0, 2.082]]              # 36 x 80 in.
@@ -74,7 +76,7 @@ def scene(pitch12=6.0, yaw_deg=25.0, overhang=0.3, casing=False, W=2400, H=1800,
         a, b = np.array([4 - sx * (half + e), o, eave - e * s]), np.array([4.0, o, ridge])
         _fill(img, P([a, b, b + [0, 0, th], a + [0, 0, th]]), 0.92)
     img = np.clip(img + np.random.default_rng(0).normal(0, 0.01, img.shape), 0, 1)
-    truth = {"door": P(door), "rake_l": P([[0.4, o, eave + 0.4 * s], [3.4, o, eave + 3.4 * s]]),
+    truth = {"door": P(door), "wall": P([[0.1, 0, 0.9], [7.9, 0, 0.9], [7.9, 0, 2.52], [0.1, 0, 2.52]]), "rake_l": P([[0.4, o, eave + 0.4 * s], [3.4, o, eave + 3.4 * s]]),
              "rake_r": P([[7.6, o, eave + 0.4 * s], [4.6, o, eave + 3.4 * s]]),
              "h": [P([[0.5, 0, 0.912], [7.5, 0, 0.912]]), P([[0.5, 0, 2.532], [7.5, 0, 2.532]])],
              "v": [P([[0.1, 0, 0.2], [0.1, 0, 2.5]]), P([[7.9, 0, 0.2], [7.9, 0, 2.5]])]}
@@ -123,11 +125,21 @@ def test_pitch_photo_wrong_line_is_low():
     assert r["ok"] and r["confidence"] == "low" and "rake_spread_per_12 > 0.5" in r["notes"], r
 
 
-def test_pitch_photo_double_edge_is_low():
-    img, tr = scene(6, 25, casing=True)        # slab corners clicked inside a casing (experiment 027, try 1)
+def test_pitch_photo_competing_edges():
+    img, tr = scene(6, 25, casing=True)        # slab corners clicked inside a casing (experiment 027, v1 try 1)
     r = _rp().run("photo", image=img, points=clicks(tr, 8), synthetic=True)
-    assert r["confidence"] == "low" and "rect_second_edge > 0.75" in r["notes"], r
+    alts = r["checks"]["alternatives"]
+    assert r["confidence"] == "low" and any(n.startswith("edge_ambiguity: ") for n in r["notes"]), r
     assert abs(r["rise_per_12"] - 6) > 2 * r["sigma_per_12"], r          # the snapped rectangle is wrong
+    assert max(abs(v - r["rise_per_12"]) for v in alts.values()) > 0.25, alts   # and an alternative is far off
+    img, tr = scene(6, 35, butts=True)          # wall between the corner boards, by two siding butt shadow bands
+    pts = dict(clicks(tr, 8, extras=False), rect_size=["7.8m", "1.62m"],
+               rect=(tr["wall"] + np.random.default_rng(100).normal(0, 8, (4, 2))).tolist())
+    r = _rp().run("photo", image=img, points=pts, synthetic=True)
+    alts = r["checks"]["alternatives"]
+    assert r["checks"]["rect_second_edge"] > 0.75 and alts, r            # each band has two strong edges
+    assert max(abs(v - r["rise_per_12"]) for v in alts.values()) <= 0.25, alts  # moving a line changes little
+    assert r["confidence"] == "ok" and abs(r["rise_per_12"] - 6) <= 0.15, r
 
 
 def _png(path, gray):
