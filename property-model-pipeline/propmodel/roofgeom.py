@@ -500,6 +500,19 @@ def _wing_regions(w: Wing):
 MIN_FACET_AREA = 0.1   # m2: slivers smaller than this (numerical leftovers of hidden roofs) are not facets
 
 
+def _enclosed_pockets(vis, reg, solids):
+    """Holes of a plane's kept roof ``vis`` that only the visibility test made: inside the plane's own region
+    ``reg`` (so not an opening of the wing's own outline) and outside every other wing's walls / roof-only
+    outline ``solids`` (so not where another wing stands on or rises through the roof)."""
+    holes = [Polygon(r) for p in _polys(vis) for r in p.interiors]
+    if not holes:
+        return Polygon()
+    pockets = unary_union(holes).intersection(reg)
+    if solids:
+        pockets = pockets.difference(unary_union(solids))
+    return _clean(pockets)
+
+
 def build(wings: List[Wing], wall_step=0.02, ground=None, levels=None) -> BuildingModel:
     """Build the exact model. ``levels(key, pts, outward, bottom) -> (grade_z, siding_from_z)`` (per wall
     "WING:side", sample points [n, 2] along it, outward unit normal, wall bottom z; NaN = unknown grade /
@@ -542,6 +555,13 @@ def build(wings: List[Wing], wall_step=0.02, ground=None, levels=None) -> Buildi
                 vis = vis.difference(hide)
                 under = unary_union([under, kept_under.intersection(vis)])
             vis = _clean(vis)
+            # a roof is not opened by being overhung: a pocket of this plane hidden under another wing's roof and
+            # enclosed by the plane's own kept roof (e.g. a lower eave under the corner of an upper roof) is real
+            # roofing, hidden from above; openings of the wing's own outline and other wings' walls stay open
+            pockets = _enclosed_pockets(vis, reg, [wall_polys[V.id] for V in wings if V.id != W.id])
+            if not pockets.is_empty:
+                vis = _clean(unary_union([vis, pockets]))
+                under = unary_union([under, pockets])
             if not vis.is_empty:
                 raw.append((W.id, plane, vis, under.area > 1e-4))
 
