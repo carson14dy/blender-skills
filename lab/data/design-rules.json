@@ -1,0 +1,5 @@
+{"approved_by": "user", "approved_on": "2026-11-22",
+ "note": "Standing rules for a new build with nothing to measure. A measured main house always wins (roof_pitch.py rule --match).",
+ "new_build_pitch": {"accessory": "6/12", "house": "6/12"},
+ "accessory": {"ice_barrier": false, "ridge_vent": false},
+ "shingles": {"each_shingle_a_piece": true, "note": "User's choice 2026-11-22: every shingle and joint as real geometry. Needs roof_core.py and the web studio changed together, in its own experiment."}}
