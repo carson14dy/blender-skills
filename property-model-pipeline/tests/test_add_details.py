@@ -27,7 +27,9 @@ for o in bpy.data.collections["Details"].objects:
     out[o.name] = {"n": len(vs), "min": [min(v[i] for v in vs) for i in range(3)],
                    "max": [max(v[i] for v in vs) for i in range(3)],
                    "verts": [list(v) for v in vs] if len(vs) <= 16 else None,
-                   "mat": o.data.materials[0].name if o.data.materials else None}
+                   "mat": o.data.materials[0].name if o.data.materials else None,
+                   "face_mats": [[round(p.normal.z, 3), o.data.materials[p.material_index].name]
+                                 for p in o.data.polygons] if o.data.materials and len(o.data.polygons) <= 32 else None}
 mats = {m.name: list(m.diffuse_color)[:3] for m in bpy.data.materials}
 json.dump({"objects": out, "materials": mats}, open(sys.argv[2], "w"))
 """
@@ -103,6 +105,25 @@ def test_screen_rail_and_deep_rim(scene):
     assert not _objs(sc, "deck 0 rail balusters")
     rim = _objs(sc, "deck 0 rim")
     assert min(v["min"][2] for v in rim.values()) == pytest.approx(-0.84, abs=0.01)   # 0.8 m header under the boards
+
+
+def test_deck_board_ends_take_rim_colour(scene, tmp_path):
+    """The end faces of the board slab sit flush over the rim's outer face: by default they take the rim material
+    (no thin board-coloured line along the edges / through picket gaps); "board_ends": "boards" keeps them."""
+    deck = {"polygon": [[-4, -5], [0, -5], [0, -8], [-4, -8]], "top_z": 0.0, "rail_edges": [[1, 2]],
+            "rail_style": "screen", "skirt": 0.5, "rim_depth": 0.6, "post_edges": [],
+            "board_color": [170, 110, 95], "rim_color": [45, 38, 30]}
+    _, sc, _ = _details_run(scene, tmp_path, {"decks": [deck, {**deck, "board_ends": "boards"}]}, "board_ends")
+    o = sc["objects"]
+    rim_mat = o["deck 0 rim 0"]["mat"]
+    for k, want_side in (("deck 0 boards", rim_mat), ("deck 1 boards", o["deck 1 boards"]["mat"])):
+        fm = o[k]["face_mats"]
+        assert len(fm) == 6
+        caps = {m for nz, m in fm if abs(nz) > 0.9}
+        sides = {m for nz, m in fm if abs(nz) < 0.1}
+        assert caps == {o[k]["mat"]} and o[k]["mat"].startswith(f"{k} ")       # walking surface: board colour
+        assert sides == {want_side}
+    assert rim_mat.startswith("deck 0 rim ") and rim_mat != o["deck 0 boards"]["mat"]
 
 
 def test_stairs_length_styles_and_sloped_stringers(scene):
@@ -369,3 +390,105 @@ def test_roof_underside_renders_as_soffit(scene, tmp_path):
     _run([str(tmp_path / "roof.py"), str(tmp_path / "no_under.blend"), str(tmp_path / "roof2.json")])
     r2 = json.loads((tmp_path / "roof2.json").read_text())
     assert all(res["out"] == "ShaderNodeBsdfPrincipled" for res in r2["mats"].values())
+
+
+def test_wall_points_follow_the_wall(scene, tmp_path):
+    """Beam ends, ceiling / deck vertices and downspout points given as wall points land on the wall line in model.json."""
+    mj, _, _ = scene
+    south = next(x for x in mj["walls"] if abs(x["bearing"] - 180) < 1)
+    key = f'{south["wing"]}:{south["side"]}'
+    (x0, y0, _), (x1, y1, _) = south["bottom"]
+    L = math.hypot(x1 - x0, y1 - y0)
+    dx, dy = (x1 - x0) / L, (y1 - y0) / L
+    nx, ny = math.sin(math.radians(south["bearing"])), math.cos(math.radians(south["bearing"]))
+
+    def on(u, off=0.0):
+        return x0 + dx * u + nx * off, y0 + dy * u + ny * off
+    extra = {
+        "beams": [{"name": "rim on wall", "p0": {"wall": key, "u": 1.0, "offset": 0.06, "z": 2.4},
+                   "p1": {"wall": key, "u": -1.0, "offset": 0.06, "z": 2.4}, "size": [0.12, 0.3]}],
+        "ceilings": [{"polygon": [{"wall": key, "u": 0.0}, {"wall": key, "u": "end"}, [x1 + nx * 1.0, y1 + ny * 1.0],
+                                  [x0 + nx * 1.0, y0 + ny * 1.0]], "z": 2.2}],
+        "downspouts": [{"xy": {"wall": key, "u": 2.0, "offset": 0.06}, "top_z": 2.5, "bottom_z": 0.0,
+                        "path": [{"wall": key, "u": 2.0, "offset": 0.5, "z": 2.7}]}],
+    }
+    stdout, sc, _ = _details_run(scene, tmp_path, extra, "wallpts")
+    assert "WARNING: downspout" not in stdout                    # the wall point sits on the wall face
+    o = sc["objects"]
+    rim = o["rim on wall"]
+    ends = sorted({(round(p[0], 3), round(p[1], 3)) for p in rim["verts"] if abs(p[2] - 2.4) < 1e-4})
+    mid = [((a[0] + b[0]) / 2, (a[1] + b[1]) / 2) for a, b in (ends[:2], ends[2:])]
+    want = sorted([on(1.0, 0.06), on(L - 1.0, 0.06)])
+    for m_, w_ in zip(sorted(mid), want):
+        assert m_ == pytest.approx(w_, abs=0.01)                 # beam axis on the wall line, 0.06 m proud, 1 m in
+    ce = o["porch ceiling 0"]
+    got = sorted((round(p[0], 3), round(p[1], 3)) for p in ce["verts"])
+    for w_ in (on(0.0), on(L)):
+        assert any(math.hypot(g[0] - w_[0], g[1] - w_[1]) < 1e-3 for g in got)
+    ds = o["downspout 0"]
+    cx, cy = (ds["min"][0] + ds["max"][0]) / 2, (ds["min"][1] + ds["max"][1]) / 2
+    assert (cx, cy) == pytest.approx(on(2.0, 0.06), abs=1e-3)
+    assert "gutter leader 0.0" in o
+
+
+def test_roof_well_liners_and_colour_labels(scene, tmp_path):
+    """Liner walls round a roof opening run from just under the roof plane down to bottom_z (no roof below), outside
+    the opening; top-level colour provenance lands in the notes text."""
+    mj, _, _ = scene
+    f = next(f for f in mj["facets"] if f["plane"][1] > 0)       # south slope (holds the opening)
+    a, b, c = f["plane"]
+    hole = [[1.0, -2.6], [2.2, -2.6], [2.2, -1.2], [1.0, -1.2]]
+    extra = {"roof_wells": [{"polygon": hole, "bottom_z": 0.5, "thickness": 0.1, "color": [40, 35, 30],
+                             "label": "bay liner, assumed"}],
+             "trim_color": [232, 228, 205], "color_labels": {"trim_color": "photo cream, measured"}}
+    stdout, sc, _ = _details_run(scene, tmp_path, extra, "wells")
+    w = sc["objects"]["roof well 0"]
+    assert w["n"] == 32                                          # 4 slabs x 8 corners
+    assert w["min"][2] == pytest.approx(0.48, abs=1e-4)          # bottom_z - 0.02 (into the floor)
+    assert w["min"][0] == pytest.approx(1.0 - 0.105, abs=1e-3) and w["max"][0] == pytest.approx(2.2 + 0.105, abs=1e-3)
+    assert w["min"][1] == pytest.approx(-2.6 - 0.105, abs=1e-3) and w["max"][1] == pytest.approx(-1.2 + 0.105, abs=1e-3)
+    top = max(a * 2.305 + b * -1.095 + c, a * 0.895 + b * -1.095 + c) - 0.01
+    assert w["max"][2] == pytest.approx(top, abs=1e-3)          # follows the roof plane over the opening
+    assert sc["materials"][w["mat"]] == pytest.approx([0.021, 0.017, 0.015], abs=0.003)
+    assert "details notes: 2 labelled entries, 1 caveats" in stdout     # colour label listed, not flagged
+
+
+def test_opening_frame_inside_uses_the_outer_frame_size(scene, tmp_path):
+    """frame_inside: sill_z / width / height are the outer frame (as a photo measures them); the default keeps the
+    frame bars outside the glazed opening. Mullion fractions are of the outer width; a door has no sill bar."""
+    mj, _, _ = scene
+    south = next(x for x in mj["walls"] if abs(x["bearing"] - 180) < 1)
+    key = f'{south["wing"]}:{south["side"]}'
+    (x0, y0, _), (x1, y1, _) = south["bottom"]
+    L = math.hypot(x1 - x0, y1 - y0)
+    dx, dy = (x1 - x0) / L, (y1 - y0) / L
+
+    def along(p):
+        return (p[0] - x0) * dx + (p[1] - y0) * dy
+    extra = {"openings": [
+        {"wall": key, "u": 3.0, "sill_z": 0.5, "width": 3.0, "height": 1.75, "frame": 0.08, "kind": "window",
+         "mullions": [0.5], "frame_inside": True, "label": "inside win"},
+        {"wall": key, "u": 7.0, "sill_z": 0.5, "width": 1.0, "height": 1.0, "frame": 0.08, "kind": "window",
+         "label": "outside win"},
+        {"wall": key, "u": 5.2, "sill_z": 0.0, "width": 0.9, "height": 2.0, "frame": 0.08, "kind": "door",
+         "frame_inside": True, "label": "inside door"}]}
+    _, sc, _ = _details_run(scene, tmp_path, extra, "frame_inside")
+    o = sc["objects"]
+
+    def span(prefix):
+        parts = [v for k, v in o.items() if k.startswith(prefix)]
+        vs = [p for v in parts for p in v["verts"]]
+        return (min(p[2] for p in vs), max(p[2] for p in vs), min(along(p) for p in vs), max(along(p) for p in vs))
+    z0, z1, u0, u1 = span("inside win")
+    assert (z0, z1) == pytest.approx((0.5, 2.25), abs=1e-4)      # sill bottom .. head top = the given outer size
+    assert (u0, u1) == pytest.approx((1.5, 4.5), abs=1e-4)
+    leaf = o["inside win leaf"]
+    assert (leaf["min"][2], leaf["max"][2]) == pytest.approx((0.58, 2.17), abs=1e-4)
+    mu = o["inside win mullion"]
+    assert sum(along(p) for p in mu["verts"]) / len(mu["verts"]) == pytest.approx(3.0, abs=1e-4)   # 0.5 of the outer width
+    z0, z1, u0, u1 = span("outside win")
+    assert (z0, z1) == pytest.approx((0.42, 1.58), abs=1e-4)     # default: frame outside the opening
+    assert (u0, u1) == pytest.approx((6.42, 7.58), abs=1e-4)
+    z0, z1, u0, u1 = span("inside door")
+    assert (z0, z1) == pytest.approx((0.0, 2.0), abs=1e-4) and (u0, u1) == pytest.approx((4.75, 5.65), abs=1e-4)
+    assert "inside door sill" not in o

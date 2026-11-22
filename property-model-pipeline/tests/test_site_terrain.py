@@ -421,3 +421,167 @@ def test_overlay_lapping_over_a_wall_face_stays_on_the_lower_level():
     # (untrimmed, the lap is draped on the upper level's triangles)
     v0, _ = build_site.drape_on_mesh(pave.difference(wallpoly), node[0], node[1], Zb, 0.0)
     assert np.array(v0)[:, 2].max() > -0.5
+
+
+def test_deck_cap_keeps_the_terrain_under_the_boards():
+    """A deck excluded from the ground filter is bridged from the hill around it: on a 30 % slope the bridge runs through
+    the boards. The cap leaves no node inside the deck above top - 0.3, only lowers, and fades out within the blend."""
+    c = 0.25
+    xs = ys = np.arange(-6, 6.001, c)
+    X, Y = np.meshgrid(xs, ys)
+    Z = 0.3 * Y + 1.0                                              # 30 % slope rising north, z 1.0 at y 0
+    deck = {"decks": [{"polygon": [[-2, -1], [2, -1], [2, 2], [-2, 2]], "top_z": 0.9}]}
+    caps = build_site.deck_caps(deck)
+    Zc, low = build_site.cap_terrain(Z, X, Y, caps, blend=0.3)
+    inside = shapely.contains_xy(Polygon(deck["decks"][0]["polygon"]), X, Y) | (
+        (np.abs(X) <= 2 + 1e-9) & (Y >= -1 - 1e-9) & (Y <= 2 + 1e-9))
+    assert Zc[inside].max() <= 0.9 - 0.3 + 1e-9                   # nothing within 0.3 m of the boards
+    assert np.all(Zc <= Z + 1e-12)                                 # never raises
+    far = shapely.distance(Polygon(deck["decks"][0]["polygon"]), shapely.points(X.ravel(), Y.ravel())).reshape(X.shape) > 0.3
+    assert np.allclose(Zc[far], Z[far])                            # untouched beyond the blend
+    assert low[inside & (Z > 0.65)].all() and not low[far].any()
+    # nodes in `skip` (e.g. a wall's breakline band) are capped inside the polygon only, never by the outside blend
+    skip = np.ones(X.shape, bool)
+    Zs, _ = build_site.cap_terrain(Z, X, Y, caps, blend=0.3, skip=skip)
+    assert Zs[inside].max() <= 0.6 + 1e-9 and np.allclose(Zs[~inside], Z[~inside])
+
+
+def test_stair_cap_runs_under_every_tread():
+    """A details.json stair (add_details: tread k at top_z - k rise over s = run (k-1) .. run k) over a ramp that the LiDAR
+    ground filter smoothed through the treads: after the cap, no node of the footprint stands within stair_clear of the
+    tread above it; a yard 'steps' item (k_steps treads) is capped the same way."""
+    c = 0.1
+    xs = np.arange(-1, 4.001, c); ys = np.arange(-2, 2.001, c)
+    X, Y = np.meshgrid(xs, ys)
+    st = {"top": [0.0, 0.0], "dir": [1, 0], "width": 1.0, "length": 2.0, "top_z": 2.0, "bottom_z": 0.4, "risers": 8}
+    Z = 2.0 - 0.8 * X + 0.05                                       # a ramp through the tread middles, a little high
+    caps = build_site.deck_caps({"stairs": [st]})
+    assert len(caps) == 1
+    Zc, _ = build_site.cap_terrain(Z, X, Y, caps, blend=0.3)
+    rise, run = 1.6 / 8, 2.0 / 7
+    for k in range(1, 8):                                          # treads 1..7
+        m = (X >= run * (k - 1) + 1e-6) & (X <= run * k - 1e-6) & (np.abs(Y) <= 0.5)
+        assert Zc[m].max() <= 2.0 - k * rise - 0.05 + 1e-9
+    steps = {"items": [{"kind": "steps", "line": [[0.0, 0.0], [2.0, 0.0]], "width": 1.0, "z0": 0.0, "z1": 1.0, "risers": 5}]}
+    Z2 = 0.5 * X + 0.1                                             # ramp through the yard treads' middles
+    Zs, _ = build_site.cap_terrain(Z2, X, Y, build_site.steps_caps(steps), blend=0.3)
+    for k in range(5):                                             # k_steps: tread k top z0 + (k + 1) rise over k..k+1 runs
+        m = (X >= 0.4 * k + 1e-6) & (X <= 0.4 * (k + 1) - 1e-6) & (np.abs(Y) <= 0.5)
+        assert Zs[m].max() <= 0.2 * (k + 1) - 0.05 + 1e-9
+
+
+def test_wall_top_clamp_lowers_an_unsupported_node_on_the_cap():
+    """A side grade extrapolated from a cliff behind a wall puts a node 3 m over the wall top: with no LiDAR return near
+    that height it takes the top + tol; a node over the top that a return supports (a bed rising behind an edging) stays."""
+    c = 0.25
+    xs = ys = np.arange(-2, 2.001, c)
+    X, Y = np.meshgrid(xs, ys)
+    Z = np.where(Y > 0, 1.0, 0.0)
+    j1, i1 = int(np.argmin(np.abs(ys - 0.25))), int(np.argmin(np.abs(xs - 0.5)))
+    j2, i2 = j1, int(np.argmin(np.abs(xs + 0.5)))
+    Z[j1, i1] = 4.0                                                # unsupported spike on the cap
+    Z[j2, i2] = 1.5                                                # supported by a return at 1.45
+    walls = [([[-2.0, 0.0], [2.0, 0.0]], 0.3)]
+    pxy = np.array([[-0.5, 0.25], [0.5, 0.25]]); pz = np.array([1.45, 1.0])
+    Zt, low = build_site.wall_top_clamp(Z, X, Y, walls, [[1.0]], pxy, pz, c, tol=0.2)
+    assert abs(Zt[j1, i1] - 1.2) < 1e-9 and low[j1, i1]
+    assert Zt[j2, i2] == 1.5 and low.sum() == 1
+    assert build_site.wall_tops({"items": [{"kind": "retaining_wall", "line": [[0, 0], [1, 0], [2, 0]],
+                                            "top_z": [1.0]}]}) == [[1.0, 1.0]]
+
+
+def test_clamp_mean_trims_crest_tips_by_a_bounded_amount():
+    c = 0.25
+    Z = np.zeros((9, 9))
+    Z[4, 4] = 0.5                                                  # a tip 0.5 over its 8 neighbours (its own 3x3 median: 0)
+    Zn, n = build_site.clamp_mean(Z, np.ones(Z.shape, bool), above=0.3, max_drop=0.15)
+    assert n == 1 and abs(Zn[4, 4] - 0.35) < 1e-9                  # lowered by max_drop only
+    Zn2, _ = build_site.clamp_mean(Z, np.ones(Z.shape, bool), above=0.3, max_drop=1.0)
+    assert abs(Zn2[4, 4] - 0.3) < 1e-9
+    Zn3, n3 = build_site.clamp_mean(Z, np.zeros(Z.shape, bool))
+    assert n3 == 0 and np.array_equal(Zn3, Z)
+
+
+def test_wall_back_floor_lifts_retained_ground_to_the_measured_ledge():
+    """Behind a face the side grade is extrapolated along the slope beyond the band; on a level ledge that runs to the
+    face it lands under the measured surface. Nodes behind the face rise to the lowest last return within one cell behind
+    the wall body (never over top + tol, never more than 1 m: a deck over the bank), are never lowered, and the downhill
+    side is left alone."""
+    c = 0.25
+    xs, ys, X, Y, Z, px, py, pz, item = _wall_scene(c, blend=0.75)
+    item = dict(item, top_z=0.05)
+    walls = build_site.wall_lines({"items": [item]})
+    faces = build_site.wall_faces({"items": [item]})
+    node = [X.copy(), Y.copy()]
+    Zb = build_site.apply_breaklines(Z.copy(), xs, ys, walls, c, snap=node)
+    Zb[(Y > 0) & (Y < 0.6)] -= 0.4                                 # the side grade dropped behind the face
+    tops = build_site.face_tops({"items": [item]})
+    assert tops == [[0.05]]
+    Zr, up = build_site.wall_back_floor(Zb, node[0], node[1], faces, tops, np.column_stack([px, py]), pz, c, tol=0.2)
+    behind = (node[1] > 1e-6) & (node[1] <= 0.25 + 1.5 * c)
+    assert up[behind & (np.abs(X) < 2.5)].all() and not up[node[1] <= 1e-6].any()
+    assert np.abs(Zr[behind & (np.abs(X) < 2.5)]).max() < 0.1      # back on the 0.0 ledge
+    assert np.all(Zr >= Zb - 1e-12) and Zr.max() <= 0.05 + 0.2 + 1e-9
+    # a return 1.5 m over the node (a deck over the bank) is not ground
+    Zd, upd = build_site.wall_back_floor(Zb, node[0], node[1], faces, tops, np.column_stack([px, py]), pz + 1.9, c, tol=5.0)
+    assert not upd.any()
+
+
+def test_wall_back_floor_quantile_takes_the_median_of_a_rough_top():
+    """q = 0.5 raises the retained ground to the median of the last returns behind the wall body (a rough rock top with
+    +-0.1 m noise); q = 0 to their lowest, a noise sigma or two under the surface. Neither lowers a node."""
+    c = 0.25
+    xs, ys, X, Y, Z, px, py, pz, item = _wall_scene(c, blend=0.75)
+    item = dict(item, top_z=0.4)
+    rng = np.random.default_rng(5)
+    pz = np.where(py > 0, 0.2 + rng.normal(0, 0.1, pz.size), pz)      # a rough top at 0.2 behind the face
+    walls = build_site.wall_lines({"items": [item]})
+    faces = build_site.wall_faces({"items": [item]})
+    node = [X.copy(), Y.copy()]
+    Zb = build_site.apply_breaklines(Z.copy(), xs, ys, walls, c, snap=node)
+    Zb[(Y > 0) & (Y < 0.6)] = -0.4                                 # the side grade dropped behind the face
+    tops = build_site.face_tops({"items": [item]})
+    behind = (node[1] > 1e-6) & (node[1] <= 0.25 + 1.5 * c) & (np.abs(X) < 2.5)
+    Zm, upm = build_site.wall_back_floor(Zb, node[0], node[1], faces, tops, np.column_stack([px, py]), pz, c, tol=0.2, q=0.5)
+    Zl, upl = build_site.wall_back_floor(Zb, node[0], node[1], faces, tops, np.column_stack([px, py]), pz, c, tol=0.2)
+    assert upm[behind].all() and upl[behind].all()
+    assert abs(np.median(Zm[behind]) - 0.2) < 0.05                 # the median top
+    assert np.median(Zl[behind]) < 0.1                             # the lowest return: well under it
+    assert np.all(Zm >= Zb - 1e-12) and np.all(Zm >= Zl - 1e-12) and Zm.max() <= 0.4 + 0.2 + 1e-9
+    # node 0.9 m under the lowest return but 1.1 m under the median: q = 0 raises it (within the 1 m overhead), so q = 0.5
+    # must too (the overhead test is on the lowest return, not on the quantile)
+    Zd = Zb.copy(); Zd[behind] = 0.2 - 1.1
+    pz2 = np.where(py > 0, np.where(rng.random(pz.size) < 0.3, 0.2 - 0.2, 0.2), pz)
+    Zm2, upm2 = build_site.wall_back_floor(Zd, node[0], node[1], faces, tops, np.column_stack([px, py]), pz2, c, tol=0.2, q=0.5)
+    Zl2, upl2 = build_site.wall_back_floor(Zd, node[0], node[1], faces, tops, np.column_stack([px, py]), pz2, c, tol=0.2)
+    assert np.array_equal(upm2, upl2) and upl2[behind].mean() > 0.8 and np.all(Zm2 >= Zl2 - 1e-12)
+    assert np.any(upm2 & (np.abs(Zm2 - 0.2) < 1e-9))               # raised to the median 1.1 m over the node
+
+
+def test_flat_window_median_finds_a_shelf_and_skips_a_step_edge():
+    """A node over a flat shelf (>= 5 last returns within 0.1 m, the window's majority) gets the shelf's median; a node
+    whose window straddles a 2 m step has no dominant flat cluster and is left alone."""
+    rng = np.random.default_rng(3)
+    px = rng.uniform(-2, 2, 4000); py = rng.uniform(-2, 2, 4000)
+    pz = np.where(px > 0.5, 2.0, 0.0) + rng.normal(0, 0.02, px.size)    # shelf at 0, cliff top at 2 east of x 0.5
+    c = 0.25
+    xs = ys = np.arange(-1.5, 1.501, c)
+    nodes = np.ones((len(ys), len(xs)), bool)
+    med, cnt = lidar.flat_window_median(nodes, c, np.column_stack([px, py]), pz, x0=xs[0], y0=ys[0], window=0.5)
+    i_shelf, i_edge = int(np.argmin(np.abs(xs + 1.0))), int(np.argmin(np.abs(xs - 0.5)))
+    j = len(ys) // 2
+    assert abs(med[j, i_shelf]) < 0.05 and cnt[j, i_shelf] >= 5
+    assert abs(med[j, int(np.argmin(np.abs(xs - 1.25)))] - 2.0) < 0.05 # the cliff top is a shelf too
+    med6, _ = lidar.flat_window_median(nodes, c, np.column_stack([px, py]), pz, x0=xs[0], y0=ys[0], window=0.5, share=0.6)
+    assert np.isnan(med6[j, i_edge])                                 # half shelf, half cliff top: no 60 % cluster
+
+
+def test_flat_lower_no_dents_lowers_a_shelf_and_skips_a_lone_node():
+    """A lowered shelf (a block of nodes) is kept; a lone node dropped 0.3 m into an otherwise level rock top is not."""
+    Z = np.ones((9, 9))
+    target = np.full(Z.shape, np.nan)
+    target[1:5, 1:5] = 0.6                                           # a 4 x 4 shelf
+    target[7, 7] = 0.7                                               # one node of the rough top
+    out = build_site.flat_lower_no_dents(Z, target, np.isfinite(target))
+    assert np.allclose(out[1:5, 1:5], 0.6) and out[7, 7] == 1.0
+    assert np.all(out <= Z)

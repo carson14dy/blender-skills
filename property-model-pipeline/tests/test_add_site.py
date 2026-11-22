@@ -31,6 +31,7 @@ for o in bpy.data.collections["Site"].objects:
                               "smooth": all(p.use_smooth for p in o.data.polygons),
                               "min_nz": min([(o.matrix_world.to_3x3() @ p.normal).z for p in o.data.polygons] or [1.0]),
                               "mats": [m.name for m in o.data.materials],
+                              "nsides": max([len(p.vertices) for p in o.data.polygons] or [0]),
                               "top_mat": [p.material_index for p in o.data.polygons if (o.matrix_world.to_3x3() @ p.normal).z > 0.99]}
 out["fonts"] = {o.name: {"scale": list(o.scale), "size": o.data.size} for o in bpy.data.collections["Site"].objects if o.type == "FONT"}
 out["nodes"] = {}
@@ -151,6 +152,45 @@ def test_rock_scatter_places_measured_stones(site):
 def test_boulder_has_no_undercut_and_foliage_mass(site):
     assert site["objects"]["notched"]["min_nz"] > -1e-6              # no face leans out over the foot
     assert site["objects"]["juniper"]["mat"].startswith("Foliage")
+    # explicit triangles (each side quad split along its closest-z / shorter diagonal), never Blender's fixed 0-2 split
+    assert site["objects"]["notched"]["nsides"] == 3 and site["objects"]["rock"]["nsides"] == 3
+
+
+def test_split_quad_folds_along_the_level_diagonal():
+    import ast
+    src = open(ADD_SITE).read()
+    fn = next(n for n in ast.parse(src).body if isinstance(n, ast.FunctionDef) and n.name == "split_quad")
+    ns = {}
+    exec(compile(ast.Module([fn], []), ADD_SITE, "exec"), ns)
+    sq = ns["split_quad"]
+    v = [(0, 0, 0.0), (1, 0, 1.0), (1, 1, 0.1), (0, 1, 1.0)]       # 0-2 nearly level, 1-3 level: fold along 1-3
+    assert sorted(map(sorted, sq(v, [0, 1, 2, 3]))) == [[0, 1, 3], [1, 2, 3]]
+    v = [(0, 0, 0.0), (1, 0, 1.0), (1, 1, 0.0), (0, 1, 0.5)]       # 0-2 level: fold along 0-2
+    assert sorted(map(sorted, sq(v, [0, 1, 2, 3]))) == [[0, 1, 2], [0, 2, 3]]
+    v = [(0, 0, 0.0), (2, 0, 0.0), (2.5, 1, 1.0), (0.5, 1, 1.0)]   # equal dz: the shorter diagonal (1-3)
+    assert sorted(map(sorted, sq(v, [0, 1, 2, 3]))) == [[0, 1, 3], [1, 2, 3]]
+
+
+def test_tread_clearance_uses_the_middle_of_the_run(tmp_path):
+    """LiDAR ground over a stair is a ramp through the tread middles: a tread lifted for clearance stands `clearance` over
+    the ramp at the middle of its run, not over the ramp at its back (half a riser higher)."""
+    blend = str(tmp_path / "empty.blend")
+    (tmp_path / "empty.py").write_text(EMPTY)
+    _run([str(tmp_path / "empty.py"), blend])
+    verts = [[-2, -2, 0.0], [2, -2, 0.0], [2, 2, 2.0], [-2, 2, 2.0]]          # ramp z = 0.5 (y + 2)
+    scene = {"verts": verts, "faces": [[0, 1, 2, 3]], "face_class": [0], "classes": ["ground"],
+             "overlays": {}, "curbs": [], "edging": [], "parcel": None, "points": []}
+    yard = {"items": [{"kind": "steps", "name": "ramp st", "line": [[0, -2], [0, 2]], "width": 1.0, "z0": -1.0,
+                       "z1": -0.5, "risers": 4}]}
+    sp, yp, out, js = tmp_path / "scene.json", tmp_path / "yard.json", str(tmp_path / "out.blend"), str(tmp_path / "i.json")
+    sp.write_text(json.dumps(scene)); yp.write_text(json.dumps(yard))
+    _run([ADD_SITE, blend, str(sp), str(yp), out])
+    (tmp_path / "look.py").write_text(INSPECT)
+    _run([str(tmp_path / "look.py"), out, js])
+    r = json.load(open(js))
+    tops = [r["objects"][f"ramp st 0 tread {k}"]["max"][2] for k in range(4)]
+    for k, t in enumerate(tops):                                  # middle of tread k at y = -1.5 + k: ramp 0.25 + 0.5 k
+        assert abs(t - (0.25 + 0.5 * k + 0.03)) < 1e-3
 
 
 def test_steps_are_never_buried(site):
@@ -330,3 +370,163 @@ def test_oblique_cliff_faces_are_smoothed_without_back_facing_fangs(tmp_path):
     assert max(abs(a_ - b_) for a_, b_ in zip(r["z"], z)) <= 0.3 + 1e-6      # measured heights kept within 0.3 m
     far = [k for k, (x, y) in enumerate(xy) if abs(x * N[0] + y * N[1]) > 1.0]
     assert all(abs(r["z"][k] - z[k]) < 1e-9 and abs(r["xy"][k][0] - xy[k][0]) < 1e-9 for k in far)
+
+
+DUMP = r"""
+import bpy, json, sys
+bpy.ops.wm.open_mainfile(filepath=sys.argv[1])
+out = {}
+for o in bpy.data.collections["Site"].objects:
+    if o.type == "MESH":
+        out[o.name] = {"v": [list(o.matrix_world @ v.co) for v in o.data.vertices],
+                       "mats": [m.name for m in o.data.materials]}
+json.dump(out, open(sys.argv[2], "w"))
+"""
+
+
+def test_rock_face_wall_exact_drape_terrain_foot_and_fixed_breakline_nodes(tmp_path):
+    """Round-7 additions: a "rock" retaining wall gets the boulder sandstone; surfaces are draped on the terrain's own
+    triangles (no vertex of the south half leaves its plane); a boulder with "foot": "terrain" starts at the terrain
+    under each outline point; breakline nodes snapped off the regular grid are not moved by the rock-face smoothing."""
+    blend = str(tmp_path / "empty.blend")
+    (tmp_path / "empty.py").write_text(EMPTY)
+    _run([str(tmp_path / "empty.py"), blend])
+    # 9 x 9 grid, 1 m cells, z -1.5 south of y 0 and 0 from y 0 north (the step between rows y -1 and y 0); the row y = 0
+    # nodes are snapped 0.1 m north (a breakline face), so they sit off the regular grid
+    n, c = 9, 1.0
+    verts, z = [], []
+    for j in range(n):
+        for i in range(n):
+            x, y = -4 + i * c, -4 + j * c
+            zz = 0.0 if y >= 0 else -1.5
+            verts.append([x, y + (0.1 if y == 0 else 0.0), zz]); z.append(zz)
+    faces = [[j * n + i, j * n + i + 1, (j + 1) * n + i + 1, (j + 1) * n + i] for j in range(n - 1) for i in range(n - 1)]
+    scene = {"verts": verts, "faces": faces, "face_class": [0] * len(faces), "classes": ["ground"], "overlays": {},
+             "curbs": [], "edging": [], "parcel": None, "points": [],
+             "grid": {"x0": -4.0, "y0": -4.0, "nx": n, "ny": n, "cell": c, "z": z}}
+    yard = {"items": [
+        {"kind": "retaining_wall", "name": "ledge", "line": [[-3, 0.1], [-1, 0.1]], "top_z": 0.05, "thickness": 0.3,
+         "material": "rock", "line_is": "face", "uphill": "left"},
+        {"kind": "surface", "name": "bed", "polygon": [[-3.7, -3.6], [-0.3, -3.6], [-0.3, -2.4], [-3.7, -2.4]], "lift": 0.03},
+        {"kind": "boulder", "name": "slope rock", "polygon": [[1.0, -2.5], [3.0, -2.5], [3.0, 1.5], [1.0, 1.5]],
+         "top_z": 0.8, "foot": "terrain"}]}
+    sp, yp, out, js = tmp_path / "scene.json", tmp_path / "yard.json", str(tmp_path / "out.blend"), str(tmp_path / "d.json")
+    sp.write_text(json.dumps(scene)); yp.write_text(json.dumps(yard))
+    _run([ADD_SITE, blend, str(sp), str(yp), out])
+    (tmp_path / "dump.py").write_text(DUMP)
+    _run([str(tmp_path / "dump.py"), out, js])
+    d = json.load(open(js))
+    led = [k for k in d if k.startswith("ledge")]
+    assert led and all(any(m.startswith("Retaining wall (rock face)") for m in d[k]["mats"]) for k in led)
+    bed = d["bed"]["v"]
+    assert bed and max(abs(v[2] - (-1.47)) for v in bed) < 1e-4            # on the south plane + lift everywhere
+    ring0 = d["slope rock"]["v"][:8]                                        # the outline ring (4 points + midpoints)
+    foot_n = [v[2] for v in ring0 if v[1] > 1.4]                           # outline points on the upper level
+    foot_s = [v[2] for v in ring0 if v[1] < -2.4]
+    assert foot_n and foot_s and all(abs(z + 0.15) < 1e-4 for z in foot_n) and all(abs(z + 1.65) < 1e-4 for z in foot_s)
+    # terrain: the snapped row y = 0.1 kept its place and height ('rock face' vertices: 8-neighbour range 1.5 m)
+    ter = d["Terrain (LiDAR ground)"]["v"]
+    row = [v for v in ter if abs(v[1] - 0.1) < 1e-4]
+    assert len(row) == n and all(abs(v[2]) < 1e-6 for v in row)
+
+
+TONE_LOOK = r"""
+import bpy, json, sys
+bpy.ops.wm.open_mainfile(filepath=sys.argv[1])
+t = bpy.data.objects["Terrain (LiDAR ground)"]
+me = t.data
+out = {"attrs": {a.name: [list(d.color)[:3] for d in a.data] for a in me.color_attributes},
+       "xy": [[v.co.x, v.co.y] for v in me.vertices], "mats": [m.name for m in me.materials]}
+nt = me.materials[0].node_tree
+mix = [n for n in nt.nodes if n.label == "rock tone per vertex"]
+out["mix_inputs"] = sorted(l.from_node.attribute_name for n in mix for l in nt.links if l.to_node == n and l.from_node.bl_idname == "ShaderNodeAttribute")
+out["mix_used"] = bool(mix) and any(l.from_node == mix[0] for l in nt.links)
+out["ramps"] = [[list(e.color)[:3] for e in n.color_ramp.elements] for n in nt.nodes if n.bl_idname == "ShaderNodeValToRGB"]
+json.dump(out, open(sys.argv[2], "w"))
+"""
+
+
+def test_terrain_inside_a_boulder_outline_takes_the_boulder_colours(tmp_path):
+    """The LiDAR rock merge raises the terrain inside a traced boulder; where it pokes through the dome it must show the
+    boulder's own colour range, not the terrain rock tone (a two-tone boulder). Vertices within 0.1 m of the outline get
+    the boulder colours in rock_tone_lo / rock_tone_hi, all others the yard 'rock' tone; the rock ramp reads them."""
+    blend = str(tmp_path / "empty.blend")
+    (tmp_path / "empty.py").write_text(EMPTY)
+    _run([str(tmp_path / "empty.py"), blend])
+    xs = [0, 1, 2, 3, 4]
+    verts = [[x, y, 0.0] for y in xs for x in xs]
+    faces = [[j * 5 + i, j * 5 + i + 1, (j + 1) * 5 + i + 1, (j + 1) * 5 + i] for j in range(4) for i in range(4)]
+    scene = {"verts": verts, "faces": faces, "face_class": [1] * 16, "classes": ["ground", "rock"],
+             "vertex_rock": [1.0] * 25, "overlays": {}, "curbs": [], "edging": [], "parcel": None, "points": []}
+    rock = [[0.30, 0.225, 0.145], [0.60, 0.475, 0.34]]
+    bcol = [[0.48, 0.42, 0.28], [0.76, 0.69, 0.50]]
+    yard = {"items": [{"kind": "boulder", "polygon": [[0.9, 0.9], [2.1, 0.9], [2.1, 2.1], [0.9, 2.1]], "top_z": 0.6,
+                       "color": bcol},
+                      {"kind": "boulder", "polygon": [[2.9, 2.9], [4, 2.9], [4, 4], [2.9, 4]], "top_z": 0.5,
+                       "surface": "foliage"}],                       # a foliage mass keeps the terrain rock tone
+            "materials": {"rock": rock}}
+    sp, yp, out, js = tmp_path / "scene.json", tmp_path / "yard.json", str(tmp_path / "out.blend"), str(tmp_path / "t.json")
+    sp.write_text(json.dumps(scene)); yp.write_text(json.dumps(yard))
+    log = _run([ADD_SITE, blend, str(sp), str(yp), out])
+    assert "4 vertices inside yard boulder outlines" in log
+    (tmp_path / "look.py").write_text(TONE_LOOK)
+    _run([str(tmp_path / "look.py"), out, js])
+    r = json.load(open(js))
+    lo, hi = r["attrs"]["rock_tone_lo"], r["attrs"]["rock_tone_hi"]
+    for (x, y), a, b in zip(r["xy"], lo, hi):
+        want = bcol if 0.8 <= x <= 2.2 and 0.8 <= y <= 2.2 else rock
+        assert all(abs(u - v) < 1e-4 for u, v in zip(a, want[0])) and all(abs(u - v) < 1e-4 for u, v in zip(b, want[1]))
+    assert r["mix_inputs"] == ["rock_tone_hi", "rock_tone_lo"] and r["mix_used"]
+    assert len(r["ramps"]) == 1                                      # the ground ramp; the rock ramp is per vertex now
+
+
+REF_BLEND = r"""
+import bpy, sys
+bpy.ops.wm.read_factory_settings(use_empty=True)
+def plane(name, coll, z, half=30.0):
+    me = bpy.data.meshes.new(name)
+    me.from_pydata([(-half, -half, z), (half, -half, z), (half, half, z), (-half, half, z)], [], [[0, 1, 2, 3]])
+    o = bpy.data.objects.new(name, me); coll.objects.link(o); return o
+ref = bpy.data.collections.new("Reference data"); bpy.context.scene.collection.children.link(ref)
+lab = bpy.data.collections.new("Labels"); bpy.context.scene.collection.children.link(lab)
+plane("Ground (grade)", ref, -0.01)                  # build_model's plane at the model datum, above a downhill terrain
+plane("Ground ortho", ref, -0.02)
+t = bpy.data.curves.new("roof label", "FONT"); t.body = "F1"; lab.objects.link(bpy.data.objects.new("roof label", t))
+bpy.ops.wm.save_as_mainfile(filepath=sys.argv[1])
+"""
+
+REF_LOOK = r"""
+import bpy, json, sys
+from mathutils import Vector
+bpy.ops.wm.open_mainfile(filepath=sys.argv[1])
+dg = bpy.context.evaluated_depsgraph_get()
+hit = bpy.context.scene.ray_cast(dg, Vector((1.0, -1.0, 60.0)), Vector((0, 0, -1)))
+out = {"objs": {o.name: [o.hide_render, o.hide_viewport] for o in bpy.data.objects if o.name.startswith("Ground")},
+       "colls": {c.name: [c.hide_render, c.hide_viewport] for c in bpy.data.collections},
+       "hit": [hit[4].name, hit[1].z] if hit[0] else None}
+json.dump(out, open(sys.argv[2], "w"))
+"""
+
+
+def test_terrain_hides_the_reference_grade_plane_and_qa_collections(tmp_path):
+    """build_model's flat 'Ground (grade)' plane (z = model 'ground' or -0.01) covers a hillside terrain that runs below
+    the datum: once add_site has built the terrain, the grade and ortho planes are hidden in renders and viewports (a
+    ray cast from above meets the terrain, not the plane) and Labels / Reference data are not rendered but stay in the
+    viewport."""
+    blend = str(tmp_path / "ref.blend")
+    (tmp_path / "ref.py").write_text(REF_BLEND)
+    _run([str(tmp_path / "ref.py"), blend])
+    verts = [[-5, -5, -3], [5, -5, -3], [5, 5, -1], [-5, 5, -1]]          # downhill terrain, all below z -0.01
+    scene = {"verts": verts, "faces": [[0, 1, 2, 3]], "face_class": [0], "classes": ["ground"],
+             "overlays": {}, "curbs": [], "edging": [], "parcel": None, "points": []}
+    sp, yp, out, js = tmp_path / "scene.json", tmp_path / "yard.json", str(tmp_path / "out.blend"), str(tmp_path / "r.json")
+    sp.write_text(json.dumps(scene)); yp.write_text(json.dumps({"items": []}))
+    log = _run([ADD_SITE, blend, str(sp), str(yp), out])
+    assert "reference ground hidden ['Ground (grade)', 'Ground ortho']" in log
+    (tmp_path / "look.py").write_text(REF_LOOK)
+    _run([str(tmp_path / "look.py"), out, js])
+    r = json.load(open(js))
+    assert r["objs"] == {"Ground (grade)": [True, True], "Ground ortho": [True, True]}
+    assert r["colls"]["Labels"] == [True, False] and r["colls"]["Reference data"] == [True, False]
+    assert r["colls"]["Site"] == [False, False]
+    assert r["hit"][0] == "Terrain (LiDAR ground)" and abs(r["hit"][1] - -2.2) < 0.05

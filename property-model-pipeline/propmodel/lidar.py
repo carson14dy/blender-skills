@@ -730,6 +730,33 @@ def clamp_unsupported(Z, cell, free, pxy, pz, x0=0.0, y0=0.0, above=0.3, bump=0.
     return Z, int(lowered.sum())
 
 
+def flat_window_median(nodes, cell, pxy, pz, x0=0.0, y0=0.0, window=0.5, dz=0.1, min_n=5, share=0.5):
+    """Flat measured surface round grid nodes: for every ``nodes`` node (bool grid; node (j, i) at (x0 + i cell,
+    y0 + j cell)), the returns (``pxy`` [n, 2], heights ``pz``; e.g. last returns) in the ``window`` m square centred
+    on it are searched for their largest cluster within ``dz`` m in height. When it holds at least ``min_n`` returns
+    and at least ``share`` of the window's returns (a flat ledge or shelf, not the edge of a step), the node gets the
+    cluster's median. Returns a grid with that median (nan elsewhere) and the cluster size grid."""
+    from scipy.spatial import cKDTree
+    nodes = np.asarray(nodes, bool)
+    med = np.full(nodes.shape, np.nan); cnt = np.zeros(nodes.shape, int)
+    jj, ii = np.nonzero(nodes)
+    if not len(jj) or not len(pxy):
+        return med, cnt
+    pz = np.asarray(pz, float)
+    tree = cKDTree(np.asarray(pxy, float))
+    q = np.column_stack([x0 + ii * cell, y0 + jj * cell])
+    for j_, i_, h in zip(jj, ii, tree.query_ball_point(q, window / 2.0, p=np.inf)):
+        if len(h) < min_n:
+            continue
+        z = np.sort(pz[h])
+        hi = np.searchsorted(z, z + dz, side="right")          # cluster starting at each return: z[k] .. z[k] + dz
+        n = hi - np.arange(len(z))
+        k = int(np.argmax(n))                                   # largest (the lowest of equals)
+        if n[k] >= min_n and n[k] >= share * len(z):
+            med[j_, i_] = float(np.median(z[k:hi[k]])); cnt[j_, i_] = int(n[k])
+    return med, cnt
+
+
 def accept_planes(planes, xyz, min_pts=150, max_rms=0.06, max_slope=1.0, min_area=8.0, cell=0.5):
     """Keep roof planes only: enough points, flat enough fit, not steeper than 12/12, real area.
     Area is the occupied-cell area of the inliers (trees and rocks give small or rough patches).

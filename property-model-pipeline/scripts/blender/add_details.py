@@ -38,6 +38,11 @@ geometry, placed from photo measurements. details.json (metres, model frame):
                  # for a 2-lite slider; a window wall of n units = one opening with n-1 mullions); panels: raised panels
                  # on a door / garage door (default 4x8 garage, 3x2 door); style "ribbed": a garage door with narrow
                  # horizontal grooves every rib_spacing m and no raised panels
+                 # "frame": frame bar width (default 0.07). By default sill_z / width / height are the glazed opening
+                 # and the frame bars sit OUTSIDE it (the visible unit is 2 x frame wider and taller); "frame_inside":
+                 # true makes them the OUTER frame size - what a photo measures from sill to head and jamb to jamb -
+                 # with the bars inside it (doors / garage doors: head and jambs only) and mullion fractions taken
+                 # of that outer width
   "decks": [ {"polygon": [[x,y],...], "top_z": 0.95, "rail_edges": [[i,j],...], "rail_gaps": [[x0,y0,x1,y1]],
               "rail_height": 0.9, "post_spacing": 2.0, "post_edges": [i,...],   # post_edges: edge i = vertex i -> i+1
               "rail_style": "balusters|screen|none",     # screen = closely spaced vertical boards under a flat cap rail
@@ -47,12 +52,30 @@ geometry, placed from photo measurements. details.json (metres, model frame):
               "rail_color": [r,g,b], "board_color": [r,g,b], "rim_depth": 0.24, "rim_color": [r,g,b]} ],
               # rim_depth: depth of the rim joist / header board below the boards on every edge (a deep header
               # over a garage door is a rim of 0.8-0.9 m). A concave polygon (a notch around a light well) is fine.
+              # "board_ends": "rim" (default) | "boards": the 0.04 m end faces of the board slab, flush over the rim's
+              # outer face, take the rim colour (a fascia covering rim and board ends) - in a contrasting board colour
+              # they show as a thin line along every edge, through every picket gap; "boards" keeps the board colour
   "stairs": [ {"top": [x,y], "dir": [dx,dy], "width": 1.0, "top_z": 0.95, "bottom_z": 0.2, "risers": 4,
                "length": 2.1,                             # horizontal run top -> bottom (default run 0.27 per tread)
                "rails": ["left", "right"],                # sloped handrails (left/right looking down the stairs)
                "rail_style": "balusters" | {"left": "screen", "right": "balusters"},
                "rail_color": [r,g,b], "tread_color": [r,g,b], "stringer_color": [r,g,b]} ],
   "ceilings": [ {"polygon": [[x,y],...], "z": 3.19, "color": [r,g,b]} ],   # porch ceilings, soffits under cantilevers
+              # Wall points: wherever a point lies ON a wall line - ceiling / deck polygon vertices, beam p0 / p1,
+              # downspout xy and leader path points - it may be given as {"wall": "M:-v", "u": 2.5, "offset": 0.06,
+              # "z": 2.4} instead of [x,y(,z)]: u along the wall from its start ("end" = the wall's far end, negative =
+              # back from the far end), offset outward from the wall face, z optional (a 3-D point). The point then
+              # follows the wall when model.json moves it (a re-fitted or re-measured wall line), so a soffit edge or a
+              # rim beam never floats off its wall. A ceiling whose polygon has (near) zero area is skipped: a soffit
+              # strip between an upper wall and the flush wall below it appears only once the upper wall moves out
+  "roof_wells": [ {"polygon": [[x,y],...], "color": [r,g,b], "material": "siding", "thickness": 0.1,
+                   "bottom_z": null, "label": "..."} ],
+              # liner walls round a roof opening (open trellis bay, light well, courtyard): one vertical wall per polygon
+              # edge from the roof plane over the opening (the highest facet there, holes ignored) down to the roof
+              # surface below it (or bottom_z where no roof lies below), its face on the edge line and `thickness` m
+              # deep away from the opening. Without them an opening in an upper roof over a lower roof is open on
+              # every side under the upper roof, so low sun lights the lower roof through it, while orthophotos show
+              # such a bay as a dark slot
   "boxes": [ {"name": "...", "min": [x,y,z], "max": [x,y,z], "material": "brick|concrete|trim|deck|wood|stone|siding|vinyl",
               "color": [r,g,b]} ],
   "panels": [ {"name": "...", "polygon": [[x,y,z],...], "material": "siding"} ],    # flat infill (e.g. gable end over a porch)
@@ -100,7 +123,10 @@ geometry, placed from photo measurements. details.json (metres, model frame):
   "text": [ {"wall": "G:+u", "u": 0.5, "z": 0.9, "text": "12", "size": 0.16, "material": "fixture", "color": [r,g,b],
              "plate": [w, h], "plate_color": [r,g,b]} ],  # "\n" stacks lines; or "xy": [x,y] + "azimuth": facing deg
                                                           # instead of wall/u (a plaque on a pier or post)
-  "caveats": ["what is not measured, and by how much it may be off", ...]
+  "caveats": ["what is not measured, and by how much it may be off", ...],
+  "color_labels": {"trim_color": "photo #3 sunlit fascia (220,217,195)", ...}
+              # provenance of top-level colours (trim_color, fascia_color, soffit_color, ...): listed in the
+              # "Details notes" text like entry labels (and flagged when they carry a caveat word)
 }
 Walls are named "<wing>:<side>" as in model.json (e.g. "M:-u"); u runs from bottom[0] to bottom[1].
 Provenance: every object built from a list entry carries custom properties "details" (e.g. "stairs[1]") and "label"
@@ -354,7 +380,7 @@ def stamp(ob):
 CAVEAT_WORDS = ("assumed", "extrapolated", "estimated", "approximate", "approx", "unverified", "not measured",
                 "by eye", "±", "+/-")
 LIST_KEYS = ("openings", "extra_walls", "decks", "stairs", "ceilings", "boxes", "panels", "beams", "beam_ends",
-             "wall_boxes", "downspouts", "roof_vents", "skylights", "chimneys", "lights", "text")
+             "wall_boxes", "downspouts", "roof_vents", "skylights", "chimneys", "lights", "text", "roof_wells")
 
 
 def details_notes(D):
@@ -364,6 +390,8 @@ def details_notes(D):
     for k, v in D.items():
         if isinstance(v, dict) and v.get("label"):
             rows.append((k, str(v["label"])))
+    for k, lab in (D.get("color_labels") or {}).items():
+        rows.append((k, str(lab)))
     for k in LIST_KEYS:
         for i, e in enumerate(D.get(k, []) or []):
             lab = (e.get("label") or e.get("name")) if isinstance(e, dict) else None
@@ -437,13 +465,47 @@ def wall_frames(model):
     return out
 
 
+def wall_point(p, frames):
+    """A point from details.json: [x, y] / [x, y, z] as given, or a wall point {"wall", "u", "offset", "z"} resolved
+    on the current wall line (u from the wall start; "end" or a negative u counts from the far end; offset outward
+    from the face). Returns a list of 2 or 3 floats (3 when the wall point carries "z")."""
+    if not isinstance(p, dict):
+        return [float(v) for v in p]
+    if p.get("wall") not in frames:
+        raise KeyError(f"wall point names an unknown wall {p.get('wall')!r} (known: {sorted(frames)})")
+    a, d, n, L, _ = frames[p["wall"]]
+    u = p.get("u", 0.0)
+    u = L if u == "end" else (L + float(u) if float(u) < 0 else float(u))
+    q = a + d * u + n * float(p.get("offset", 0.0))
+    return [q.x, q.y] + ([float(p["z"])] if p.get("z") is not None else [])
+
+
+def wall_points(pts, frames):
+    return [wall_point(p, frames) for p in pts]
+
+
 def add_opening(o, frames, c, mats):
     a, d, n, L, _ = frames[o["wall"]]
     w, h = o["width"], o["height"]
     u0 = o["u"] - w / 2
-    base = a + d * u0 + Vector((0, 0, o["sill_z"]))
+    sill = o["sill_z"]
     kind = o.get("kind", "window")
     T, D = o.get("frame", 0.07), 0.04          # frame width, frame projection
+    W_out = w                                  # outer width the mullion fractions refer to (frame_inside)
+    if o.get("frame_inside"):
+        # sill_z / width / height are the OUTER frame (what a photo measures: sill to head, jamb to jamb), so the
+        # frame bars sit inside that rectangle and the glazing / leaf shrinks by the frame width on each side.
+        # A door or garage door has no sill bar: only the head and jambs come off its height and width.
+        u0 += T
+        w -= 2 * T
+        if kind in ("door", "garage"):
+            h -= T
+        else:
+            sill += T
+            h -= 2 * T
+        if w <= 0 or h <= 0:
+            raise ValueError(f"opening {o.get('label', kind)!r}: frame {T} m leaves no glazing with frame_inside")
+    base = a + d * u0 + Vector((0, 0, sill))
     name = o.get("label", kind)[:40]
     # recessed glass / door leaf, slightly proud of the wall so it never z-fights
     leaf = mats["glass"] if kind in ("window", "slider", "egress") else (mats["garage"] if kind == "garage" else mats["door"])
@@ -465,8 +527,9 @@ def add_opening(o, frames, c, mats):
     if mull is None:
         mull = [0.5] if (kind in ("window", "slider") and (h <= 1.6 or kind == "slider") and w > 0.6) else []
     mw = o.get("mullion_width", 0.04)
-    for fr in mull:   # meeting rails / mullions
-        oriented_box(f"{name} mullion", base + d * (w * fr - mw / 2), d * mw, n * 0.02, Vector((0, 0, h)), c, fm)
+    for fr in mull:   # meeting rails / mullions (fractions of the outer width with frame_inside)
+        x = W_out * fr - T if o.get("frame_inside") else w * fr
+        oriented_box(f"{name} mullion", base + d * (x - mw / 2), d * mw, n * 0.02, Vector((0, 0, h)), c, fm)
     if kind == "garage":
         rows, cols = o.get("panels", [4, 8])
         if o.get("style") == "ribbed":   # lap-look steel door: narrow horizontal grooves, no raised panels
@@ -683,7 +746,14 @@ def add_deck(dk, c, mats, idx):
     for i in range(n):
         j = (i + 1) % n
         faces.append([i, j, n + j, n + i])
-    mesh(f"deck {idx} boards", top + bot, faces, c, board)
+    ob = mesh(f"deck {idx} boards", top + bot, faces, c, board)
+    # board ends: the side faces of the board slab sit flush over the rim's outer face, so by default they take the
+    # rim material (a fascia over rim + board ends); in board colour they read as a thin coloured line along every
+    # edge, worst through a railing's picket gaps. "board_ends": "boards" keeps them in the board colour.
+    if dk.get("board_ends", "rim") == "rim" and rim_m is not board:
+        ob.data.materials.append(rim_m)
+        for p in ob.data.polygons[2:]:
+            p.material_index = 1
     # rim joist / header (rim_depth), always just inside the outline (either winding) + support posts
     rd = dk.get("rim_depth", 0.24)
     ccw = sum(poly[i].x * poly[(i + 1) % n].y - poly[(i + 1) % n].x * poly[i].y for i in range(n)) > 0
@@ -961,11 +1031,11 @@ def add_skylights_chimneys(model, D, c, mats):
                      ea * (A + 2 * co), eb * (B + 2 * co), Vector((0, 0, ct)), c, cap_m)
 
 
-def add_beams(model, D, c, mats):
-    """Straight beams (rim/porch beams, headers, trellis rafters lying in a roof plane)."""
+def add_beams(model, D, c, mats, frames=None):
+    """Straight beams (rim/porch beams, headers, trellis rafters lying in a roof plane); p0 / p1 may be wall points."""
     for i, bm in enumerate(D.get("beams", [])):
         tag(f"beams[{i}]", bm)
-        p0, p1 = list(bm["p0"]), list(bm["p1"])
+        p0, p1 = wall_point(bm["p0"], frames or {}), wall_point(bm["p1"], frames or {})
         w, h = bm.get("size", (0.15, 0.2))
         nm = bm.get("name", f"beam {i}")[:40]
         m = pick(bm, mats, "trim", nm, 0.6)
@@ -1019,6 +1089,55 @@ def add_beam_ends(model, D, c, mats):
         o = tip - nrm * L - sd * (w / 2) + Vector((0, 0, topz - h))
         nm = be.get("name", f"beam end {i}")[:40]
         oriented_box(nm, o, nrm * L, sd * w, Vector((0, 0, h)), c, pick(be, mats, "trim", "beam ends", 0.6))
+
+
+def add_roof_wells(model, D, c, mats):
+    """Liner walls round roof openings ("roof_wells"): per polygon edge a slab from just under the roof plane over the
+    opening (the top facet just inside the opening at mid-edge, holes ignored) down into the roof (or bottom_z) below
+    it, its face 5 mm behind the edge line (the hole-edge fascia stays proud of it) and `thickness` deep away from the
+    opening. Edges with no roof over them are skipped."""
+    for i, rw in enumerate(D.get("roof_wells", [])):
+        tag(f"roof_wells[{i}]", rw)
+        ring = [Vector((float(p[0]), float(p[1]), 0)) for p in rw["polygon"]]
+        n = len(ring)
+        if n < 3:
+            continue
+        ccw = sum(ring[k].x * ring[(k + 1) % n].y - ring[(k + 1) % n].x * ring[k].y for k in range(n)) > 0
+        th = float(rw.get("thickness", 0.1))
+        verts, faces, skipped_edges = [], [], 0
+        for k in range(n):
+            a, b = ring[k], ring[(k + 1) % n]
+            e = b - a
+            if e.length < 1e-6:
+                continue
+            away = Vector((e.y, -e.x, 0)).normalized() * (1 if ccw else -1)     # away from the opening
+            if e.cross(away).z < 0:                                                 # right-handed slab: outward normals
+                a, b, e = b, a, -e
+            corners = [a + away * 0.005, b + away * 0.005, b + away * (0.005 + th), a + away * (0.005 + th)]
+            mid = (a + b) / 2 - away * 0.05                       # just inside the opening, mid-edge
+            pl = facet_plane(model, mid.x, mid.y)                 # the roof the opening is cut in (holes ignored)
+            top, bot = [], []
+            for q in corners if pl else []:
+                zt = pl[0] * q.x + pl[1] * q.y + pl[2]
+                zb = roof_below(model, q.x, q.y, zt - 0.05)
+                if zb is None:                                    # slab corner past the lower roof's edge
+                    qi = q - away * (away.dot(q - a) + 0.05)
+                    zb = roof_below(model, qi.x, qi.y, zt - 0.05)
+                zb = rw.get("bottom_z") if zb is None else zb
+                if zb is None or zb >= zt - 0.05:
+                    break
+                top.append(zt - 0.01)
+                bot.append(zb - 0.02)
+            if len(top) < 4:
+                skipped_edges += 1
+                continue
+            j = len(verts)
+            verts += [(q.x, q.y, z) for q, z in zip(corners, bot)] + [(q.x, q.y, z) for q, z in zip(corners, top)]
+            faces += [[j + v for v in f] for f in BOX_FACES]
+        if skipped_edges:
+            print(f"roof well {i}: {skipped_edges} edge(s) with no roof above or below, skipped")
+        if faces:
+            mesh(f"roof well {i}", verts, faces, c, pick(rw, mats, "siding", f"roof well {i}", 0.85))
 
 
 def add_extra_walls(D, frames, c, mats):
@@ -1094,7 +1213,7 @@ def add_downspouts(model, D, frames, c, mats):
     tol = D.get("downspout_max_gap", 0.15)
     for i, ds in enumerate(D.get("downspouts", [])):
         tag(f"downspouts[{i}]", ds)
-        x, y = ds["xy"]
+        x, y = wall_point(ds["xy"], frames)[:2]
         gap = wall_gap((x, y), frames)
         if gap > tol:
             print(f"WARNING: downspout {i} at ({x:.2f}, {y:.2f}) is {gap:.2f} m from the nearest wall face "
@@ -1107,7 +1226,7 @@ def add_downspouts(model, D, frames, c, mats):
             else:
                 bottom, name = zr, f"roof drop {i}"
         box(name, (x - 0.04, y - 0.04, bottom), (x + 0.04, y + 0.04, ds["top_z"]), c, mats["gutter"])
-        path = [Vector(p) for p in ds.get("path", [])]
+        path = [Vector(p) for p in wall_points(ds.get("path", []), frames)]
         if path:
             path.append(Vector((x, y, ds["top_z"] - 0.04)))
         for k in range(len(path) - 1):      # leader pipes (named so the grounding step leaves them alone)
@@ -1218,8 +1337,9 @@ def main():
         add_opening(o, frames, c, mats)
     add_roof_extras(model, D, c, mats)
     add_skylights_chimneys(model, D, c, mats)
-    add_beams(model, D, c, mats)
+    add_beams(model, D, c, mats, frames)
     add_beam_ends(model, D, c, mats)
+    add_roof_wells(model, D, c, mats)
     tag()
     if D.get("corner_boards", True):
         add_corner_boards(model, frames, D.get("foundation", {}), c, mats)
@@ -1227,13 +1347,17 @@ def main():
     add_lights_and_text(D, frames, c, mats)
     for i, dk in enumerate(D.get("decks", [])):
         tag(f"decks[{i}]", dk)
-        add_deck(dk, c, mats, i)
+        add_deck({**dk, "polygon": [p[:2] for p in wall_points(dk["polygon"], frames)]}, c, mats, i)
     for i, st in enumerate(D.get("stairs", [])):
         tag(f"stairs[{i}]", st)
         add_stairs(st, c, mats, i)
     for i, ce in enumerate(D.get("ceilings", [])):
         tag(f"ceilings[{i}]", ce)
-        pts = [(x, y, ce["z"]) for x, y in ce["polygon"]]
+        pts = [(p[0], p[1], ce["z"]) for p in wall_points(ce["polygon"], frames)]
+        area = 0.5 * abs(sum(pts[k][0] * pts[k - 1][1] - pts[k - 1][0] * pts[k][1] for k in range(len(pts))))
+        if area < 0.01:          # wall points that coincide until a wall moves (a soffit strip over a flush wall)
+            print(f"ceiling {i}: zero area ({area:.4f} m2), skipped")
+            continue
         mesh(f"porch ceiling {i}", pts, [list(range(len(pts)))], c, pick(ce, mats, "soffit", f"ceiling {i}", 0.6))
     for i, b in enumerate(D.get("boxes", [])):
         tag(f"boxes[{i}]", b)

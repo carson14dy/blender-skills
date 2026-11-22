@@ -15,18 +15,22 @@ rock-bed overlays, curb lines, subject parcel, point features). yard.json (model
              {"kind": "meter", "xy": [x,y], "z": 1.0},
              {"kind": "box", "name": "...", "xy": [x,y], "size": [w,d,h], "z": 0.0, "rotation": deg, "material": "concrete", "color": [r,g,b]},
              {"kind": "boulder", "polygon": [[x,y],...], "top_z": z, "color": [r,g,b]},          # rock rising from the terrain
-             #   a smooth-shaded dome: the outline (+ 4-point midpoints) in 8 cos-spaced rings, h = (1 - rho^2.5)^(1/2)
+             #   a smooth-shaded dome: the outline (+ 4-point midpoints) in 8 cos-spaced rings, h = (1 - rho^2.5)^(1/2),
+             #   built of explicit triangles (each side quad folded along its closest-z, then shorter, diagonal: split_quad)
              #   ("rings", "dome": [a, b], "subdivide" override), broad rounded top at top_z; rings never lean out over
              #   the ring below (no undercut at concave outline corners); "surface": "foliage" gives a leafy two-tone
-             #   material without joints or bedding (a mass the LiDAR cannot tell from rock, e.g. dense juniper)
+             #   material without joints or bedding (a mass the LiDAR cannot tell from rock, e.g. dense juniper);
+             #   "foot": "terrain" starts the dome at the terrain under each outline point (default: every ring from the
+             #   outline's lowest grade - 0.15, which on a slope meets the upper ground as a steep sheet)
              {"kind": "retaining_wall", "line": [[x,y],...], "top_z": z or "height": h, "thickness": 0.3,
-              "material": "stone|concrete|drystack|timber", "color": [r,g,b], "line_is": "centre|face", "uphill": "left|right",
+              "material": "stone|concrete|drystack|timber|rock", "color": [r,g,b], "line_is": "centre|face", "uphill": "left|right",
               "cap_color": [[r,g,b],[r,g,b]]},          # optional: a separate (e.g. lighter) material on the top faces
              #   "top_z": [z, z, ...] (one per segment) gives a stepped wall with level tops; the bottom goes
              #   0.3 m under the lower of the two grades beside it (build_site.py --breaklines yard.json
              #   makes the terrain step inside the wall). "line_is": "face": the line is the exposed (downhill)
              #   face as measured from the LiDAR step, the thickness goes to the uphill side ("uphill": left /
-             #   right of the line direction, or the higher grade). "drystack" is dry-laid thin flat stone: random
+             #   right of the line direction, or the higher grade). "rock": a natural rock face (boulder or ledge edge
+             #   the terrain steps at) in the boulder sandstone material. "drystack" is dry-laid thin flat stone: random
              #   course heights (0.04-0.12 m) and stone lengths (0.15-0.6 m, random stagger), per-stone colour drawn
              #   from the item's colour range (default buff sandstone), dark brown-grey 12 mm joints recessed 1.5 cm,
              #   plain stone colour on the top faces; "drystack": {"course": [lo, hi], "stone": [lo, hi], "joint": m,
@@ -41,7 +45,9 @@ rock-bed overlays, curb lines, subject parcel, point features). yard.json (model
               "color": [r,g,b], "tread": {"slab": 0.05, "gap": 0.06, "fill": [[r,g,b],[r,g,b]]}},
              #   landscape steps, each tread grounded; "tread": slabs of the step colour on a fill block (default the
              #   rock-bed material) that shows as a `gap` m strip between treads; every tread top stays >= "clearance"
-             #   (default 0.03 m; negative = off) above the terrain under its middle half and never below the tread before it
+             #   (default 0.03 m; negative = off) above the terrain under the middle of its run (LiDAR ground over a stair
+             #   is a ramp through the tread middles) and never below the tread before it; build_site.py --step-caps keeps
+             #   the terrain under the treads below the line z0 -> z1
              {"kind": "rock_scatter", "polygon": [[x,y],...], "count": 12, "size": [0.3, 0.7], "seed": 1,
               "holes": [[[x,y],...]], "color": [[r,g,b],[r,g,b]]},
              #   angular, partly buried stones (noisy icosphere 1 x 0.6-0.9 x 0.35-0.5, random yaw, 30 % below grade),
@@ -54,6 +60,7 @@ rock-bed overlays, curb lines, subject parcel, point features). yard.json (model
              {"kind": "fence", "line": [[x,y],...], "height": 1.2 or "top_z": z, "style": "rail|picket|baluster|chain", "color": [r,g,b]},
              {"kind": "surface", "polygon": [[x,y],...], "color": [[r,g,b],[r,g,b]], "scale": 10, "lift": 0.025, "name": "..."},
              {"kind": "path", "line": [[x,y],...], "width": 0.9, "color": [[r,g,b],[r,g,b]]},    # draped strip
+             #   surfaces and paths are draped exactly on the terrain triangles (drape_exact) + lift
              {"kind": "hot_tub", "xy": [x,y], "size": [2.1, 2.1, 0.9], "rotation": deg, "z": deck_z},
              {"kind": "mailbox" | "light_post", "xy": [x,y], "rotation": deg} ],
   # every item may carry "z" (absolute base, model frame) instead of sitting on the terrain
@@ -71,7 +78,10 @@ turtle-shell crack net.
 Terrain faces carry build_site.py's surface class: "ground" (soil / grass) or "rock" (boulders and
 outcrops the LiDAR rock merge raised, or traced rock outlines). With the scene's per-vertex "vertex_rock"
 weight the terrain gets one material that blends the two (soft, noise-broken boulder edges); without
-it, rock faces get the rock material slot. The default rock tone is buff sandstone (ROCK_A/ROCK_B).
+it, rock faces get the rock material slot. The default rock tone is buff sandstone (ROCK_A/ROCK_B). Terrain vertices
+within 0.1 m of a yard "boulder" outline carry that boulder's colour range in two point colour attributes (rock_tone_lo /
+rock_tone_hi; boulder_tones) that the blended material's rock tone reads, so terrain the LiDAR raised inside a boulder
+renders as the same stone where it pokes through the dome ("boulder_tones": false in yard.json turns it off).
 The terrain is built from explicit triangles along each cell's fold (see build_site.py split_diagonals), so it
 renders on exactly the triangles the overlays were draped on; it is smooth-shaded with edges sharper than
 SHARP_DEG marked sharp and area-weighted normals (WeightedNormal, keep sharp). Draped overlays are
@@ -80,6 +90,11 @@ smooth-shaded and wound counter-clockwise (normals up) for viewers that cull bac
 Every Site object carries a custom property "site_kind": the yard item kind that made it ("retaining_wall",
 "pier", ...), "overlay:<name>" for draped overlays, "curb" or "edging" (render_thumbnail.py --terrain keeps
 the hardscape by it).
+
+Reference geometry: once the scene has a terrain, build_model.py's flat reference ground planes ("Ground (grade)",
+"Ground ortho*") are hidden in renders and viewports (hide_reference) -- the LiDAR terrain is the only ground, and a
+flat plane at the model datum would cover everything below it on a hillside lot -- and the QA collections "Labels",
+"Roof edges", "LiDAR points" and "Reference data" are excluded from renders (their viewport visibility is kept).
 
 Grounding: walls and foundation strips are extended to 0.3 m below the terrain under them
 (terrain is the LiDAR ground, so the house sits exactly as surveyed), deck posts, stair
@@ -103,6 +118,32 @@ ROCK_A, ROCK_B = (0.442, 0.38, 0.284), (0.524, 0.45, 0.341)
 CRACK_SCALE, CRACK_WIDTH, CRACK_DARK = 0.53, 0.01, 0.82
 BEDDING_STRETCH, BEDDING_AMP, BEDDING_SCALE = 6.0, 0.08, 0.8
 SHARP_DEG = 50.0      # terrain edges whose two faces differ by more than this are shaded sharp
+# build_model.py reference ground the LiDAR terrain replaces (flat grade plane, ortho plane) and its QA collections
+REFERENCE_GROUND = ("Ground (grade)", "Ground ortho")
+QA_COLLECTIONS = ("Labels", "Roof edges", "LiDAR points", "Reference data")
+
+
+def reference_ground(names, prefixes=REFERENCE_GROUND):
+    """The names among `names` that are build_model reference ground planes (replaced by the terrain)."""
+    return [n for n in names if n.startswith(tuple(prefixes))]
+
+
+def hide_reference(objects, collections, terrain=True):
+    """With a terrain: hide the reference ground planes in renders and viewports (so neither a render nor a ray cast
+    meets a flat plane at the model datum) and exclude the QA collections from renders, keeping them in the viewport.
+    `objects` / `collections`: bpy.data.objects / bpy.data.collections (or anything with .name / .hide_render /
+    .hide_viewport). Returns (plane names, collection names) changed."""
+    if not terrain:
+        return [], []
+    planes = set(reference_ground([o.name for o in objects]))
+    for o in objects:
+        if o.name in planes:
+            o.hide_render = True
+            o.hide_viewport = True
+    cols = [c for c in collections if c.name in QA_COLLECTIONS]
+    for c in cols:
+        c.hide_render = True
+    return sorted(planes), [c.name for c in cols]
 
 
 def ccw_tris(verts, tris):
@@ -162,7 +203,9 @@ def smooth_face_normals(ob, grid, range_min=1.0, rings=2, laplace=0.5, max_dz=0.
     is applied into custom normals), then every corner of a vertex whose 8-neighbour height range exceeds `range_min` m
     (the 'rock face' vertex group, also written) gets the area-weighted normal averaged over (2 `rings` + 1)^2 grid
     vertices: the face is shaded as the face, the geometry (measured heights) is untouched. `grid` = the scene's
-    {"nx", "ny", "z"} (terrain vertices in grid order). Returns the number of face vertices."""
+    {"nx", "ny", "z"[, "x0", "y0", "cell"]} (terrain vertices in grid order; with the origin and cell, vertices off the
+    regular grid -- breakline nodes snapped onto a retaining-wall face -- are not moved). Returns the number of face
+    vertices."""
     import numpy as np
     nx, ny = int(grid["nx"]), int(grid["ny"])
     me = ob.data
@@ -176,9 +219,17 @@ def smooth_face_normals(ob, grid, range_min=1.0, rings=2, laplace=0.5, max_dz=0.
         return 0
     if laplace and laplace > 0:
         # one Laplacian pass (factor `laplace`) over the rock-face vertices: the staircase a grid makes of an oblique cliff
-        # is pulled towards its neighbours (in plan mostly; height change limited to +-`max_dz` m so measured crests stay)
+        # is pulled towards its neighbours (in plan mostly; height change limited to +-`max_dz` m so measured crests stay).
+        # Breakline vertices (build_site snapped them off the regular grid onto a retaining-wall face) stay put: they
+        # carry the wall's step exactly on its faces, and the overlays were draped on them
+        movable = face.copy()
+        if "x0" in grid and "cell" in grid:
+            co = np.zeros(len(me.vertices) * 3); me.vertices.foreach_get("co", co); co = co.reshape(-1, 3)
+            jj, ii = np.divmod(np.arange(nx * ny), nx)
+            reg = np.column_stack([grid["x0"] + ii * grid["cell"], grid["y0"] + jj * grid["cell"]])
+            movable &= np.hypot(*(co[:, :2] - reg).T) < 1e-4
         bm = bmesh.new(); bm.from_mesh(me); bm.verts.ensure_lookup_table()
-        sel = [bm.verts[int(k)] for k in np.nonzero(face)[0]]
+        sel = [bm.verts[int(k)] for k in np.nonzero(movable)[0]]
         z0 = {v.index: v.co.z for v in sel}
         bmesh.ops.smooth_vert(bm, verts=sel, factor=float(laplace), use_axis_x=True, use_axis_y=True, use_axis_z=True)
         for v in sel:
@@ -331,9 +382,11 @@ def stone(name, rgb_a, rgb_b, scale, bump=0.6):
     return m
 
 
-def blend_by_attribute(name, ground, rock, attr, edge=0.5, soft=0.18):
+def blend_by_attribute(name, ground, rock, attr, edge=0.5, soft=0.18, tone_attrs=None):
     """Terrain material: two-tone noise `ground` (rgb_a, rgb_b, scale) where the point attribute `attr` is
-    low, `rock` where it is high, with a noise-broken transition around `edge`."""
+    low, `rock` where it is high, with a noise-broken transition around `edge`. ``tone_attrs`` = (lo, hi): names of
+    two point colour attributes that replace the rock tone's two colours per vertex (boulder_tones: the terrain the
+    LiDAR raised inside a yard boulder outline takes that boulder's colour range); the rock noise still mixes them."""
     m = mat(name, ground[0], 0.9)
     nt = m.node_tree
     b = nt.nodes.get("Principled BSDF")
@@ -349,6 +402,17 @@ def blend_by_attribute(name, ground, rock, attr, edge=0.5, soft=0.18):
         return nz, rp
     nz_g, rp_g = tone(*ground)
     nz_r, rp_r = tone(*rock)
+    rock_col = rp_r.outputs["Color"]
+    if tone_attrs:
+        # per-vertex rock colours: mix(lo, hi, noise) -- the same linear two-stop ramp, its stops read per vertex
+        lo_, hi_ = (nt.nodes.new("ShaderNodeAttribute") for _ in range(2))
+        for nd_, nm_ in ((lo_, tone_attrs[0]), (hi_, tone_attrs[1])):
+            nd_.attribute_type = "GEOMETRY"; nd_.attribute_name = nm_; nd_.label = "rock tone " + nm_
+        mt = nt.nodes.new("ShaderNodeMix"); mt.data_type = "RGBA"; mt.label = "rock tone per vertex"
+        nt.links.new(nz_r.outputs["Fac"], mt.inputs["Factor"])
+        nt.links.new(lo_.outputs["Color"], mt.inputs[6]); nt.links.new(hi_.outputs["Color"], mt.inputs[7])
+        nt.nodes.remove(rp_r)
+        rock_col = mt.outputs[2]
     att = nt.nodes.new("ShaderNodeAttribute"); att.attribute_type = "GEOMETRY"; att.attribute_name = attr
     brk = nt.nodes.new("ShaderNodeTexNoise"); brk.inputs["Scale"].default_value = 1.5
     nt.links.new(geo.outputs["Position"], brk.inputs["Vector"])
@@ -362,12 +426,40 @@ def blend_by_attribute(name, ground, rock, attr, edge=0.5, soft=0.18):
     mix = nt.nodes.new("ShaderNodeMix"); mix.data_type = "RGBA"
     nt.links.new(mr.outputs["Result"], mix.inputs["Factor"])
     nt.links.new(rp_g.outputs["Color"], mix.inputs[6])
-    nt.links.new(add_cracks(nt, add_bedding(nt, rp_r.outputs["Color"])), mix.inputs[7])
+    nt.links.new(add_cracks(nt, add_bedding(nt, rock_col)), mix.inputs[7])
     nt.links.new(mix.outputs[2], b.inputs["Base Color"])
     bp = nt.nodes.new("ShaderNodeBump"); bp.inputs["Strength"].default_value = 0.4
     nt.links.new(nz_r.outputs["Fac"], bp.inputs["Height"]); nt.links.new(bp.outputs["Normal"], b.inputs["Normal"])
     m.diffuse_color = (*[0.5 * (x + y) for x, y in zip(ground[0], rock[0])], 1)
     return m
+
+
+def boulder_tones(items, verts, rock, pad=0.1):
+    """Per-vertex rock colours of the terrain: vertices within ``pad`` m of a yard "boulder" outline (not a "foliage"
+    mass) take that boulder's colour range (_two: its "color", else ``rock``), all others ``rock`` (lo, hi linear RGB).
+    The LiDAR rock merge raises the terrain inside a traced boulder to its returns, so where the terrain pokes through
+    the dome it shows in the boulder's own colour and the boulder reads as one stone. Returns (lo list, hi list, number
+    of vertices inside a boulder) or None when no vertex lies in a boulder (later outlines win where they overlap)."""
+    import shapely
+    from shapely.geometry import Polygon
+    import numpy as _np
+    bl = [it for it in items if isinstance(it, dict) and it.get("kind") == "boulder" and it.get("polygon")
+          and it.get("surface") != "foliage"]
+    if not bl or not len(verts):
+        return None
+    V = _np.asarray(verts, float)
+    lo = _np.tile(_np.asarray(rock[0], float), (len(V), 1)); hi = _np.tile(_np.asarray(rock[1], float), (len(V), 1))
+    inside = _np.zeros(len(V), bool)
+    for it in bl:
+        pg = Polygon(it["polygon"]).buffer(0)
+        if pg.is_empty:
+            continue
+        m = shapely.contains_xy(pg.buffer(pad), V[:, 0], V[:, 1])
+        a_, b_ = _two(it, tuple(rock[0]), tuple(rock[1]))
+        lo[m] = a_; hi[m] = b_; inside |= m
+    if not inside.any():
+        return None
+    return [tuple(r) for r in lo], [tuple(r) for r in hi], int(inside.sum())
 
 
 def mesh(name, verts, faces, c, m):
@@ -541,6 +633,21 @@ def no_overhang(ring, prev):
     return out
 
 
+def split_quad(verts, q):
+    """Two triangles of the quad q (vertex indices into verts, counter-clockwise), split along the diagonal whose two
+    vertices differ less in height (the terrain rule of build_site.py split_diagonals), ties along the shorter diagonal:
+    a twisted quad split the other way renders as a dark folded shard (Blender would split every quad along 0-2)."""
+    a, b, c_, d = q
+    P = [verts[j] for j in q]
+    dz02, dz13 = abs(P[0][2] - P[2][2]), abs(P[1][2] - P[3][2])
+    if abs(dz02 - dz13) < 1e-6:
+        l02 = sum((P[0][j] - P[2][j]) ** 2 for j in range(3)); l13 = sum((P[1][j] - P[3][j]) ** 2 for j in range(3))
+        use13 = l13 < l02 - 1e-12
+    else:
+        use13 = dz13 < dz02
+    return [[a, b, d], [b, c_, d]] if use13 else [[a, b, c_], [a, c_, d]]
+
+
 def k_boulder(it, G, c, M, i):
     """Rock: the outline at grade (+ 4-point midpoints: 2x the segments, measured vertices kept), rising in
     `rings` cos-spaced rings with a dome profile (`dome` [a, b]: h = (1 - rho^a)^(1/b)) to a broad rounded top at
@@ -560,6 +667,13 @@ def k_boulder(it, G, c, M, i):
     zg = min(G.z(x, y, 0) for x, y in ring0) - 0.15
     ring0 = subdivide_ring(ring0, it.get("subdivide", 1))
     top = it.get("top_z", zg + it.get("height", 1.0))
+    if it.get("foot") == "terrain":
+        # the dome rises from the terrain under each outline point (a boulder on a slope stands taller on its downhill
+        # side), instead of every ring starting at the outline's lowest grade: on a slope that profile meets the upper
+        # ground as a near-vertical sheet along the outline
+        zb = [min(G.z(x, y, zg + 0.15) - 0.15, top - 0.05) for x, y in ring0]
+    else:
+        zb = [zg] * len(ring0)
     fr = dome_rings(it.get("rings", BOULDER_RINGS), tuple(it.get("dome", BOULDER_DOME)))
     verts, faces, n = [], [], len(ring0)
     prev = None
@@ -567,8 +681,8 @@ def k_boulder(it, G, c, M, i):
         ring = [(x + (cx - x) * f, y + (cy - y) * f) for x, y in ring0]
         if prev is not None:
             ring = no_overhang(ring, prev)
-        for x, y in ring:
-            verts.append((x, y, zg + (top - zg) * hz))
+        for k, (x, y) in enumerate(ring):
+            verts.append((x, y, zb[k] + (top - zb[k]) * hz))
         prev = ring
     # a side quad whose normal still points down (inset rings of a strongly concave outline cross) is made vertical:
     # its upper vertices move straight above the lower ones (repeated up the rings)
@@ -588,7 +702,7 @@ def k_boulder(it, G, c, M, i):
     for r in range(len(fr) - 1):
         for k in range(n):
             a, b = r * n + k, r * n + (k + 1) % n
-            faces.append([a, b, b + n, a + n])
+            faces += split_quad(verts, [a, b, b + n, a + n])
     ctr = len(verts)
     verts.append((cx, cy, top))
     r0 = (len(fr) - 1) * n
@@ -771,8 +885,13 @@ def drystack(name, rgb_a, rgb_b, course=None, stone=None, joint=None, joint_colo
     return m
 
 
-def _wall_material(it, i):
+def _wall_material(it, i, M=None):
     kind = it.get("material", "stone")
+    if kind == "rock":
+        # a natural rock face carried as a breakline (a boulder or ledge edge the terrain steps at): the boulder / outcrop
+        # sandstone (joints and bedding), in the item's colour or the scene's rock tone
+        dflt = (M or {}).get("_tones", {}).get("rock", (ROCK_A, ROCK_B))[:2]
+        return stone(f"Retaining wall (rock face) {i}", *_two(it, *dflt), 3.0, 0.6)
     if kind == "drystack":
         return drystack(f"Dry-stack stone {i}", *_two(it, (0.45, 0.40, 0.32), (0.75, 0.68, 0.56)), **it.get("drystack", {}))
     if kind == "concrete":
@@ -860,7 +979,7 @@ def k_retaining_wall(it, G, c, M, i):
     """Wall along a polyline: mitred joints (no overlapping boxes), one level top per segment when
     top_z is a list (a stepped wall), foot 0.3 m under the lower of the two grades beside it."""
     th = it.get("thickness", 0.3)
-    m_ = _wall_material(it, i)
+    m_ = _wall_material(it, i, M)
     cap = None
     if it.get("cap_color"):
         # sunlit / weathered-light cap on a darker face (photo: dark poured faces, pale caps)
@@ -969,12 +1088,12 @@ def k_steps(it, G, c, M, i):
         cx, cy = ax_ + (bx_ - ax_) * (s0 + s1) / 2, ay_ + (by_ - ay_) * (s0 + s1) / 2
         top = z0 + (z1 - z0) * (k + 1) / n
         if clear >= 0:
-            # never buried: the tread stands at least `clearance` above the terrain under its middle half (nose, centre
-            # and back, at 0 and +-w/4: a stair whose slope steepens near the top otherwise sinks into the ground along
-            # the straight z0-z1 line; on a cross slope the outer edge of the uphill side may stay cut into the bank);
-            # treads never step down
-            pts_ = [(cx + sa * ux * L / (2 * n) - sb * uy * w, cy + sa * uy * L / (2 * n) + sb * ux * w)
-                    for sa in (-0.9, 0.0, 0.9) for sb in (-0.25, 0.0, 0.25)]
+            # never buried: the tread stands at least `clearance` above the terrain under the middle of its run (at 0 and
+            # +-w/4 across: a stair whose slope steepens near the top otherwise sinks into the ground along the straight
+            # z0-z1 line; on a cross slope the outer edge of the uphill side may stay cut into the bank); treads never step
+            # down. Only the middle of the run is sampled: LiDAR ground over a stair is a smooth ramp through the tread
+            # middles, which stands half a riser above the tread at its back (build_site.py --step-caps lowers it there)
+            pts_ = [(cx - sb * uy * w, cy + sb * ux * w) for sb in (-0.25, 0.0, 0.25)]
             top = max(top, max(G.z(px_, py_, top) for px_, py_ in pts_) + clear, last)
         last = top
         base = min(G.z(cx, cy, top), top - 0.15) - 0.1
@@ -1119,7 +1238,56 @@ def k_fence(it, G, c, M, i):
                 box(f"fence {i} picket", (p.x - w2, p.y - w2, z0), (p.x + w2, p.y + w2, z + H - 0.05), c, m_)
 
 
+_TERRAIN = {}     # main(): "tris" = terrain triangle corners [n, 3, 3] (the same triangles the terrain mesh is built of)
+
+
+def drape_exact(P, tris, lift):
+    """Drape the polygon ``P`` exactly on the terrain triangles ``tris`` ([n, 3, 3] corner coordinates): every piece of
+    ``P`` inside a triangle gets that triangle's plane + ``lift`` (as build_site.py drapes its overlays), so no terrain
+    pokes through a draped surface on rough ground. Returns (verts, tris) wound counter-clockwise (normals up)."""
+    import numpy as np
+    import shapely
+    verts, out = [], []
+    T = np.asarray(tris, float)
+    if P.is_empty or not len(T):
+        return verts, out
+    bx0, by0, bx1, by1 = P.bounds
+    mn, mx = T[:, :, :2].min(1), T[:, :, :2].max(1)
+    T = T[(mx[:, 0] >= bx0) & (mn[:, 0] <= bx1) & (mx[:, 1] >= by0) & (mn[:, 1] <= by1)]
+    if not len(T):
+        return verts, out
+    polys = shapely.polygons(T[:, :, :2])
+    good = shapely.area(polys) > 1e-9
+    shapely.prepare(P)
+    inside = good & shapely.contains(P, polys)
+    part = good & ~inside & shapely.intersects(P, polys)
+    A = np.concatenate([T[:, :, :2], np.ones((len(T), 3, 1))], 2)
+    coef = np.full((len(T), 3), np.nan)
+    ok = inside | part
+    coef[ok] = np.linalg.solve(A[ok], T[ok, :, 2][..., None])[..., 0]
+    for k in np.nonzero(inside)[0]:
+        b0 = len(verts)
+        verts += [(float(x), float(y), float(z) + lift) for x, y, z in T[k]]
+        out.append([b0, b0 + 1, b0 + 2])
+    kp = np.nonzero(part)[0]
+    for k, pc in zip(kp, shapely.intersection(P, polys[kp])):
+        if pc.is_empty or pc.area < 1e-6:
+            continue
+        a_, b_, c_ = coef[k]
+        for t in shapely.constrained_delaunay_triangles(pc).geoms:
+            if t.area < 1e-7:
+                continue
+            b0 = len(verts)
+            verts += [(x, y, float(a_ * x + b_ * y + c_) + lift) for x, y in list(t.exterior.coords)[:3]]
+            out.append([b0, b0 + 1, b0 + 2])
+    return verts, ccw_tris(verts, out)
+
+
 def _drape(P, G, lift, step=0.5):
+    if _TERRAIN.get("tris") is not None:
+        # exact: on the terrain's own triangles (a coarser drape cuts under the 0.25 m terrain relief and the ground or
+        # a bed overlay shows through it in patches)
+        return drape_exact(P, _TERRAIN["tris"], lift)
     import shapely
     from shapely.geometry import Polygon as SP
     verts, tris = [], []
@@ -1220,8 +1388,14 @@ def main():
     # shading with creases kept sharp (> SHARP_DEG) and area-weighted normals: no dark folded shards on slopes
     ttris, fc = terrain_triangles(S["faces"], S.get("face_class") or [])
     terrain = mesh("Terrain (LiDAR ground)", S["verts"], ttris, c, M["ground"])
+    import numpy as _np
+    _vt = _np.asarray(S["verts"], float)
+    _TERRAIN["tris"] = _vt[_np.asarray([t for t in ttris if len(t) == 3], int)] if len(_vt) and ttris else None
     nsharp = sharpen(terrain)
     print(f"terrain: {len(ttris)} triangles, {nsharp} sharp edges (> {SHARP_DEG:.0f} deg)")
+    hp, hc = hide_reference(bpy.data.objects, bpy.data.collections, terrain=bool(len(_vt) and ttris))
+    if hp or hc:
+        print(f"terrain: reference ground hidden {hp}; not rendered: collections {hc}")
     if S.get("grid") and Y.get("face_normals", True):
         nf = smooth_face_normals(terrain, S["grid"])
         print(f"terrain: {nf} steep-face vertices shaded with smoothed normals (vertex group 'rock face')")
@@ -1230,9 +1404,16 @@ def main():
         # one material blending ground and rock by the per-vertex rock weight (soft boulder edges)
         at = terrain.data.attributes.new("rock", "FLOAT", "POINT")
         at.data.foreach_set("value", S["vertex_rock"])
+        bt = boulder_tones(Y.get("items", []), S["verts"], M["_tones"]["rock"][:2]) if Y.get("boulder_tones", True) else None
+        if bt:
+            for nm_, cols in (("rock_tone_lo", bt[0]), ("rock_tone_hi", bt[1])):
+                ca = terrain.data.color_attributes.new(nm_, "FLOAT_COLOR", "POINT")
+                ca.data.foreach_set("color", [v for col in cols for v in (*col, 1.0)])
+            print(f"terrain: {bt[2]} vertices inside yard boulder outlines take the boulder colours")
         terrain.data.materials.clear()
         terrain.data.materials.append(blend_by_attribute("Terrain (ground / rock)", M["_tones"]["ground"],
-                                                         M["_tones"]["rock"], "rock"))
+                                                         M["_tones"]["rock"], "rock",
+                                                         tone_attrs=("rock_tone_lo", "rock_tone_hi") if bt else None))
     elif "rock" in classes and any(v == classes.index("rock") for v in fc):
         terrain.data.materials.append(M["rock"])
         rk = classes.index("rock")
