@@ -81,7 +81,9 @@ Plan render time before you start. A full-length build at 1080p and 64 samples i
 - The demo house uses the web viewer's 0.45 m overhang and matches its measurements: 27.4 squares on the ranch preset. The main roof is notched under the garage, so hidden roof is not counted.
 - Roofs found only by slope leave the house meshes visible; name the roof object `Roof` so it can be replaced cleanly.
 - Running `material` after `build` keeps the build animation.
-- `layers` stores its measurements on the scene as `rt_measure`, for `roof_qa.py --expect`.
+- `layers` stores its measurements on the scene as `rt_measure`, for `roof_qa.py --expect`. They include `pitches_per_12`: each plane's rise per 12 (from its normal) and its area in m2.
+- A new building hands over a mesh object named exactly `Roof`: two planes on the top of the rafters, out to the fascia and rake faces. The blender-suite `construction_kit.py` makes it and runs `{"cmd": "layers", "roof": "Roof", "old_roof": false, "deck_repair": false, "ridge_vent": ..., "ice_rows": ...}` on it. No other part of the building may have "roof" or "shingle" in its name.
+- `deck_repair` (default true) builds the re-roof deck patches; a new build passes false. `ice_rows` 0 leaves out the eave membrane (valleys keep theirs), for an unheated building under the code exception.
 - Metal panels and edge profiles (lab experiments 019 and 020):
   - `panel` picks a profile from `PANEL_PROFILES`, the same JSON text as the web studio's `profiles.js`. `ribbed_surface` slices each plane into planar strips between the profile's breakpoints, repeated from the plane's left end, so the ribs run up the slope and stand up at the eave.
   - On a metal roof the hip and ridge caps take the metal cap profile, 3 mm over the rib tops; the ridge vent and the cap over it stand on the rib tops.

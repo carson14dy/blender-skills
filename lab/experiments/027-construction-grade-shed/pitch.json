@@ -1,0 +1,21 @@
+{
+ "ok": true,
+ "method": "rule",
+ "source": "design rule design-rules.json, approved by user on 2026-11-22: new accessory 6/12; asphalt_shingle needs 2/12 or more (IRC R905.2.2)",
+ "slope": 0.5,
+ "rise_per_12": 6.0,
+ "sigma_per_12": 0.0,
+ "degrees": 26.57,
+ "sigma_degrees": 0.0,
+ "nearest_whole": "6/12",
+ "whole_within_2_sigma": true,
+ "label": "6/12 (design rule)",
+ "confidence": "ok",
+ "checks": {
+  "covering": "asphalt_shingle",
+  "building": "accessory",
+  "min_per_12": 2,
+  "code": "IRC R905.2.2"
+ },
+ "notes": []
+}

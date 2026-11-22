@@ -1151,14 +1151,16 @@ def build_layers(cfg):
         add("oldShingles", build_surface(full_parts(planes), H["oldShingles"], 5 * IN, 0.004),
             layer_material("RT_oldShingles", row_h=5 * IN, procedural={"exposure": 5 * IN, "palette": ["#57534c", "#4a4741", "#605b52"]}), 5 * IN, rows(5 * IN))
     add("deck", build_surface(full_parts(planes), H["deck"], thickness=H["deck"]), layer_material("RT_deck", (0.42, 0.30, 0.17), 1.2192, 0.8), 1.2192, rows(1.2192))
-    add("deckRepair", build_surface(deck_patch_parts(planes), H["deck"] + 0.0012), layer_material("RT_deckRepair", (0.62, 0.45, 0.26), 1000.0, 0.8), 1000.0, 1)
+    if cfg.get("deck_repair", True):  # a re-roof's patched sheets; a new build has none (it z-fights on a small roof)
+        add("deckRepair", build_surface(deck_patch_parts(planes), H["deck"] + 0.0012), layer_material("RT_deckRepair", (0.62, 0.45, 0.26), 1000.0, 0.8), 1000.0, 1)
     add("dripEdge", drip_edge_buf(segs, profile=cfg.get("edge_profile")), layer_material("RT_dripEdge", (0.88, 0.88, 0.85), 1.0, 0.35, 0.3), 1.0, 2)
     roll, lap = 36 * IN, 3 * IN
     ice_w = ice_rows * (roll - lap) + lap
-    ice = strip_parts(planes, segs["eave"], ice_w)
+    ice = strip_parts(planes, segs["eave"], ice_w) if ice_rows > 0 else []  # 0: no eave membrane (unheated building)
     if segs["valley"] and cfg.get("valleys", True):
         ice += strip_parts(planes, segs["valley"], roll / 2, vmin=ice_w)  # butts the eave rows, no coplanar overlap
-    add("iceWater", build_surface(ice, H["iceWater"]), layer_material("RT_iceWater", (0.025, 0.028, 0.035), roll - lap, 0.85), roll - lap, ice_rows + 1)
+    if ice:
+        add("iceWater", build_surface(ice, H["iceWater"]), layer_material("RT_iceWater", (0.025, 0.028, 0.035), roll - lap, 0.85), roll - lap, ice_rows + 1)
     und_h = 44 * IN
     add("underlayment", build_surface(full_parts(planes), H["underlayment"]), layer_material("RT_underlayment", (0.26, 0.28, 0.30), und_h, 0.7), und_h, rows(und_h))
     if metal:
@@ -1206,7 +1208,8 @@ def build_layers(cfg):
     area = sum(p.area for p in planes)
     measure = {k: sum((s["A"] - s["B"]).length for s in v) for k, v in segs.items()}
     log(f"layers: {len(made)} on {len(planes)} planes, {area / 9.290304:.1f} squares")
-    out = {"planes": len(planes), "squares": round(area / 9.290304, 2), "lengths_m": {k: round(v, 2) for k, v in measure.items()}}
+    out = {"planes": len(planes), "squares": round(area / 9.290304, 2), "lengths_m": {k: round(v, 2) for k, v in measure.items()},
+           "pitches_per_12": [{"rise_per_12": round(12 * math.tan(p.slope), 2), "area_m2": round(p.area, 2)} for p in planes]}
     bpy.context.scene["rt_measure"] = json.dumps(out)  # saved with the .blend, for lab/tools/roof_qa.py --expect
     return {"layers": list(made), **out}
 

@@ -36,7 +36,10 @@ def main():
     check(abs(L["valley"] - 12.15) < 0.1, f"two garage valleys 12.15 m ({L['valley']} m)")
     check(abs(L["ridge"] - 15.45) < 0.1 and abs(L["hip"] - 32.70) < 0.1, f"ridges 15.45 m and hips 32.70 m, each counted once ({L['ridge']}, {L['hip']})")
     stored = json.loads(bpy.context.scene.get("rt_measure", "{}"))
-    check(stored == {k: res[k] for k in ("planes", "squares", "lengths_m")}, "layers stores its measurements on the scene as rt_measure (for roof_qa.py --expect)")
+    check(stored == {k: res[k] for k in ("planes", "squares", "lengths_m", "pitches_per_12")}, "layers stores its measurements on the scene as rt_measure (for roof_qa.py --expect)")
+    pit = res["pitches_per_12"]
+    check(len(pit) == 6 and all(p["rise_per_12"] == 6.0 for p in pit) and abs(sum(p["area_m2"] for p in pit) - 254.85) < 0.1,
+          f"pitches_per_12: the 6/12 demo reads 6.0 on every plane, areas sum to the roof ({[p['rise_per_12'] for p in pit]})")
     for lid in ("deck", "iceWater", "underlayment", "starter", "nails", "covering", "ridgeVent", "ridgeCap", "dripEdge"):
         ob = bpy.data.objects.get(f"RT_layer_{lid}")
         check(ob is not None and "rt_up" in ob.data.attributes and len(ob.data.polygons) > 0, f"layer {lid} built with build attributes")
@@ -72,7 +75,20 @@ def main():
     sky_dir = Vector((math.sin(rot) * math.cos(el), math.cos(rot) * math.cos(el), math.sin(el)))  # calibrated on a rendered sky panorama
     check((sun - sky_dir).length < 0.05, f"sun lamp points where the sky draws its sun ({tuple(round(x, 2) for x in sun)})")
     profile_checks()
+    new_build_checks()
     print("all roof_core checks passed")
+
+
+def new_build_checks():
+    """A new build (construction kit): no deck repair; ice_rows 0 (unheated building) leaves out the eave membrane."""
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    rc.run({"cmd": "demo", "pitch": 6})
+    res = rc.run({"cmd": "layers", "deck_repair": False, "ice_rows": 0, "valleys": False, "old_roof": False})
+    check("deckRepair" not in res["layers"] and "iceWater" not in res["layers"] and "deck" in res["layers"],
+          f"deck_repair false and ice_rows 0: no deck repair, no ice barrier ({res['layers']})")
+    res = rc.run({"cmd": "layers", "deck_repair": False, "ice_rows": 0})
+    ice = bpy.data.objects["RT_layer_iceWater"]
+    check(max((ice.matrix_world @ v.co).z for v in ice.data.vertices) > 3.0, "ice_rows 0 still lines the valleys")
 
 
 def profile_checks():
