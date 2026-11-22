@@ -34,10 +34,11 @@ def _fill(img, poly, value, ss=3):
     img[y0:y1, x0:x1] = img[y0:y1, x0:x1] * (1 - cov) + value * cov
 
 
-def scene(pitch12=6.0, yaw_deg=25.0, overhang=0.3, W=2400, H=1800, f=1900.0):
+def scene(pitch12=6.0, yaw_deg=25.0, overhang=0.3, casing=False, W=2400, H=1800, f=1900.0):
     """Gable wall in the plane y=0, 8 m wide, eave 2.7 m, seen yaw_deg off square from 12 m. The rake boards hang
-    `overhang` in front of the wall. Returns the gray image (0-1) and the true pixel positions of its edges."""
-    key = (pitch12, yaw_deg, overhang)
+    `overhang` in front of the wall. casing: a white door slab in a white casing 3.5 in. wide, with a 1/2 in. shadow
+    gap between them (experiment 027). Returns the gray image (0-1) and the true pixel positions of its edges."""
+    key = (pitch12, yaw_deg, overhang, casing)
     if key in _SCENES:
         return _SCENES[key]
     s, half, eave, yaw = pitch12 / 12, 4.0, 2.7, math.radians(yaw_deg)
@@ -63,7 +64,10 @@ def scene(pitch12=6.0, yaw_deg=25.0, overhang=0.3, W=2400, H=1800, f=1900.0):
     for x in (0.0, 7.9):                                                                       # corner boards
         _fill(img, P([[x, 0, 0], [x + 0.1, 0, 0], [x + 0.1, 0, eave], [x, 0, eave]]), 0.9)
     door = [[1.0, 0, 0.05], [1.914, 0, 0.05], [1.914, 0, 2.082], [1.0, 0, 2.082]]              # 36 x 80 in.
-    _fill(img, P(door), 0.2)
+    for grow, v in ((0.1016, 0.92), (0.0127, 0.45)) if casing else ():                         # casing, shadow gap
+        _fill(img, P([[1 - grow, 0, 0.05], [1.914 + grow, 0, 0.05], [1.914 + grow, 0, 2.082 + grow],
+                      [1 - grow, 0, 2.082 + grow]]), v)
+    _fill(img, P(door), 0.88 if casing else 0.2)
     _fill(img, P([[5.2, 0, 1.0], [6.4, 0, 1.0], [6.4, 0, 2.2], [5.2, 0, 2.2]]), 0.25)          # window
     o, e, th = -overhang, 0.35, 0.16
     for sx in (1, -1):                                                                         # rake boards
@@ -117,6 +121,13 @@ def test_pitch_photo_wrong_line_is_low():
     pts["verticals"] = pts["verticals"] + [pts["rakes"][0]]   # a rake given as a vertical
     r = _rp().run("photo", image=img, points=pts, synthetic=True)
     assert r["ok"] and r["confidence"] == "low" and "rake_spread_per_12 > 0.5" in r["notes"], r
+
+
+def test_pitch_photo_double_edge_is_low():
+    img, tr = scene(6, 25, casing=True)        # slab corners clicked inside a casing (experiment 027, try 1)
+    r = _rp().run("photo", image=img, points=clicks(tr, 8), synthetic=True)
+    assert r["confidence"] == "low" and "rect_second_edge > 0.75" in r["notes"], r
+    assert abs(r["rise_per_12"] - 6) > 2 * r["sigma_per_12"], r          # the snapped rectangle is wrong
 
 
 def _png(path, gray):

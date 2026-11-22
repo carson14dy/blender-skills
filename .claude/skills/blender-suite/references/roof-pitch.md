@@ -39,7 +39,7 @@ Rules:
 - The whole gable and the known rectangle are on the same wall, in the original file: not a screenshot, not cropped or rotated (`view_size` must have the file's shape).
 - The size must be right. The image cannot tell a 36 x 80 in. door from a window: a 1.2 m window given as that door read 13.28/12 on a 6/12 test gable, with `confidence` ok. Measure the reference or read it from the product, say whether you clicked the slab or the casing, and cross-check with a second source.
 - Open the overlay. Every green line must sit on a wall edge and every red line on its rake. This is the look gate for the method.
-- `confidence` is low when a line's residual is above 1.5 px, the two rakes differ by more than 0.5/12, the rectangle's diagonals disagree by more than 1 %, or a line kept fewer than 8 edge points. A low result is never used alone.
+- `confidence` is low when a line's residual is above 1.5 px, the two rakes differ by more than 0.5/12, the rectangle's diagonals disagree by more than 1 %, a line kept fewer than 8 edge points, or another edge within 18 px of a rectangle line's clicks is at least 0.75 as strong as the edge it took (`rect_second_edge`: a slab inside its casing, experiment 027). A low result is never used alone.
 - Sigma is at least 0.25/12 for a real photo: lens distortion, wall flatness and nominal sizes are not in the fit. `--synthetic` lifts that floor, for rendered test images only.
 - On synthetic gables (`tests/test_pitch.py`), clicks 6 to 10 px off read 6/12 seen square-on and 25 degrees off as 6.00 and 5.98, 4/12 at 35 degrees as 4.00, and 12/12 at 30 degrees as 12.00.
 

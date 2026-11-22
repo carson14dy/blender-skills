@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """Roof pitch, never assumed: from a gable photo, scan points, a reading, a design rule, or combined.
 
-Plain Python + numpy. One JSON line; --out F saves it. Formats and rules: references/roof-pitch.md.
-Usage:
-  python roof_pitch.py photo --image gable.jpg --points pts.json [--overlay o.png] [--synthetic]
-  python roof_pitch.py points --file facet.npy|facet.txt        (ONE facet, x y z rows, metres, z up)
-  python roof_pitch.py record --method gauge|lidar|model|report|plans --value 6/12 [--sigma S] --source T
-  python roof_pitch.py rule --covering asphalt_shingle|metal_lapped|metal_sealed|standing_seam
-                            --building accessory|house [--match 5.95/12] [--rules F]
-  python roof_pitch.py combine a.json b.json [...]
-Sigma is per 12. Exit 1 only on bad input ("low" confidence is not). MCP: roof_pitch.run("photo", image=...).
+Plain Python + numpy. Formats and rules: references/roof-pitch.md.
+Usage: python roof_pitch.py COMMAND ...    (one JSON line; --out F saves it; exit 1 only on bad input)
+  photo --image gable.jpg --points pts.json [--overlay o.png] [--synthetic]
+  points --file facet.npy|facet.txt   (ONE facet: x y z rows, metres)
+  record --method gauge|lidar|model|report|plans --value 6/12 [--sigma S] --source T  (sigma per 12)
+  rule --covering asphalt_shingle|metal_lapped|metal_sealed|standing_seam --building accessory|house
+       [--match 5.95/12] [--rules F]
+  combine a.json b.json [...]       (MCP: run("photo", image=F, points=F))
 """
 import argparse
 import json
@@ -21,15 +20,16 @@ import zlib
 
 try:
     import numpy as np
-except ImportError:  # --help still works
+except ImportError:  # --help works
     np = None
 
-UNIT = {"in": 0.0254, "ft": 0.3048, "mm": 0.001, "cm": 0.01, "m": 1.0}  # mm, cm before m
+UNIT = {"in": 0.0254, "ft": 0.3048, "mm": 0.001, "cm": 0.01, "m": 1.0}  # m last
 REC = {"gauge": 0.25, "lidar": 0.1, "model": 0.1, "report": 0.5, "plans": 0.5}
 M = "IRC R905.10.2"
 MIN = {"asphalt_shingle": (2, "IRC R905.2.2"), "metal_lapped": (3, M), "metal_sealed": (.5, M),
        "standing_seam": (.25, M)}
-FLOOR = 0.25  # photo sigma: lens, flatness and nominal sizes are not in the fit
+K = [1 / 16, .25, .375, .25, 1 / 16]
+FLOOR = 0.25  # photo sigma floor
 RULES = os.path.join("lab", "data", "design-rules.json")
 REPO = os.path.join(os.path.dirname(os.path.abspath(__file__)), *[".."] * 4)
 
@@ -40,10 +40,6 @@ class Bad(Exception):
 
 def _w(x):
     return int(math.floor(x + 0.5))
-
-
-def _f(x):
-    return str(_w(x)) if abs(x - _w(x)) < 1e-9 else f"{x:.2f}"
 
 
 def _pitch(v):  # "5.95/12" -> rise over run
@@ -75,13 +71,13 @@ def result(slope, sigma, method, source, checks, notes=(), low=()):
     return {"ok": True, "method": method, "source": source, "slope": round(slope, 5), "rise_per_12": r,
             "sigma_per_12": s, "degrees": round(math.degrees(math.atan(slope)), 2),
             "sigma_degrees": round(math.degrees(sigma / (1 + slope ** 2)), 2), "nearest_whole": f"{_w(r)}/12",
-            "whole_within_2_sigma": near, "label": f"{_f(slope * 12)}/12 (design rule)" if method == "rule" else
+            "whole_within_2_sigma": near, "label": f"{slope * 12:g}/12 (design rule)" if method == "rule" else
             f"{_w(r)}/12 ({how} {r:.2f} ± {s:.2f})" if near else f"{r:.2f}/12 ± {s:.2f}",
             "confidence": "low" if low else "ok", "checks": checks, "notes": [*low, *notes]}
 
 
 # photo: refine each rough line on the image, then vanishing points
-def _sample(g, p):  # bilinear at points p[..., (x, y)]
+def _sample(g, p):  # bilinear
     x, y = np.clip(p[..., 0], 0, g.shape[1] - 1.001), np.clip(p[..., 1], 0, g.shape[0] - 1.001)
     i, j = x.astype(int), y.astype(int)
     fx, fy = x - i, y - j
@@ -94,18 +90,21 @@ def _fit(pts):  # total least squares line: centre, direction, residuals
     return c, d, (pts - c) @ [-d[1], d[0]]
 
 
+def _across(g, c, d, L, s):  # smoothed gradient across the line, offsets s
+    t, n = np.linspace(-0.42, 0.42, 48) * L, np.array([-d[1], d[0]])
+    pr = np.apply_along_axis(np.convolve, 1, _sample(g, c + t[:, None, None] * d + s[:, None] * n), K, mode="same")
+    return t, n, np.gradient(pr, axis=1)[:, 3:-3]
+
+
 def refine_line(g, p0, p1):
     """Edge points along the rough segment p0-p1, then a trimmed line fit."""
     L = np.linalg.norm(p1 - p0)
     if L < 4:
-        raise Bad("a line's points are under 4 px apart")
+        raise Bad("line points under 4 px apart")
     c, d = (p0 + p1) / 2, (p1 - p0) / L
     for k in range(3):
-        n, w = np.array([-d[1], d[0]]), max(4.0, 18 / 2 ** k)
-        t, s = np.linspace(-0.42, 0.42, 48) * L, np.arange(-w, w + 0.5, 0.5)
-        pr = _sample(g, c + t[:, None, None] * d + s[None, :, None] * n)
-        pr = np.apply_along_axis(np.convolve, 1, pr, [1 / 16, .25, .375, .25, 1 / 16], mode="same")
-        gr = np.gradient(pr, axis=1)[:, 3:-3]
+        w = max(4.0, 18 / 2 ** k)
+        t, n, gr = _across(g, c, d, L, s := np.arange(-w, w + 0.5, 0.5))
         ro = np.arange(len(gr))
         gs = gr * (1.0 if np.median(gr[ro, np.abs(gr).argmax(1)]) >= 0 else -1.0)
         i = gs.argmax(1)
@@ -124,7 +123,10 @@ def refine_line(g, p0, p1):
                 break
             q = q[keep]
         c, d = _fit(q)[:2]
-    return {"points": q, "rms": float(np.sqrt(np.mean(_fit(q)[2] ** 2))), "n": len(q)}
+    s = ((p0 + p1) / 2 - c) @ [-d[1], d[0]] + np.arange(-19.5, 20, 0.5)  # rival edge: window around the clicks
+    gr, near = np.abs(_across(g, c, d, L, s)[2]), np.abs(s[3:-3]) <= 2
+    rival = np.median(gr[:, ~near].max(1) / np.maximum(gr[:, near].max(1), 1e-9)) if near.any() else 9
+    return {"points": q, "rms": float(np.sqrt(np.mean(_fit(q)[2] ** 2))), "n": len(q), "rival": float(rival)}
 
 
 def _hline(pts):
@@ -133,13 +135,13 @@ def _hline(pts):
     return ln / np.linalg.norm(ln[:2])
 
 
-def _solve(H, nh, nv, ratio):  # H: bottom right top left, horizontals, verticals, rakes
+def _solve(H, nh, nv, ratio):  # H: rect b r t l, horizontals, verticals, rakes
     j = 4 + nh + nv
     vh, vv = (np.linalg.svd(np.array(x))[2][-1] for x in ([H[0], H[2], *H[4:4 + nh]], [H[1], H[3], *H[4 + nh:j]]))
     linf, M = np.cross(vh, vv), np.column_stack([vh, vv])
     b, r, t, lf = H[:4]
 
-    def co(line):  # vanishing point = a vh + b vv: |b / a|
+    def co(line):  # vanishing pt = a vh + b vv: |b / a|
         a, bb = np.linalg.lstsq(M, np.cross(line, linf), rcond=None)[0]
         return abs(bb / a)
     ks = [co(np.cross(np.cross(b, lf), np.cross(t, r))), co(np.cross(np.cross(b, r), np.cross(t, lf)))]  # diagonals
@@ -158,7 +160,7 @@ def read_image(path):  # RGB 0-1, top row first: Pillow, else bpy
         import bpy
         im = bpy.data.images.load(os.path.abspath(path), check_existing=False)
     except (ImportError, RuntimeError) as e:
-        raise Bad(f"{path}: {e} (pip install Pillow, or use Blender's Python)") from None
+        raise Bad(f"{path}: {e} (needs Pillow or Blender's Python)") from None
     (w, h), c = im.size, im.channels
     px = np.empty(w * h * c, np.float32)
     im.pixels.foreach_get(px)
@@ -182,8 +184,8 @@ def _overlay(path, img, lines, n_rakes):  # green wall, red rakes; PNG by zlib
     raw = np.hstack([np.zeros((h, 1)), np.clip(out, 0, 255).reshape(h, -1)]).astype(np.uint8).tobytes()
     with open(path, "wb") as f:
         f.write(b"\x89PNG\r\n\x1a\n")
-        for t, d in ((b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)), (b"IDAT", zlib.compress(raw)),
-                     (b"IEND", b"")):
+        for t, d in (b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)), (b"IDAT", zlib.compress(raw)), (
+                b"IEND", b""):
             f.write(struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xFFFFFFFF))
 
 
@@ -212,17 +214,19 @@ def photo(image, points, overlay=None, synthetic=False, **_):
     sigma = math.sqrt(float(np.mean(np.array(sims).std(0) ** 2)) / len(slopes) + (spread / 2) ** 2)
     ch = {"rakes_rise_per_12": [round(float(s) * 12, 2) for s in slopes], "rake_spread_per_12": round(spread * 12, 2),
           "diagonals_disagree_pct": round(float(gap) * 100, 2), "line_rms_px": round(max(f["rms"] for f in ln), 2),
-          "lines": len(ln), "fewest_edge_points": min(f["n"] for f in ln)}
-    low = [f"{k} {'<' if lim == 8 else '>'} {lim}" for k, lim in (("line_rms_px", 1.5), ("rake_spread_per_12", 0.5), (
-        "diagonals_disagree_pct", 1), ("fewest_edge_points", 8)) if (ch[k] < lim if lim == 8 else ch[k] > lim)]
-    notes = [f"open {overlay}: each line must sit on its edge (green wall, red rake)" if overlay else
+          "lines": len(ln), "fewest_edge_points": min(f["n"] for f in ln),
+          "rect_second_edge": round(max(f["rival"] for f in ln[:4]), 2)}
+    low = [f"{k} > {v}" for k, v in (("line_rms_px", 1.5), ("rake_spread_per_12", .5), ("diagonals_disagree_pct", 1),
+                                     ("rect_second_edge", .75)) if ch[k] > v] + ["fewest_edge_points < 8"] * (
+        ch["fewest_edge_points"] < 8)
+    notes = [f"open {overlay}: is each line on its edge? (green wall, red rake)" if overlay else
              "no --overlay: write one and look at it"]
     if not synthetic and sigma * 12 < FLOOR:
         notes.append(f"sigma raised to the {FLOOR}/12 photo floor (fit {sigma * 12:.3f})")
         sigma = FLOOR / 12
     if overlay:
         _overlay(overlay, img, ln, len(rk))
-    name = os.path.basename(image) if isinstance(image, str) else "image"
+    name = os.path.basename(image) if isinstance(image, str) else "array"
     return result(float(np.mean(slopes)), sigma, "photo", f"{name}, {sp.get('rect_name', 'rect')} {rs[0]} x {rs[1]}",
                   ch, notes, low)
 
@@ -243,11 +247,9 @@ def points(file, **_):
 
 def record(method, value, source=None, sigma=None, **_):
     src = (source or "").strip()
-    if method not in REC or not src:
-        raise Bad(f"--method: {', '.join(REC)}; --source is required (report and date, sheet, file)")
-    s = float(REC[method] if sigma is None else sigma)
-    if s <= 0:
-        raise Bad("--sigma must be > 0")
+    s = float(REC.get(method, 0) if sigma is None else sigma)
+    if method not in REC or not src or s <= 0:
+        raise Bad(f"--method: {', '.join(REC)}; --source is required (report and date, sheet, file); --sigma > 0")
     return result(_pitch(value), s / 12, method, src, {"value": str(value)},
                   ["design intent, not as built: cross-check with a measurement"] * (method == "plans"))
 
@@ -265,16 +267,16 @@ def rule(covering, building, match=None, rules=None, **_):
     src = f"matches the main house (measured {v}), rounded; {src}" if match else f"{src}: new {building} {v}"
     least, code = MIN[covering]
     if rise < least - 1e-9:
-        raise Bad(f"{_f(rise)}/12 is below the {_f(least)}/12 minimum for {covering} ({code})")
-    return result(rise / 12, 0.0, "rule", f"{src}; {covering} needs {_f(least)}/12 or more ({code})", {
+        raise Bad(f"{rise:g}/12 is below the {least:g}/12 minimum for {covering} ({code})")
+    return result(rise / 12, 0.0, "rule", f"{src}; {covering} needs {least:g}/12 or more ({code})", {
         "covering": covering, "building": building, "min_per_12": least, "code": code},
         ["double underlayment (IRC R905.2.2)"] * (covering == "asphalt_shingle" and rise < 4))
 
 
 def combine(files, **_):
-    """Inverse-variance mean; an input over 3 of its own sigma from it conflicts."""
+    # inverse-variance mean; over 3 of its own sigma from it is a conflict
     it = [f if isinstance(f, dict) else _load(f) for f in files]
-    if len(it) < 2 or not all(isinstance(i, dict) and i.get("ok") and "slope" in i for i in it):
+    if len(it) < 2 or not all(i.get("ok") for i in it):
         raise Bad("combine needs two or more roof_pitch.py results")
     if any(i["method"] == "rule" for i in it):
         raise Bad("a rule result cannot be combined with measurements")
@@ -290,10 +292,10 @@ def combine(files, **_):
 
 
 def run(cmd, out=None, **kw):
-    """Python entry (MCP, Blender); bad input returns {"ok": False, "error": ...}."""
+    """Python entry (MCP); bad input gives {"ok": False, "error": ...}."""
     try:
         if np is None:
-            raise Bad("needs numpy: pip install numpy, or use Blender's Python")
+            raise Bad("needs numpy (pip install numpy)")
         res = {"photo": photo, "points": points, "record": record, "rule": rule, "combine": combine}[cmd](**kw)
     except Exception as e:  # noqa: BLE001 - reported as JSON, never a traceback
         return {"ok": False, "error": str(e) if isinstance(e, Bad) else f"{type(e).__name__}: {e}"}
@@ -304,8 +306,7 @@ def run(cmd, out=None, **kw):
 
 
 def main(argv=None):
-    p = argparse.ArgumentParser(prog="roof_pitch.py", description=__doc__,
-                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
     for cmd, args in (("photo", "image! points! overlay synthetic?"), ("points", "file!"), ("combine", "files+"),
                       ("record", "method! value! sigma source"), ("rule", "covering! building! match rules")):
