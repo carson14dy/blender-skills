@@ -35,7 +35,7 @@ All from this folder, `PY` = the pip bpy venv, `S` = `.claude/skills/blender-sui
 
 1. `brief.md`: the request as a user would write it, with two gaps on purpose (roof pitch, door size).
 2. `acceptance.json` from the brief, every number with its source. Pitch: assumed (it should be asked; no user in a sub-agent run). Door: standard size looked up, so not a shortcut.
-3. `python3 $BL start --name "Garden shed (pilot 024)" --accept acceptance.json`, then a stage per step: `stage blockout`, `detail`, `materials`, `light-camera`, `render`, and `fix-roof-edges` after a failed look.
+3. `python3 $BL start --name "Garden shed (pilot 024)" --accept acceptance.json`, then a stage per step: `stage blockout`, `detail`, `materials`, `light-camera`, `render`, `fix-roof-edges` after a failed look, and `materials-look` after the plan review.
 4. Build: `$PY build_shed.py -- --stage blockout|detail|materials|scene` (each saves `out/shed.blend`). Parts that rest on each other overlap 2 mm, so `qa_check.py` sees no coplanar faces.
 5. Gates, each piped into the log: `$PY run_blend.py out/shed.blend $S/acceptance_check.py -- --accept acceptance.json [--only ...] > out/gate.txt; python3 $BL gate acceptance --result out/gate.txt`. `run_blend.py` opens the .blend under pip bpy, where `run_in_blender.py` has no Blender to start. QA: `qa_check.py --objects <43 parts> --profile render --max-tris 0`. Look: `review_shots.py` sheets and the Cycles renders.
 6. Render: `render_batch.py --engine CYCLES --preset final --res 1920 1080 --device CPU --out //render/hero_####`, recorded with `gate render --deliverable`.
@@ -45,9 +45,9 @@ All from this folder, `PY` = the pip bpy venv, `S` = `.claude/skills/blender-sui
 
 - **Acceptance: 23 of 23 pass** on the final file, 0 forbidden, 0 warnings (13 given, 7 assumed, 3 standard). The blockout already passed all 16 size, count and position checks; the hand-calculated ridge (10.9265 ft), eave (8.0833 ft), roof area (1.6096 sq) and stud count (28) matched the geometry to 4 decimals.
 - **QA: 0 errors, 0 warnings, complete**: 43 parts, 1,036 triangles, render profile, `--max-tris 0`.
-- **Gates that failed on the way** (all in `build_log.json`): QA at the detail stage (43 empty material slots: materials came next); the full acceptance run at the detail stage (6 fails: materials and the hero not rendered yet); `look-materials` (Workbench material mode shows flat grey, because the textures are mapped in the shader); and the first hero `look`: the shingle texture was stretched over the 1 in. rake edge (dark notches at full size). That last one was fixed (plain colour on faces that do not face up), all stages rebuilt from scratch, QA and acceptance re-run, re-rendered, looked at again.
+- **Gates that failed on the way** (all in `build_log.json`): QA at the detail stage (43 empty material slots: materials came next); the full acceptance run at the detail stage (6 fails: materials and the hero not rendered yet); `look-materials` (Workbench material mode shows flat grey, because the textures are mapped in the shader; after the plan review `close` blocks on any gate whose last result failed, so it was re-gated for real with a Cycles close-up, `out/render/materials_0001.png`, and passed); and the first hero `look`: the shingle texture was stretched over the 1 in. rake edge (dark notches at full size). That last one was fixed (plain colour on faces that do not face up), all stages rebuilt from scratch, QA and acceptance re-run, re-rendered, looked at again.
 - **Gaps in the brief**: pitch assumed 6/12 and logged as shortcut 1 (it changes ridge, area and look, so the user should be asked); door size taken as the standard 3 ft 0 in. x 6 ft 8 in., marked `standard`, no shortcut needed.
-- **Times** (wall clock, includes the agent's own work between commands): blockout 4.2 min, detail 1.0, materials 0.6, light-camera 1.0, render 3.3, fix-roof-edges 2.6; 13 min in all. Compute: each build stage under 1 s; acceptance run 0.11 s; QA 0.06 s; Cycles CPU preview 640x360 at 64 spp 6.6 s; final 640x360 at 512 spp 12.5 s; final 1920x1080 at 512 spp 101 s and 99 s. The timing line is in `out/build-times.jsonl` (not committed; quoted in the report section below).
+- **Times** (wall clock, includes the agent's own work between commands): blockout 4.2 min, detail 1.0, materials 0.6, light-camera 1.0, render 3.3, fix-roof-edges 2.6; 13 min to the first close. The final report says 22 min because it counts from `start`, including the pause for the plan review before the `look-materials` re-gate. Compute: each build stage under 1 s; acceptance run 0.11 s; QA 0.06 s; Cycles CPU preview 640x360 at 64 spp 6.6 s; final 640x360 at 512 spp 12.5 s; final 1920x1080 at 512 spp 101 s and 99 s. The timing line is in `out/build-times.jsonl` (not committed; quoted in the report section below).
 - **Deviation from the plan**: the plan sized the pilot render at 640x360. That took 12.5 s, so the brief's 1920x1080 was estimated at about 2 min, inside the plan's 5-minute limit, and was rendered (101 s). No preview shortcut was needed.
 
 ![Hero render at 1920x1080 (scaled) and review views](img/review.jpg)
@@ -56,15 +56,15 @@ Findings about the tooling:
 1. The acceptance file proved sizes, counts and materials, but the one real defect (texture stretched on an edge) was found only by looking. Checks and looking are both needed, as the procedure says.
 2. `review_shots.py` cannot judge materials mapped in the shader (Workbench shows the viewport colour). The materials gate needs a Cycles or EEVEE look for such materials.
 3. Stage times are mostly agent time; compute is in the gate seconds. The speed phase (experiment 025) should read both.
-4. `close` says done with 6 shortcuts not approved. That is the rule (approval is needed only when a shortcut makes a check fail), but the report's "NOT APPROVED" can read as a problem. A wording like "not yet seen by the user" may be clearer.
-5. The report's Gates line shows the last gate of each name, so the failed first look appears only in `build_log.json`.
+4. Fixed after the plan review: unapproved shortcuts still do not block, but the report now ends `Done: yes, 6 shortcuts await your OK (1, 2, 3, 4, 5, 6)` and `close` returns `"unapproved"`. Any gate whose last result is a fail now blocks `close`, and a `qa` gate recorded with `--pass` no longer counts. No shortcut was approved here: approval belongs to the user.
+5. The report's Gates line shows the last record of each gate (now separated by "; "), so the failed first hero look appears only in `build_log.json`.
 
 ## Shortcuts and assumptions
 
-`build_log.py report` at close:
+`build_log.py report` at the final close (after the review fixes and the real `look-materials` gate):
 
 ```
-Build: Garden shed (pilot 024) (cloud, 13 min)
+Build: Garden shed (pilot 024) (cloud, 22 min)
 Acceptance: 23 of 23 checks pass (acceptance.json e4cc33986efd)
 Shortcuts (6):
   1. assumed: Roof pitch 6/12, with 6 in. overhangs at eaves and gables. Why: not in the brief; the procedure says ask before assuming it, but nobody can answer inside this sub-agent run. Effect: ridge height, roof area (1.61 sq) and the look of the roof all follow from it. Check: pitch. NOT APPROVED
@@ -74,9 +74,9 @@ Shortcuts (6):
   5. simplified: Shingles and lap siding are image textures with bump on flat surfaces: no shingle tabs or lap boards as geometry, no ridge cap, drip edge, fascia or soffit; the textures map in object space in the shader, so the UV maps do not carry them. Why: the hero is a whole-shed view where 1/2 in. of relief does not show; a roofing-grade roof is the roof-blender job, not this pilot. Effect: flat closer than about 2 m; an export to glTF or FBX would lose the siding and shingle pattern. NOT APPROVED
   6. unverified: Only the builder has looked: every look gate is my reading of Workbench review sheets and the Cycles render; nothing was opened in Blender's UI, rendered on a GPU, or judged by the user. Why: cloud sub-agent session: pip bpy on the CPU, no user to ask. Effect: colours, the sage tone and the overall look are unconfirmed; the GPU timing is unknown. NOT APPROVED
 Assumed values (7): pad: pad size not in the brief: 4 in. slab (standard), 2 in. past the walls on each side; pitch: pitch not in the brief; the user could not be asked in this run; 6/12 is common for sheds; ridge: 4 in. pad + 8 ft wall + 2.5 ft rise (6/12 over 5 ft) + 1 in. deck / cos(26.57); eave: 6 in. overhang at 6/12: 8.3333 - 0.25; roof-area: 2 x 13 ft x (5.5 + 1/12 sin) / cos = 160.96 sq ft, from the assumed pitch and overhangs; window-detail: frame, meeting rail and two panes, so a box cannot stand in; door-material: door colour not in the brief: white like the trim
-Gates: qa pass (0 errors, 0 warnings, complete), look pass, look-materials FAIL, preview pass (1 warnings), preview 640x360 64 samples, render-640 pass, final 640x360 512 samples, render pass, final 1920x1080 512 samples
-Time: blockout 4.2 min, detail 1.0 min, materials 0.6 min, light-camera 1.0 min, render 3.3 min, fix-roof-edges 2.6 min; gates 3.7 min
-Done: yes
+Gates: qa pass (0 errors, 0 warnings, complete); look pass; look-materials pass; preview pass (1 warnings), preview 640x360 64 samples; render-640 pass, final 640x360 512 samples; render pass, final 1920x1080 512 samples
+Time: blockout 4.2 min, detail 1.0 min, materials 0.6 min, light-camera 1.0 min, render 3.3 min, fix-roof-edges 2.6 min, materials-look 0.0 min; gates 3.7 min
+Done: yes, 6 shortcuts await your OK (1, 2, 3, 4, 5, 6)
 ```
 
 Timing line (`close --times`):
@@ -89,4 +89,4 @@ Not verified beyond shortcut 6: nothing here ran in real Blender (5.2 or 5.3), a
 
 ## Decision
 
-Keep. The procedure and both scripts worked end to end on a real build: the acceptance file held every number from the brief, the gates caught the expected failures and one real defect, and the report lists every shortcut and assumption. Next (local): rebuild with real Blender on the GPU (`blender -b --python build_shed.py -- --stage blockout`, and so on; use `run_in_blender.py --blend` instead of `run_blend.py`), render at 3840x2160, append the timing line to `lab/build-times.jsonl`, and add the report here. Consider the two wording points in findings 4 and 5 for `build_log.py`.
+Keep. The procedure and both scripts worked end to end on a real build: the acceptance file held every number from the brief, the gates caught the expected failures and one real defect, and the report lists every shortcut and assumption. Next (local): rebuild with real Blender on the GPU (`blender -b --python build_shed.py -- --stage blockout`, and so on; use `run_in_blender.py --blend` instead of `run_blend.py`), render at 3840x2160, append the timing line to `lab/build-times.jsonl`, and add the report here. The user's OK on shortcuts 1 to 6 (above all 1, the assumed pitch) is still open.

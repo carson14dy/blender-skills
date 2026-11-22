@@ -51,6 +51,12 @@
    "start": 1795317235.7206542,
    "end": 1795317394.4620218,
    "seconds": 158.7
+  },
+  {
+   "name": "materials-look",
+   "start": 1795317923.3601186,
+   "end": 1795317923.43111,
+   "seconds": 0.1
   }
  ],
  "gates": [
@@ -358,6 +364,14 @@
    "seconds": 0.11,
    "warnings": 0,
    "warning_texts": []
+  },
+  {
+   "name": "look-materials",
+   "stage": "materials-look",
+   "time": 1795317923.394273,
+   "pass": true,
+   "manual": true,
+   "note": "Cycles close-up out/render/materials_0001.png (1280x720, 128 spp, temp camera at the front-left corner): sage lap siding with grain and lap shadows, aligned at the corner; white casings and window frames with meeting rails; glass reflects sky and lawn; white door, casing, brass knob; concrete pad edge; plain dark roof edges. Shingle surface not in this view: judged in the hero (courses faint)"
   }
  ],
  "shortcuts": [
@@ -421,7 +435,7 @@
   }
  ],
  "closed": {
-  "time": 1795317665.2041953,
+  "time": 1795318084.9788036,
   "done": true,
   "blockers": []
  }

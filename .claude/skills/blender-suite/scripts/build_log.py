@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """Build log: stages, gates, times and every shortcut of one build; `close` refuses "done" too early.
 
-Plain Python, no bpy. Each command prints one JSON line and rewrites the log (--log, default build_log.json).
+Plain Python, no bpy. Each command prints one JSON line and rewrites --log (default build_log.json).
 Usage:
   python build_log.py start --name "Garden shed" --accept acceptance.json [--session cloud|local] [--force]
   python build_log.py stage NAME [--done] [--note T]
   python build_log.py gate NAME --stdin|--result FILE|--pass|--fail [--deliverable] [--note T]
-      (reads the last @@JSON@@, RT_RESULT or RT_QA line of the text, else the text as JSON)
+      (takes the last @@JSON@@, RT_RESULT or RT_QA line, else the text as JSON)
   python build_log.py shortcut --kind K --what T --why T [--effect T] [--check ID] [--approved]
   python build_log.py approve N [N ...]       (only after the user said yes)
-  python build_log.py close [--times FILE]    exit 0 when done, 2 while blockers remain
-  python build_log.py report [--json]         the text for the final message
+  python build_log.py close [--times FILE]    exit 0 done, 2 blockers left
+  python build_log.py report [--json]         text for the final message
 Kinds: simplified omitted substituted assumed preview unverified tolerance brief-change.
 """
 import argparse
@@ -145,7 +145,7 @@ def cmd_shortcut(a, log):
 def cmd_approve(a, log):
     known = {s["n"]: s for s in log["shortcuts"]}
     if set(a.numbers) - set(known):
-        raise Fail(f"no shortcut {sorted(set(a.numbers) - set(known))}: there are {len(known)}")
+        raise Fail(f"no shortcut {sorted(set(a.numbers) - set(known))} (there are {len(known)})")
     for n in a.numbers:
         known[n]["approved"] = True
     return {"ok": True, "approved": a.numbers}
@@ -168,7 +168,7 @@ def blockers(log):
     out, cuts, full = [], log["shortcuts"], _full(log)
     base = os.path.basename(log["accept"])
     if not full:
-        out.append("no full acceptance run: pipe acceptance_check.py (no --only) into gate acceptance --stdin")
+        out.append("no full acceptance run: pipe acceptance_check.py (no --only) into gate acceptance")
     elif not full[-1]["pass"]:
         items = [(f["id"], _why(f)) for f in full[-1].get("fails", [])]
         items += [(r, "forbidden items in the scene") for r in full[-1].get("forbidden", [])]
@@ -185,7 +185,9 @@ def blockers(log):
     if now != log["sha"] and not any(s["kind"] in ("brief-change", "tolerance") for s in cuts):
         out.append(f"{base} changed since start ({log['sha']} -> {now}): log why as a brief-change shortcut")
     qa, look = _last(log, "qa"), _last(log, "look")
-    if not qa or not qa["pass"] or qa.get("complete") is False:
+    if qa and qa.get("manual"):
+        out.append("qa gate needs a qa_check.py result (--stdin or --result)")
+    elif not qa or not qa["pass"] or qa.get("complete") is False:
         out.append("no qa gate: run qa_check.py, then gate qa" if not qa else
                    f"the last qa gate {'failed' if not qa['pass'] else 'is incomplete: re-run with --max-tris 0'}")
     if not look or not look["pass"] or not look.get("note"):
@@ -194,6 +196,13 @@ def blockers(log):
         g = [g for g in log["gates"] if g["name"] == name and g.get("for_delivery")][-1]
         if not g["pass"]:
             out.append(f"deliverable gate '{name}' failed" + (f": {g['why']}" if g.get("why") else ""))
+    for name in dict.fromkeys(g["name"] for g in log["gates"]):  # any other gate whose last result failed
+        g = _last(log, name)
+        if g["pass"] or name in ("qa", "look") or g.get("for_delivery") or g.get("spec_sha") and not g.get("partial"):
+            continue
+        if not any(s.get("check") == name and s["approved"] for s in cuts):
+            out.append(f"gate '{name}' failed: pass it again, or log a shortcut with --check {name} "
+                       "and get the user's yes")
     if _cur(log):
         out.append(f"stage '{_cur(log)['name']}' is still open: stage {_cur(log)['name']} --done")
     return out
@@ -236,11 +245,18 @@ def report(log):
         parts.append(f"{n} {'pass' if g['pass'] else 'FAIL'}" + (f" ({', '.join(info)})" if info else "")
                      + (f", {g['preset']} {'x'.join(map(str, g.get('res') or []))} {g.get('samples')} samples"
                         if "preset" in g else ""))
-    out.append("Gates: " + (", ".join(parts) or "none"))
+    out.append("Gates: " + ("; ".join(parts) or "none"))
     out.append("Time: " + (", ".join(f"{n} {_min(s)} min" for n, s in _stages(log).items()) or "no stages")
                + f"; gates {_min(sum(g.get('seconds') or 0 for g in log['gates']))} min")
-    out.append("Done: yes" if not b else f"Done: no ({len(b)} blocker{'s' * (len(b) > 1)})")
+    un = _unapproved(log)
+    wait = f"{len(un)} shortcut{'s' * (len(un) > 1)} await{'s' * (len(un) == 1)} your OK ({', '.join(map(str, un))})"
+    out.append(("Done: yes" if not b else f"Done: no ({len(b)} blocker{'s' * (len(b) > 1)})")
+               + (("; " if b else ", ") + wait if un else ""))
     return "\n".join(out + [f"  - {x}" for x in b]), b
+
+
+def _unapproved(log):  # shown to the user for their OK; they do not block
+    return [s["n"] for s in log["shortcuts"] if not s["approved"]]
 
 
 def cmd_close(a, log):
@@ -260,7 +276,8 @@ def cmd_close(a, log):
                "shortcuts": len(log["shortcuts"]), "done": not b}
         with open(a.times, "a", encoding="utf-8") as f:
             f.write(json.dumps(row) + "\n")
-    return {"done": not b, "blockers": b, "shortcuts": len(log["shortcuts"]), "minutes": minutes}
+    return {"done": not b, "blockers": b, "shortcuts": len(log["shortcuts"]), "unapproved": _unapproved(log),
+            "minutes": minutes}
 
 
 def main(argv=None):

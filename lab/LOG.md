@@ -4,6 +4,56 @@ Newest first. One entry per session: date, cloud or local, what changed, results
 
 ---
 
+## 2026-11-22 · cloud (11)
+
+**Changed**
+- **Accuracy-first builds** (track T7, experiment 024). The user: builds "cut a lot of corners to save time"; accuracy first, time efficiency later.
+  - Fable 5.2 researched and planned; two Opus 5.5 builders built it in parallel; Fable reviewed; one builder fixed the review's findings.
+- **New in blender-suite:**
+  - `acceptance_check.py`: measures the scene against `acceptance.json`, written from the brief before building. Checks sizes, counts, spacing, gaps, slope, area, materials, tris, images and forbidden leftovers (default names, untouched materials, "placeholder"). Every number carries a source; unmatched or empty checks fail.
+  - `build_log.py`: records stages, gates, times and shortcuts. `close` refuses done while any gate's last result failed, the acceptance file changed, QA was manual or incomplete, or a deliverable is a preview. `report` lists every shortcut and assumption; unapproved shortcuts show as "await your OK".
+  - `references/build-accuracy.md`, and an "Accuracy first" section in `SKILL.md`. The linter keeps that section in place.
+- **Corner cuts closed:**
+  - `qa_check.py`: limit 300k to 2M tris; a skipped check is now an error (`complete: false`).
+  - `render_batch.py`: the result says preset, samples and `deliverable`; preview is flagged. Video `ok` checks the file exists.
+  - Five docs named no preset for "final" renders.
+  - `_bpyx.cli` adds `seconds` to every script result (data for the speed phase).
+- **Lab:**
+  - `CLAUDE.md` rule 7, "Accuracy first".
+  - Experiment template: Acceptance and Shortcuts sections.
+  - `roof-visualizer/SKILL.md` "Accuracy rules".
+  - `roof_qa.py --expect` checks a house against its measurement report (2 %); `roof_core` stores `rt_measure`.
+  - `GOALS.md` T7 with 025 and 026 for the speed phase.
+- **Defaults:** Fable's recommendations were used for its four decisions:
+  - ask once before building when a gap changes the result;
+  - preview stays the flagged default;
+  - QA over the limit fails;
+  - tolerance 1 mm or 0.1 % for models, 2 % for a house against its report.
+
+  The user has not confirmed them yet.
+
+**Results**
+- Skill linter OK: 216 files, 183 ship (limit 199).
+- Suite: 87 passed, 0 failed, 2 skipped (they need a Blender executable). Smoke: 0 failures. `test_roof_core`: pass.
+- `roof_qa.py --expect` with the report numbers: pass. With 29.4 squares (the 010 error): fails, "6.7 % > 2.0 %", exit 1.
+- **Pilot 024, garden shed:**
+  - 23 of 23 checks pass.
+  - Final 1920x1080 at 512 spp, 101 s on the CPU.
+  - 6 shortcuts logged and awaiting the user's OK, for example the 6/12 pitch assumed (not in the brief) and windows without sash detail.
+  - The look gate caught a stretched shingle texture on the rake edge, which was fixed.
+  - The new "any failed gate blocks" rule caught an unfinished look gate in the pilot itself.
+- Packaged `out/skills/blender-suite.skill`: 183 files, 457 KB.
+
+**Next**
+- The user approves or rejects the pilot's 6 shortcuts, and confirms the 4 defaults.
+- Use the protocol on the next real build (a model, a roof on a real house, a studio feature); T7 needs three.
+
+**Needs local**
+- `lab/NEXT.md`: rebuild 024's shed with the GPU at 3840x2160, then `build_log.py close --times lab/build-times.jsonl`.
+- Experiment 003 now uses `roof_qa.py --expect report.json`.
+
+---
+
 ## 2026-11-22 · cloud (10)
 
 **Changed**

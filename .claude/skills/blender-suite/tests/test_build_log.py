@@ -77,12 +77,46 @@ def test_build_log_blocks_until_true():
     assert any("incomplete" in b for b in _bl(d, "close")[1]["blockers"])                   # a skipped QA check
 
 
-def test_build_log_detects_a_changed_file():
-    d = _dir("bl2")
+def _done(name, qa=("--stdin",)):
+    """A started log with a passing acceptance run, a qa gate (from QA, or e.g. --pass) and a look."""
+    d = _dir(name)
     _bl(d, "start", "--name", "Shed", "--accept", "acceptance.json")
-    for args, stdin in ((("gate", "acceptance", "--stdin"), _acc(d)), (("gate", "qa", "--stdin"), QA),
+    for args, stdin in ((("gate", "acceptance", "--stdin"), _acc(d)), (("gate", "qa", *qa), QA),
                         (("gate", "look", "--pass", "--note", "ok"), None)):
         _bl(d, *args, stdin=stdin)
+    return d
+
+
+def test_any_failed_gate_blocks():
+    d = _done("bl4")
+    assert _bl(d, "close")[1]["done"]
+    _bl(d, "gate", "look-materials", "--fail", "--note", "Workbench shows flat grey")
+    rc, r = _bl(d, "close")
+    msg = ("gate 'look-materials' failed: pass it again, or log a shortcut with --check look-materials "
+           "and get the user's yes")
+    assert rc == 2 and r["blockers"] == [msg], r
+    _bl(d, "shortcut", "--kind", "unverified", "--what", "materials not seen", "--why", "x", "--check", "look-materials")
+    assert _bl(d, "close")[1]["blockers"] == [msg]                                         # not approved yet
+    _bl(d, "approve", "1")                                                                 # the user said yes
+    assert _bl(d, "close")[1]["done"]
+    _bl(d, "gate", "blockout", "--stdin", stdin=json.dumps({"ok": True, "pass": False, "spec_sha": _sha(d),
+                                                             "partial": True, "failed": ["ridge"]}))
+    assert any("gate 'blockout' failed" in b for b in _bl(d, "close")[1]["blockers"])      # a partial run counts too
+    _bl(d, "gate", "blockout", "--stdin", stdin=json.dumps({"ok": True, "pass": True, "spec_sha": _sha(d),
+                                                             "partial": True}))
+    assert _bl(d, "close")[1]["done"]                                                      # passed again
+
+
+def test_manual_qa_does_not_count():
+    d = _done("bl5", qa=("--pass",))
+    rc, r = _bl(d, "close")
+    assert rc == 2 and r["blockers"] == ["qa gate needs a qa_check.py result (--stdin or --result)"], r
+    _bl(d, "gate", "qa", "--stdin", stdin=QA)
+    assert _bl(d, "close")[1]["done"]
+
+
+def test_build_log_detects_a_changed_file():
+    d = _done("bl2")
     assert _bl(d, "close")[1]["done"]
     looser = dict(ACCEPT, checks=[dict(ACCEPT["checks"][0], expect=3), ACCEPT["checks"][1]])
     (d / "acceptance.json").write_text(json.dumps(looser))                                   # edited to pass
@@ -122,14 +156,15 @@ def test_build_log_gate_parsing_and_report():
     for part in ("Acceptance: 2 of 2 checks pass (acceptance.json ", "1. simplified: Window frames are one profile. "
                  "Why: no drawing. Effect: visible closer than 2 m. Check: windows. NOT APPROVED",
                  "2. preview: Hero at 1920x1080. Why: no GPU. APPROVED", "Assumed values (1): ridge: 6/12 pitch",
-                 "qa pass (0 errors, 1 warnings)", "render pass, final 1920x1080 512 samples", "\nTime: blockout ",
-                 " min, render ", "Done: yes"):
+                 "qa pass (0 errors, 1 warnings); render pass, final 1920x1080 512 samples; look pass",
+                 "\nTime: blockout ", " min, render ", "\nDone: yes, 1 shortcut awaits your OK (1)"):
         assert part in text, (part, text)
     js = _bl(d, "report", "--json")[1]
     assert js["done"] and js["text"].splitlines()[1:] == text.splitlines()[1:], js
     times = d / "times.jsonl"
     for _ in range(2):
-        assert _bl(d, "close", "--times", str(times))[0] == 0
+        rc, r = _bl(d, "close", "--times", str(times))
+        assert rc == 0 and r["done"] and r["unapproved"] == [1], r
     rows = [json.loads(x) for x in times.read_text().splitlines()]
     assert len(rows) == 2 and rows[0]["name"] == "Shed" and rows[0]["blender"] == "5.2.4" and rows[0]["tris"] == 900
     assert set(rows[0]["stages"]) == {"blockout", "render"} and rows[0]["gates"]["acceptance"] == 0.4, rows[0]

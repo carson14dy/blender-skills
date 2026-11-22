@@ -92,8 +92,11 @@ Never do these: edit or delete a check to get a pass, report a preview as the fi
 `python scripts/build_log.py close` prints `"done": true` only when:
 - the last full acceptance run passed, or every failing check has an approved shortcut;
 - the acceptance file is the one the build started with, or the change is logged;
-- the last `qa` gate passed and was complete, and a `look` gate is recorded;
+- the last `qa` gate passed, was complete and came from a `qa_check.py` result (not `--pass`), and a `look` gate with a note passed;
+- no gate's last result is a fail (pass it again, or log a shortcut with `--check <gate>` and get the user's yes);
 - no deliverable render is preview quality, and no stage is open.
+
+Unapproved shortcuts do not block, but they are listed for the user's OK: `close` returns them as `"unapproved"` and the report ends `Done: yes, N shortcuts await your OK (1, 2)`. Only the user approves; never run `approve` on your own.
 
 Then paste `python scripts/build_log.py report` into the final message. It lists checks passed and failed with numbers, every shortcut, every assumed value, and the time per stage. Add what the report cannot know: what you did not verify.
 

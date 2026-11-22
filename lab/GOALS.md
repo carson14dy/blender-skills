@@ -85,6 +85,6 @@ What the user wants, where it stands after the first build (experiment 000), and
 | 021 | T2 | Blender look-dev and golden-hour renders of P1 products | local |
 | 022 | T3/T5 | "Tap the roof": per-plane selection, from the Rooftec Clarity design. **Done, read-only**, see 022; changing a product per plane is later | cloud |
 | 023 | T1 | Data gaps and price refresh: Atlas spec sheets, six Menards P1 gaps | pricing session |
-| 024 | T7 | Accuracy-first build tooling: acceptance file, `acceptance_check.py`, `build_log.py`, a pilot shed build | cloud |
+| 024 | T7 | Accuracy-first build tooling: acceptance file, `acceptance_check.py`, `build_log.py`, a pilot shed build. **Done** (cloud), see 024; GPU rebuild open | cloud, then local |
 | 025 | T7 | Timing baseline: the same three builds on the GPU, from `lab/build-times.jsonl` | local |
 | 026 | T7 | First speed-ups, each with an A/B (same checks pass, same deliverable) | cloud, then local |
