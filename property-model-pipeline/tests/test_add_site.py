@@ -138,15 +138,100 @@ def test_steps_with_tread_slabs_show_the_fill_between_them(site):
 
 
 def test_rock_scatter_places_measured_stones(site):
-    """Measured position, angular (icosphere, flat-shaded), flat and partly buried: 30 % of its height under grade."""
+    """Measured position, angular flat slab (5-7-sided prism, flat-shaded), partly buried: 30 % of its height under
+    grade; height 0.35-0.5 x the measured diameter."""
     st = site["objects"]["stone 1"]
-    assert abs((st["min"][0] + st["max"][0]) / 2 - 4.0) < 0.12 and abs((st["min"][1] + st["max"][1]) / 2 + 4.0) < 0.12
+    assert abs((st["min"][0] + st["max"][0]) / 2 - 4.0) < 0.15 and abs((st["min"][1] + st["max"][1]) / 2 + 4.0) < 0.15
     h = st["max"][2] - st["min"][2]
     assert abs((-1.0 - st["min"][2]) / h - 0.3) < 1e-3                # sunk 30 % below the grade (-1.0)
     w = max(st["max"][0] - st["min"][0], st["max"][1] - st["min"][1])
-    assert 0.3 * 0.5 * 0.7 < h < 0.55 * w and w < 0.5 * 1.3           # flat: height 0.35-0.5 x its width (+ noise)
-    assert st["nverts"] == 42 and not st["smooth"]                   # icosphere (2 subdivisions), faceted
+    assert 0.5 * 0.35 - 1e-6 <= h <= 0.5 * 0.5 + 1e-6                # 0.35-0.5 x the 0.5 m diameter
+    assert 0.5 * 0.6 < w < 0.5 * 1.3
+    assert st["nverts"] in (15, 18, 21) and not st["smooth"]         # 3 rings of a 5-7-sided outline, faceted
     assert st["mat"].startswith("Garden stone")
+
+
+def _pure(names):
+    """Top-level functions of add_site.py compiled without bpy (they use only math / random)."""
+    import ast
+    import math
+    import random
+    src = open(ADD_SITE).read()
+    fns = [n for n in ast.parse(src).body if isinstance(n, ast.FunctionDef) and n.name in names]
+    ns = {"math": math, "random": random}
+    exec(compile(ast.Module(fns, []), ADD_SITE, "exec"), ns)
+    return ns
+
+
+def test_stone_outlines_are_angular_polygons_not_ellipses():
+    """rock_scatter stones from above: 5-7 corners, radii within +-25 % of the stone radius, at least 4 corners turning
+    by more than 30 deg (an ellipse or a noisy sphere has none), convex (every turn positive)."""
+    import math
+    import random
+    so = _pure({"stone_outline"})["stone_outline"]
+    for seed in range(200):
+        rnd = random.Random(seed)
+        P = so(rnd, 0.3)
+        assert 5 <= len(P) <= 7
+        assert all(0.75 * 0.3 - 1e-9 <= math.hypot(x, y) <= 1.25 * 0.3 + 1e-9 for x, y in P)
+        turns = []
+        for k in range(len(P)):
+            (ax, ay), (bx, by), (cx, cy) = P[k - 1], P[k], P[(k + 1) % len(P)]
+            a1, a2 = math.atan2(by - ay, bx - ax), math.atan2(cy - by, cx - bx)
+            turns.append(math.degrees((a2 - a1 + math.pi) % (2 * math.pi) - math.pi))
+        assert all(t > 0 for t in turns) and sum(t > 30 for t in turns) >= 4, (seed, turns)
+
+
+def test_boulder_dome_clamped_to_the_terrain(tmp_path):
+    """"max_over_terrain": no dome vertex stands more than that over the terrain (site-scene grid, bilinear) under it,
+    on a terrain sloping 0.4 m/m across the outline; without it the assumed dome profile stands up to ~1 m over the
+    downhill flank. Pure helpers: grid_z is bilinear, clamp_over_terrain only lowers."""
+    ns = _pure({"grid_z", "clamp_over_terrain"})
+    g = {"x0": 0.0, "y0": 0.0, "nx": 3, "ny": 2, "cell": 1.0, "z": [0.0, 1.0, 3.0, 0.0, 1.0, 3.0]}
+    assert abs(ns["grid_z"](g, 0.5, 0.3) - 0.5) < 1e-9 and abs(ns["grid_z"](g, 1.5, 1.0) - 2.0) < 1e-9
+    assert ns["grid_z"](g, -0.1, 0.5) is None
+    v, n = ns["clamp_over_terrain"]([(0.5, 0.5, 2.0), (1.5, 0.5, 1.0)], lambda x, y: ns["grid_z"](g, x, y), 0.15)
+    assert n == 1 and abs(v[0][2] - 0.65) < 1e-9 and v[1][2] == 1.0
+    # a local override (max_over_terrain_local) within its radius only
+    v, n = ns["clamp_over_terrain"]([(0.5, 0.5, 2.0), (0.5, 1.5, 3.0)], lambda x, y: 0.5, 0.15,
+                                    [{"xy": [0.5, 0.4], "radius": 0.2, "max": 0.6}])
+    assert n == 2 and abs(v[0][2] - 1.1) < 1e-9 and abs(v[1][2] - 0.65) < 1e-9
+    blend = str(tmp_path / "empty.blend")
+    (tmp_path / "empty.py").write_text(EMPTY)
+    _run([str(tmp_path / "empty.py"), blend])
+    nx_ = ny_ = 17
+    xs = [-4 + 0.5 * k for k in range(nx_)]
+    zf = lambda x, y: 0.4 * y                                      # downhill to the south
+    verts = [[x, y, zf(x, y)] for y in xs for x in xs]
+    faces = [[j * nx_ + i, j * nx_ + i + 1, (j + 1) * nx_ + i + 1, (j + 1) * nx_ + i] for j in range(ny_ - 1) for i in range(nx_ - 1)]
+    grid = {"x0": -4.0, "y0": -4.0, "nx": nx_, "ny": ny_, "cell": 0.5, "z": [v_[2] for v_ in verts]}
+    scene = {"verts": verts, "faces": faces, "face_class": [0] * len(faces), "classes": ["ground"], "grid": grid,
+             "overlays": {}, "curbs": [], "edging": [], "parcel": None, "points": []}
+    ring = [[-1.5, -1.5], [1.5, -1.5], [1.5, 1.5], [-1.5, 1.5]]
+    yard = {"items": [{"kind": "boulder", "name": "clamped", "polygon": ring, "top_z": 1.2, "max_over_terrain": 0.15},
+                      {"kind": "boulder", "name": "free", "polygon": [[x_ + 0.0, y_] for x_, y_ in ring], "top_z": 1.2}],
+            "face_normals": False}
+    sp, yp, out = tmp_path / "scene.json", tmp_path / "yard.json", str(tmp_path / "out.blend")
+    sp.write_text(json.dumps(scene)); yp.write_text(json.dumps(yard))
+    log = _run([ADD_SITE, blend, str(sp), str(yp), out])
+    assert "dome vertices clamped to the terrain + 0.15 m" in log
+    look = tmp_path / "look.py"
+    look.write_text(r"""
+import bpy, json, sys
+bpy.ops.wm.open_mainfile(filepath=sys.argv[1])
+out = {}
+for o in bpy.data.collections["Site"].objects:
+    if o.type == "MESH" and o.name in ("clamped", "free"):
+        out[o.name] = [list(o.matrix_world @ v.co) for v in o.data.vertices]
+        out[o.name + " min_nz"] = min((o.matrix_world.to_3x3() @ p.normal).z for p in o.data.polygons)
+json.dump(out, open(sys.argv[2], "w"))
+""")
+    _run([str(look), out, str(tmp_path / "v.json")])
+    r = json.load(open(tmp_path / "v.json"))
+    over_c = max(z - zf(x, y) for x, y, z in r["clamped"])
+    over_f = max(z - zf(x, y) for x, y, z in r["free"])
+    assert over_c <= 0.15 + 1e-5 and over_f > 0.6
+    assert r["clamped min_nz"] > -1e-6                              # heights only: no face turned over
 
 
 def test_boulder_has_no_undercut_and_foliage_mass(site):
@@ -225,23 +310,57 @@ def test_face_walls_stand_on_the_uphill_side_of_their_line(site):
 
 
 def test_drystack_is_random_coursed_ledgestone(site):
-    """Dry-stack: thin random courses (1-D Voronoi along z, mean 0.08 m -> 0.04-0.12 m), random stone lengths with a
-    random stagger (1-D Voronoi along x, mean 0.375 m -> 0.15-0.6 m), dark brown-grey joints (~0.08 linear) recessed
-    1-2 cm, no joints on the top faces (side-face mask from the normal); no brick."""
+    """Dry-stack: independent random course heights from a 1-D course texture along z (no regular courses), random stone
+    lengths with a random stagger (1-D Voronoi along x, mean 0.375 m, randomness 0.6 -> 0.15-0.6 m), dark brown-grey
+    joints (~0.08 linear) recessed 1-2 cm, no joints on the top faces (side-face mask from the normal), 12 % of the
+    stones lifted x1.2 (clamped); the presentation hooks (map ranges labelled "joint" fed by "courses..." / "stones..."
+    distances, "overhang shadow", "joint dark", "stone jitter") are in place; no brick."""
     mat = site["objects"]["face wall"]["mat"]
     assert "ShaderNodeTexBrick" not in site["materials"][mat]
     nodes = site["nodes"][mat]
     vor = [n for n in nodes if n["type"] == "ShaderNodeTexVoronoi"]
-    assert all(n["dims"] == "1D" for n in vor)
-    courses = {round(n["scale"], 3) for n in vor if n["label"].startswith("courses")}
+    assert vor and all(n["dims"] == "1D" for n in vor)
     stones = {round(n["scale"], 3) for n in vor if n["label"] == "stones"}
-    assert courses == {12.5} and stones == {round(1 / 0.375, 3)}       # mean 0.08 m courses, 0.375 m stones
+    assert stones == {round(1 / 0.375, 3)}                             # 0.375 m mean stones
     assert {"F1", "DISTANCE_TO_EDGE"} <= {n["feature"] for n in vor if n["label"] == "stones"}
+    assert not any(n["label"].startswith("courses") for n in vor)       # courses from the texture, not a Voronoi
+    assert sum(1 for n in nodes if n["type"] == "ShaderNodeTexImage" and n["label"].startswith("courses")) == 2
+    assert {"joint", "overhang shadow", "joint dark", "stone jitter", "lifted stones"} <= {n["label"] for n in nodes}
+    lift = [n for n in nodes if n["type"] == "ShaderNodeMix" and n["label"] == "lifted stones"]
+    assert lift and abs(lift[0]["b"][0] - 1.2) < 1e-6
+    assert any(n["label"] == "lifted stones" and n["type"] == "ShaderNodeMath" and abs(n["v"] - 0.88) < 1e-6 for n in nodes)
     jd = [n["b"] for n in nodes if n["label"] == "joint dark"]
     assert jd and 0.05 <= jd[0][0] <= 0.1 and jd[0][2] < jd[0][0]       # dark brown-grey
     bump = [n["distance"] for n in nodes if n["type"] == "ShaderNodeBump"]
     assert bump and 0.01 <= bump[0] <= 0.02
     assert any(n["label"] == "side faces" and abs(n["v"] - 0.5) < 1e-6 for n in nodes)   # caps carry no joints
+
+
+def test_drystack_courses_are_irregular_ledgestone():
+    """drystack_courses: heights within 0.04-0.12 m, mean within 5 % of 0.08, the tile closes its period exactly, and every
+    1 m stretch of wall holds >= 7 courses with a height coefficient of variation >= 0.3 (a uniform draw on 0.04-0.12
+    gives 0.29; equal courses 0); the course texture codes each pixel's distances to the course's joints."""
+    ns = _pure({"drystack_courses", "drystack_course_pixels"})
+    for seed in (0, 1, 1552, 1553, 2024):
+        hs, used = ns["drystack_courses"](seed)
+        assert abs(sum(hs) - 4.096) < 1e-9
+        assert min(hs) >= 0.04 * 0.97 and max(hs) <= 0.12 * 1.03
+        assert abs(sum(hs) / len(hs) / 0.08 - 1) <= 0.05 + 1e-9
+        n = len(hs)
+        for i in range(n):                                            # every 1 m window starting at a joint
+            acc, win = 0.0, []
+            for j in range(n):
+                h = hs[(i + j) % n]
+                if acc + h > 1.0:
+                    break
+                acc += h; win.append(h)
+            m = sum(win) / len(win)
+            cov = (sum((h - m) ** 2 for h in win) / (len(win) - 1)) ** 0.5 / m
+            assert len(win) >= 7 and cov >= 0.3
+        w, px = ns["drystack_course_pixels"](hs, 0.001, 0.25, seed=used)
+        assert w == 4096 and len(px) == 4 * w
+        top0, bot0 = px[0] * 0.25, px[1] * 0.25                       # first pixel: 0.5 mm above the first joint
+        assert abs(bot0 - 0.0005) < 1e-6 and abs(top0 + bot0 - hs[0]) < 1e-6
 
 
 def test_rocks_have_sparse_joints_and_bedding(site):
@@ -530,3 +649,78 @@ def test_terrain_hides_the_reference_grade_plane_and_qa_collections(tmp_path):
     assert r["colls"]["Labels"] == [True, False] and r["colls"]["Reference data"] == [True, False]
     assert r["colls"]["Site"] == [False, False]
     assert r["hit"][0] == "Terrain (LiDAR ground)" and abs(r["hit"][1] - -2.2) < 0.05
+
+
+def test_overlay_nodes_keep_draped_ground_out_of_the_cliff_smoothing():
+    """overlay_nodes: the corners of every grid cell holding an overlay vertex or meeting a draped polygon are fixed (the
+    Laplacian pass of smooth_face_normals must not lift a vertex whose triangles carry a draped overlay: the overlay was
+    draped on the unsmoothed triangles and the terrain would poke through it); nodes away from them stay movable."""
+    ns = _pure({"overlay_nodes"})
+    g = {"x0": 0.0, "y0": 0.0, "nx": 6, "ny": 5, "cell": 1.0}
+    m = ns["overlay_nodes"](g, [[1.5, 1.5]], [])
+    M = m.reshape(5, 6)
+    assert M[1, 1] and M[1, 2] and M[2, 1] and M[2, 2] and M.sum() == 4
+    m2 = ns["overlay_nodes"](g, [], [[[3.2, 2.2], [3.8, 2.2], [3.8, 2.8], [3.2, 2.8]]], pad=0.0)
+    M2 = m2.reshape(5, 6)
+    assert M2[2, 3] and M2[3, 4] and not M2[0, 0] and M2.sum() == 4
+
+
+HOUSE_CONCRETE = r"""
+import bpy, sys
+bpy.ops.wm.read_factory_settings(use_empty=True)
+m = bpy.data.materials.new("Concrete")               # add_details' photo-measured house concrete (unlinked base)
+b = m.node_tree.nodes.get("Principled BSDF"); b.inputs["Base Color"].default_value = (0.68, 0.624, 0.527, 1)
+walls = bpy.data.collections.new("Walls"); bpy.context.scene.collection.children.link(walls)
+me = bpy.data.meshes.new("wall GAR:front")
+me.from_pydata([(0, 0, 0), (2, 0, 0), (2, 0, 2), (0, 0, 2)], [], [[0, 1, 2, 3]]); me.materials.append(m)
+walls.objects.link(bpy.data.objects.new("wall GAR:front", me))
+bpy.ops.wm.save_as_mainfile(filepath=sys.argv[1])
+"""
+
+MAT_LOOK = r"""
+import bpy, json, sys
+bpy.ops.wm.open_mainfile(filepath=sys.argv[1])
+def info(m):
+    b = m.node_tree.nodes.get("Principled BSDF")
+    return {"base": list(b.inputs["Base Color"].default_value)[:3], "linked": b.inputs["Base Color"].is_linked,
+            "users": m.users, "tag": bool(m.get("propmodel_site")), "nodes": len(m.node_tree.nodes)}
+out = {"mats": {m.name: info(m) for m in bpy.data.materials},
+       "wall": bpy.data.objects["wall GAR:front"].data.materials[0].name,
+       "drive": bpy.data.objects["concrete (draped)"].data.materials[0].name}
+json.dump(out, open(sys.argv[2], "w"))
+"""
+
+
+def test_site_materials_never_take_over_a_house_material(tmp_path):
+    """add_details' 'Concrete' (photo-measured house walls, unlinked base colour) shares its name with the site's
+    driveway concrete: add_site must leave it untouched (same base, no links, same users) and drape the driveway in its
+    own tagged 'Site Concrete'. Re-running add_site on the site blend re-uses its own material (no '.001' copy) and
+    rebuilds it on a cleared node tree (same node count)."""
+    blend = str(tmp_path / "house.blend")
+    (tmp_path / "house.py").write_text(HOUSE_CONCRETE)
+    _run([str(tmp_path / "house.py"), blend])
+    verts = [[-5, -5, 0], [5, -5, 0], [5, 5, 0], [-5, 5, 0]]
+    drive = {"verts": [[1, -4, 0.02], [4, -4, 0.02], [4, -1, 0.02], [1, -1, 0.02]], "tris": [[0, 1, 2], [0, 2, 3]]}
+    scene = {"verts": verts, "faces": [[0, 1, 2, 3]], "face_class": [0], "classes": ["ground"],
+             "overlays": {"concrete": drive}, "curbs": [], "edging": [], "parcel": None, "points": []}
+    sp, yp = tmp_path / "scene.json", tmp_path / "yard.json"
+    sp.write_text(json.dumps(scene))
+    yp.write_text(json.dumps({"items": [], "materials": {"concrete": [[0.68, 0.55, 0.41], [0.82, 0.67, 0.51]]}}))
+    (tmp_path / "look.py").write_text(MAT_LOOK)
+    out1, out2 = str(tmp_path / "site1.blend"), str(tmp_path / "site2.blend")
+    _run([ADD_SITE, blend, str(sp), str(yp), out1])
+    _run([ADD_SITE, out1, str(sp), str(yp), out2])
+    for out in (out1, out2):
+        js = str(tmp_path / "m.json")
+        _run([str(tmp_path / "look.py"), out, js])
+        r = json.load(open(js))
+        house = r["mats"]["Concrete"]
+        assert all(abs(u - v) < 1e-4 for u, v in zip(house["base"], (0.68, 0.624, 0.527)))
+        assert not house["linked"] and house["users"] == 1 and not house["tag"]
+        assert r["wall"] == "Concrete"
+        assert r["drive"] == "Site Concrete" and r["mats"]["Site Concrete"]["tag"] and r["mats"]["Site Concrete"]["linked"]
+        assert not any(n.startswith("Site Concrete.") for n in r["mats"])
+        if out == out1:
+            n1 = r["mats"]["Site Concrete"]["nodes"]
+        else:
+            assert r["mats"]["Site Concrete"]["nodes"] == n1

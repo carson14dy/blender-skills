@@ -527,6 +527,39 @@ def test_wall_back_floor_lifts_retained_ground_to_the_measured_ledge():
     assert not upd.any()
 
 
+def test_wall_back_floor_fills_the_wedge_behind_a_convex_joint():
+    """An L-shaped face (east, then turning south; uphill on the left = outside of the turn): the retained ground behind the
+    joint lies outside both segments' spans. The ground filter shaves that narrow corner (here 0.5 m low); with corners
+    on, the wedge nodes within the reach of the joint rise to the measured upper level like the band behind each
+    segment; with corners off (the round-8 rule) they stay low. The lower level inside the L is left alone."""
+    c = 0.25
+    xs = np.arange(-3, 3 + 1e-9, c); X, Y = np.meshgrid(xs, xs)
+    item = {"kind": "retaining_wall", "line": [[-3.5, 0.0], [0.0, 0.0], [0.0, -3.5]], "thickness": 0.25, "top_z": 0.1,
+            "line_is": "face", "uphill": "left"}
+    faces = build_site.wall_faces({"items": [item]}); tops = build_site.face_tops({"items": [item]})
+    upper = (X > 0) | (Y > 0)
+    rng = np.random.default_rng(3)
+    px = rng.uniform(-3.2, 3.2, 6000); py = rng.uniform(-3.2, 3.2, 6000)
+    pz = np.where((px > 0) | (py > 0), 0.0, -1.0) + rng.normal(0, 0.02, px.size)
+    Z = np.where(upper, 0.0, -1.0)
+    wedge = (X > 1e-6) & (Y > 1e-6) & (np.hypot(X, Y) <= 0.25 + 1.5 * c)
+    Z[wedge] = -0.5                                                # the filter's notch at the corner
+    node = [X.copy(), Y.copy()]
+    Zr, up = build_site.wall_back_floor(Z, node[0], node[1], faces, tops, np.column_stack([px, py]), pz, c, tol=0.2, q=0.5)
+    assert wedge.sum() >= 3 and up[wedge].all() and np.abs(Zr[wedge]).max() < 0.06
+    assert np.allclose(Zr[~upper], Z[~upper]) and np.all(Zr >= Z - 1e-12)
+    Zo, upo = build_site.wall_back_floor(Z, node[0], node[1], faces, tops, np.column_stack([px, py]), pz, c, tol=0.2, q=0.5,
+                                         corners=False)
+    assert not upo[wedge].any()
+    # a wider band reaches nodes the default (thickness + 1.5 cells) leaves
+    far = (Y > 0.25 + 1.5 * c + 1e-6) & (Y <= 0.25 + 3.0 * c) & (X < -0.5)
+    Zf = Z.copy(); Zf[far] = -0.5
+    _, up15 = build_site.wall_back_floor(Zf, node[0], node[1], faces, tops, np.column_stack([px, py]), pz, c, tol=0.2, q=0.5)
+    _, up30 = build_site.wall_back_floor(Zf, node[0], node[1], faces, tops, np.column_stack([px, py]), pz, c, tol=0.2, q=0.5,
+                                         reach_cells=3.0)
+    assert not up15[far].any() and up30[far].all()
+
+
 def test_wall_back_floor_quantile_takes_the_median_of_a_rough_top():
     """q = 0.5 raises the retained ground to the median of the last returns behind the wall body (a rough rock top with
     +-0.1 m noise); q = 0 to their lowest, a noise sigma or two under the surface. Neither lowers a node."""
@@ -585,3 +618,216 @@ def test_flat_lower_no_dents_lowers_a_shelf_and_skips_a_lone_node():
     out = build_site.flat_lower_no_dents(Z, target, np.isfinite(target))
     assert np.allclose(out[1:5, 1:5], 0.6) and out[7, 7] == 1.0
     assert np.all(out <= Z)
+
+
+def _corner_pad_scene(c=0.25):
+    """A patio pad (z 0) retained by two walls meeting at a corner: an east-west face at y = -0.11 (uphill north, 0.35 m
+    thick: the grid rows y 0 and y -0.25 both snap onto it) and a north-south face at x = 1.13 from its east end (uphill
+    west), lower level -0.9 in front of both. LiDAR last returns: -0.9 in front; on the patio a few 0.0 returns through a
+    deck whose boards (+2.0) give most of the returns there."""
+    xs = np.arange(-3, 3 + 1e-9, c); X, Y = np.meshgrid(xs, xs)
+    yard = {"items": [
+        {"kind": "grade_pad", "polygon": [[-2.5, -0.11], [1.13, -0.11], [1.13, 2.5], [-2.5, 2.5]], "z": 0.0, "blend": 0.3},
+        {"kind": "retaining_wall", "line": [[-2.5, -0.11], [1.13, -0.11]], "thickness": 0.35, "top_z": 0.03,
+         "line_is": "face", "uphill": "left"},
+        {"kind": "retaining_wall", "line": [[1.13, -0.11], [1.13, 2.5]], "thickness": 0.25, "top_z": 0.05,
+         "line_is": "face", "uphill": "left"}]}
+    upper = (X < 1.13) & (Y > -0.11)
+    from scipy.ndimage import uniform_filter
+    Z = uniform_filter(np.where(upper, 0.0, -0.9), 3, mode="nearest")      # the filtered ground smears the step
+    rng = np.random.default_rng(11)
+    px = rng.uniform(-3.1, 3.1, 9000); py = rng.uniform(-3.1, 3.1, 9000)
+    up_p = (px < 1.13) & (py > -0.11)
+    deck = up_p & (rng.random(px.size) < 0.7)
+    pz = np.where(up_p, np.where(deck, 2.0, 0.0), -0.9) + rng.normal(0, 0.02, px.size)
+    return xs, X, Y, Z, px, py, pz, yard
+
+
+def test_corner_wall_feet_stay_on_the_lower_level_and_the_pad_is_not_raised_to_the_deck():
+    """Grid rows on both sides of a face snap onto it; at the corner with a second wall the snapped feet sit a few
+    millimetres inside that wall's span, so the retained-ground floor used to lift them (and the wall-body node snapped next
+    to them) to the patio returns: a terrain tent in front of the face. Snapped feet now belong to their own face, move
+    0.02 m downhill and keep the lower level; face-line nodes are lifted only on a terrace; the pad blend stops at the face;
+    no pad node rises above pad z + 0.02 to the deck returns over it."""
+    c = 0.25
+    xs, X, Y, Z, px, py, pz, yard = _corner_pad_scene(c)
+    zfun = lambda x, y: 0.0
+    pads = build_site.grade_pads(yard)
+    faces = build_site.wall_faces(yard, zfun=zfun)
+    walls = build_site.wall_lines(yard, zfun=zfun)
+    tops = build_site.face_tops(yard, zfun=zfun)
+    last = np.column_stack([px, py])
+    low = build_site.cell_lowest(last, pz, xs[0], xs[0], c, Z.shape)
+    front_low = pz[~((px < 1.13) & (py > -0.11))].min()
+    tol = 0.3
+
+    def run(new):
+        rr = np.zeros(Z.shape)
+        Zp, padmask, nblk = build_site.pad_blend(Z, X, Y, pads, faces if new else None, rr)
+        node = [X.copy(), Y.copy()]
+        Zb = build_site.apply_breaklines(Zp.copy(), xs, xs, walls, c, snap=node)
+        Zf, foot = build_site.wall_foot_lower(Zb, node[0], node[1], faces, low, xs[0], xs[0], c, walls=walls, tol=tol,
+                                              shift=0.02 if new else 0.0)
+        ceil_ = build_site.pad_ceiling(pads, node[0], node[1]) if new else None
+        Zr, _ = build_site.wall_back_floor(Zf, node[0], node[1], faces, tops, last, pz, c, q=0.5, reach_cells=2.0,
+                                           ceiling=ceil_, front_probe=0.05 if new else 0.0)
+        return Zr, node, nblk
+
+    def downhill_near(node):
+        NX, NY = node
+        # in front of the east-west face (y <= -0.11, x <= 1.13) or of the north-south face (x >= 1.13), within 0.3 m
+        d1 = np.where(NX <= 1.13 + 1e-9, -0.11 - NY, np.hypot(NX - 1.13, NY + 0.11))
+        d2 = np.where(NY >= -0.11 - 1e-9, NX - 1.13, np.hypot(NX - 1.13, NY + 0.11))
+        return ((d1 >= -1e-3) & (d1 <= 0.3) & (NY <= -0.11 + 1e-3)) | ((d2 >= -1e-3) & (d2 <= 0.3) & (NX >= 1.13 - 1e-3))
+
+    def pad_nodes(node):
+        return shapely.contains_xy(Polygon(pads[0]["polygon"]), node[0], node[1])
+
+    Zo, nodeo, _ = run(False)
+    m_o = downhill_near(nodeo) & (np.abs(nodeo[0]) < 2.2) & (nodeo[1] < 2.2)
+    assert (Zo[m_o] > front_low + tol).sum() >= 3                      # round 9: the tent at the corner
+    assert Zo[pad_nodes(nodeo)].max() > 0.0 + 0.1                      # and the pad raised towards the deck
+    Zr, node, nblk = run(True)
+    m = downhill_near(node) & (np.abs(node[0]) < 2.2) & (node[1] < 2.2)     # (away from the faces' far ends)
+    assert m.sum() >= 15 and Zr[m].max() <= front_low + tol + 1e-9
+    assert Zr[pad_nodes(node)].max() <= 0.0 + 0.02 + 1e-9
+    assert nblk > 0                                                    # the blend stopped at the faces
+    # snapped feet sit 0.02 m in front of the face, never on top of the wall-body node snapped onto it
+    feet = (np.abs(node[1] + 0.13) < 1e-6) & (node[0] < 1.13)
+    assert feet.sum() >= 10
+    on_face = (np.abs(node[1] + 0.11) < 1e-6) & (node[0] < 1.13)
+    pairs = [(j, i) for j, i in zip(*np.nonzero(on_face)) if j > 0 and feet[j - 1, i]]
+    assert pairs and all(Zr[j, i] <= Zr[j - 1, i] + 1e-9 for j, i in pairs)   # no curtain in front of the face
+
+
+def test_face_line_nodes_rise_only_on_a_terrace_not_round_a_corner():
+    """wall_back_floor and nodes on a downhill face line: (a) a chamfered corner -- face A runs east, turns south-east
+    for 0.28 m and east again to meet face B, which runs north (both retain the same patio): the band behind B reaches
+    round the corner onto the walk in front of A's chamfer; a node on the chamfer is not raised to the patio returns.
+    (b) a terrace -- an upper wall's face stands 0.5 m behind a lower wall's face: the node on the upper face IS the
+    lower wall's retained ground and rises to the terrace returns."""
+    c = 0.25
+    xs = np.arange(-3, 3 + 1e-9, c); X, Y = np.meshgrid(xs, xs)
+    rng = np.random.default_rng(7)
+    px = rng.uniform(-3, 3, 12000); py = rng.uniform(-3, 3, 12000)
+    # (a) the corner
+    A = {"kind": "retaining_wall", "line": [[-3.0, 0.0], [0.4, 0.0], [0.6, -0.2], [1.2, -0.2]], "thickness": 0.35,
+         "top_z": 0.05, "line_is": "face", "uphill": "left"}
+    Bw = {"kind": "retaining_wall", "line": [[1.2, -0.2], [1.2, 3.0]], "thickness": 0.25, "top_z": 0.05,
+          "line_is": "face", "uphill": "left"}
+    faces = build_site.wall_faces({"items": [A, Bw]}); tops = build_site.face_tops({"items": [A, Bw]})
+    # the patio-level returns reach 0.12 m past the modelled faces (cap and top returns, registration), as on the lot
+    patio = shapely.contains_xy(Polygon([(-3, 0), (0.4, 0), (0.6, -0.2), (1.2, -0.2), (1.2, 3), (-3, 3)])
+                                .buffer(0.12, join_style="mitre"), px, py)
+    pz = np.where(patio, 0.0, -0.9) + rng.normal(0, 0.02, px.size)
+    NX, NY = X.copy(), Y.copy()
+    # a node on the chamfer's face line (as apply_breaklines snaps one there), at the walk level
+    j0, i0 = int(np.argmin(np.abs(xs + 0.0))), int(np.argmin(np.abs(xs - 0.5)))
+    NX[j0, i0], NY[j0, i0] = 0.5, -0.1
+    Z = np.where(shapely.contains_xy(Polygon([(-3, 0), (0.4, 0), (0.6, -0.2), (1.2, -0.2), (1.2, 3), (-3, 3)]), NX, NY),
+                 0.0, -0.9)
+    Z[j0, i0] = -0.9
+    pxy = np.column_stack([px, py])
+    Zr, up = build_site.wall_back_floor(Z, NX, NY, faces, tops, pxy, pz, c, q=0.5, reach_cells=2.0)
+    assert not up[j0, i0] and Zr[j0, i0] == -0.9
+    Zo, upo = build_site.wall_back_floor(Z, NX, NY, faces, tops, pxy, pz, c, q=0.5, reach_cells=2.0, front_probe=0.0)
+    assert upo[j0, i0] and Zo[j0, i0] > -0.2                         # (without the probe: the round-9 tent)
+    # (b) the terrace: lower wall face along y = -1 (top -0.5), upper wall face along y = -0.5 (top 0.4)
+    lo_w = {"kind": "retaining_wall", "line": [[-3.0, -1.0], [3.0, -1.0]], "thickness": 0.25, "top_z": -0.45,
+            "line_is": "face", "uphill": "left"}
+    up_w = {"kind": "retaining_wall", "line": [[-3.0, -0.5], [3.0, -0.5]], "thickness": 0.3, "top_z": 0.4,
+            "line_is": "face", "uphill": "left"}
+    faces2 = build_site.wall_faces({"items": [lo_w, up_w]}); tops2 = build_site.face_tops({"items": [lo_w, up_w]})
+    pz2 = np.where(py > -0.5, 0.4, np.where(py > -1.0, -0.5, -1.5)) + rng.normal(0, 0.02, px.size)
+    NX2, NY2 = X.copy(), Y.copy()
+    j1 = int(np.argmin(np.abs(xs + 0.5)))                              # the row on the upper face line
+    Z2 = np.where(NY2 > -0.5, 0.4, np.where(NY2 > -1.0, -0.5, -1.5)).astype(float)
+    Z2[j1, :] = -0.9                                                   # a side grade dropped under the terrace
+    Zt, upt = build_site.wall_back_floor(Z2, NX2, NY2, faces2, tops2, pxy, pz2, c, q=0.5, reach_cells=2.0)
+    inner = np.abs(xs) < 2.0
+    # raised onto the terrace (its returns at -0.5; mixed with the upper level's within one cell, capped at the lower wall's
+    # top + 0.2 as any retained ground)
+    assert upt[j1, inner].all() and Zt[j1, inner].min() >= -0.55 and Zt[j1, inner].max() <= -0.45 + 0.2 + 1e-9
+
+
+def test_wall_back_cap_lowers_retained_ground_to_flat_measured_ground_and_keeps_the_cap_clear():
+    """A side grade extrapolated from a ramp behind a wall stands 0.3 m over the level ground the LiDAR measured right
+    behind it (and over the wall cap). wall_back_cap: nodes from the back line out to `reach` behind the wall body over
+    flat returns take min(z, lowest + dz); back-line nodes stand no higher than the top where the ground there meets it;
+    nodes further back, on the downhill side or over a sloping bank are left alone; never raises."""
+    c = 0.25
+    xs, ys, X, Y, Z, px, py, pz, item = _wall_scene(c)
+    item = dict(item, top_z=-0.06)                                 # level ground 0.0 just over the cap (-0.06)
+    walls = build_site.wall_lines({"items": [item]})
+    faces = build_site.wall_faces({"items": [item]})
+    tops = build_site.face_tops({"items": [item]})
+    node = [X.copy(), Y.copy()]
+    Zb = build_site.apply_breaklines(Z.copy(), xs, ys, walls, c, snap=node)
+    Zb[Y > 0.1] += 0.3                                             # the side grade stands over the measured level
+    Zc, low = build_site.wall_back_cap(Zb, node[0], node[1], faces, tops, np.column_stack([px, py]), pz, c)
+    mid = np.abs(X) < 2.5
+    back = mid & (np.abs(node[1] - 0.25) < 1e-3)
+    near = mid & (node[1] > 0.26) & (node[1] <= 0.75 + 1e-6)
+    far = node[1] > 0.75 + 1e-6
+    assert back.any() and near.any()
+    assert np.allclose(Zc[back], -0.06)                            # back line at the wall top: the cap stays clear
+    assert low[near].all() and Zc[near].max() < 0.05 + 0.05        # lowest flat return + 0.05 (noise 0.02)
+    assert Zc[near].min() > -0.1
+    assert np.allclose(Zc[far], Zb[far]) and np.allclose(Zc[node[1] < -1e-6], Zb[node[1] < -1e-6])
+    assert np.all(Zc <= Zb + 1e-12)
+    # a bank rising 0.6 m/m behind the wall is not flat, and its ground stands well over the top: left alone
+    pz2 = np.where(py > 0, 0.6 * py + 0.3, pz)
+    Zs, lows = build_site.wall_back_cap(Zb, node[0], node[1], faces, tops, np.column_stack([px, py]), pz2, c)
+    assert not lows[mid].any()
+    # off (no tops): nothing happens
+    Zn, lown = build_site.wall_back_cap(Zb, node[0], node[1], faces, [None], np.column_stack([px, py]), pz, c)
+    assert not lown.any()
+
+
+def test_lone_wall_feet_stay_on_the_face_twinned_feet_move_off_it():
+    """--wall-foot-shift separates a snapped foot from its twin (a node snapped onto the same point of the face from inside
+    the wall body). A foot with no twin -- here every grid row of the body lies uphill of the wall's centre line and snaps to
+    the back line -- stays ON the face: moved 0.02 m downhill, its triangles to the back line would cross the face in front
+    of it as a steep terrain curtain (the khaki sliver at a patio wall's inside corner)."""
+    c = 0.25
+    xs = np.arange(-2, 2 + 1e-9, c); X, Y = np.meshgrid(xs, xs)
+    Z = np.where(Y > 0.2, 0.0, -1.0)
+    rng = np.random.default_rng(11)
+    px = rng.uniform(-2, 2, 3000); py = rng.uniform(-2, 2, 3000); pz = np.where(py > 0.1, 0.0, -1.0)
+    for face_y, twin in ((0.1, False), (-0.11, True)):
+        item = {"kind": "retaining_wall", "line": [[-3, face_y], [3, face_y]], "thickness": 0.25, "top_z": 0.05,
+                "line_is": "face", "uphill": "left"}
+        walls = build_site.wall_lines({"items": [item]}); faces = build_site.wall_faces({"items": [item]})
+        node = [X.copy(), Y.copy()]
+        Zb = build_site.apply_breaklines(Z.copy(), xs, xs, walls, c, snap=node)
+        feet = build_site.snapped_feet(node[0], node[1], faces, xs[0], xs[0], c)[0]
+        assert feet.sum() >= 10
+        low = build_site.cell_lowest(np.column_stack([px, py]), pz, xs[0], xs[0], c, Z.shape)
+        n2 = [node[0].copy(), node[1].copy()]
+        build_site.wall_foot_lower(Zb, n2[0], n2[1], faces, low, xs[0], xs[0], c, walls=walls, shift=0.02)
+        want = face_y - (0.02 if twin else 0.0)
+        assert np.allclose(n2[1][feet], want)
+        n3 = [node[0].copy(), node[1].copy()]
+        build_site.wall_foot_lower(Zb, n3[0], n3[1], faces, low, xs[0], xs[0], c, walls=walls, shift=0.02, shift_lone=True)
+        assert np.allclose(n3[1][feet], face_y - 0.02)                    # the old behaviour, on request
+
+
+def test_wall_back_cap_keeps_unsnapped_nodes_inside_the_wall_body_under_the_cap():
+    """At a joint of a face line the breakline snap (per segment span) can leave a node inside the wall body at its own
+    cell's grade, poking through the cap: wall_back_cap lowers every node inside the body to the top of the nearest
+    segment (the higher one at a joint); nodes on the downhill side are left alone."""
+    c = 0.25
+    xs = np.arange(-2, 2 + 1e-9, c); X, Y = np.meshgrid(xs, xs)
+    # a face with a joint at x = 0 (two segments meeting at an angle), uphill north, 0.3 m thick, tops -0.1 / 0.0
+    item = {"kind": "retaining_wall", "line": [[-3, 0.1], [0.0, 0.1], [3, -0.2]], "thickness": 0.3, "top_z": [-0.1, 0.0],
+            "line_is": "face", "uphill": "left"}
+    faces = build_site.wall_faces({"items": [item]}); tops = build_site.face_tops({"items": [item]})
+    Z = np.where(Y > 0.05, 0.15, -1.0)                      # the upper grade carried into the body, unsnapped
+    rng = np.random.default_rng(3)
+    px = rng.uniform(-2, 2, 2000); py = rng.uniform(-2, 2, 2000); pz = np.where(py > 0.1, 0.15, -1.0)
+    Zc, low = build_site.wall_back_cap(Z, X, Y, faces, tops, np.column_stack([px, py]), pz, c, flat=-1.0, over=-9.0)
+    inside = (np.abs(Y - 0.25) < 1e-9) & (X < -0.3)          # 0.15 m behind the west face: inside the body (top -0.1)
+    assert inside.any() and np.allclose(Zc[inside], -0.1) and low[inside].all()
+    joint = (np.abs(Y - 0.25) < 1e-9) & (np.abs(X) < 1e-9)  # at the joint: the higher top of the two segments
+    assert np.allclose(Zc[joint], 0.0)
+    assert np.allclose(Zc[Y < 0.0], Z[Y < 0.0]) and np.all(Zc <= Z + 1e-12)

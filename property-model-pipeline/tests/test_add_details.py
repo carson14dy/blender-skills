@@ -492,3 +492,97 @@ def test_opening_frame_inside_uses_the_outer_frame_size(scene, tmp_path):
     z0, z1, u0, u1 = span("inside door")
     assert (z0, z1) == pytest.approx((0.0, 2.0), abs=1e-4) and (u0, u1) == pytest.approx((4.75, 5.65), abs=1e-4)
     assert "inside door sill" not in o
+
+
+GLASS_INSPECT = r"""
+import bpy, json, sys
+bpy.ops.wm.open_mainfile(filepath=sys.argv[1])
+out = {}
+for o in bpy.data.collections["Details"].objects:
+    if o.name.endswith(" glass") and o.data.materials:
+        b = o.data.materials[0].node_tree.nodes.get("Principled BSDF")
+        out[o.name] = [b.inputs["Emission Strength"].default_value, list(b.inputs["Emission Color"].default_value)[:3]]
+json.dump(out, open(sys.argv[2], "w"))
+"""
+
+
+def test_lantern_light_style(scene, tmp_path):
+    """lights "style": "lantern": back plate, arm, body (cap, corner posts, bottom) and glass, the body centred at z and
+    `arm` m off the plate, body / glass in their own colours, optional glass emission; the default style is unchanged."""
+    mj, _, _ = scene
+    south = next(x for x in mj["walls"] if abs(x["bearing"] - 180) < 1)
+    key = f'{south["wing"]}:{south["side"]}'
+    (x0, y0, _), (x1, y1, _) = south["bottom"]
+    L = math.hypot(x1 - x0, y1 - y0)
+    extra = {"lights": [
+        {"wall": key, "u": 2.0, "z": 1.8, "style": "lantern", "size": [0.2, 0.4, 0.18], "arm": 0.05,
+         "color": [45, 40, 35], "glass_color": [45, 40, 35], "label": "garage lantern"},
+        {"wall": key, "u": 4.0, "z": 1.8, "style": "lantern", "glass_color": [200, 190, 170], "emission": 0.1},
+        {"wall": key, "u": 6.0, "z": 1.8}]}
+    _, sc, _ = _details_run(scene, tmp_path, extra, "lanterns")
+    o, mats = sc["objects"], sc["materials"]
+    assert {"light 0 plate", "light 0 arm", "light 0 body", "light 0 glass"} <= set(o)
+    assert "light 0 shade" not in o
+    body, glass = o["light 0 body"], o["light 0 glass"]
+    assert (body["min"][2], body["max"][2]) == pytest.approx((1.6, 2.0), abs=1e-4)          # centred at z, 0.4 tall
+    out = [-(p - y0) for p in (body["min"][1], body["max"][1])]                         # outward = -y on a south wall
+    assert sorted(out) == pytest.approx([0.07, 0.27], abs=1e-4)      # plate 0.02 + arm 0.05, depth 0.18 + cap lip 0.02
+    xc = x0 + (x1 - x0) * 2.0 / L
+    assert (body["min"][0], body["max"][0]) == pytest.approx((xc - 0.12, xc + 0.12), abs=1e-4)   # 0.2 wide + cap lips
+    assert glass["min"][2] > 1.6 and glass["max"][2] < 2.0                              # glass between bottom and cap
+    assert mats[body["mat"]] == pytest.approx([0.0262, 0.0212, 0.0168], abs=0.0005)     # sRGB 45,40,35 -> linear
+    assert mats[glass["mat"]] == pytest.approx([0.0262, 0.0212, 0.0168], abs=0.0005)
+    assert o["light 1 body"]["mat"] == "Light fixture (black)"                          # default body colour
+    (tmp_path / "glass.py").write_text(GLASS_INSPECT)
+    _run([str(tmp_path / "glass.py"), str(tmp_path / "lanterns.blend"), str(tmp_path / "glass.json")])
+    g = json.loads((tmp_path / "glass.json").read_text())
+    assert g["light 1 glass"][0] == pytest.approx(0.1) and g["light 1 glass"][1][0] > g["light 1 glass"][1][2]  # warm
+    assert g["light 0 glass"][0] == pytest.approx(0.0)                                  # unlit by default
+    assert {"light 2 plate", "light 2 arm", "light 2 shade"} <= set(o)                  # default style: plate/arm/shade
+    assert o["light 2 shade"]["mat"] == "Light fixture (black)"
+
+
+def test_gutters_inside_the_fitted_eave_line(scene, tmp_path):
+    """gutters.position "inside": an eave line fitted to LiDAR is the gutter lip, so the gutter's front face lies on the
+    eave line (nothing beyond it), its top follows the roof plane 8 mm above it, and fascia / soffit move in by depth.
+    The default ("outside") hangs the gutter outside the line, as before."""
+    mj, _, _ = scene
+    eaves = {i: e for i, e in enumerate(mj["edges"]) if e["kind"] == "eave" and e["length_m"] >= 1.0
+             and abs(e["p0"][0] - e["p1"][0]) > 1.0}                   # level eaves along x
+    assert eaves
+    facets = {f["id"]: f for f in mj["facets"]}
+
+    def out_dist(i, p):                                                # metres outside eave i (+ = away from its facet)
+        e = eaves[i]
+        a, b, _ = facets[e["facets"][0]]["plane"]
+        s = -1 if b > 0 else 1                                         # a slope rising north drains south (-y)
+        return (p[1] - e["p0"][1]) * s
+
+    _, out_sc, _ = _details_run(scene, tmp_path, {}, "gut_out")
+    _, in_sc, _ = _details_run(scene, tmp_path, {"gutters": {"position": "inside", "depth": 0.13, "height": 0.12}},
+                               "gut_in")
+    seen = 0
+    for i, e in eaves.items():
+        go, gi = out_sc["objects"].get(f"gutter {i}"), in_sc["objects"].get(f"gutter {i}")
+        if go is None:                                                 # hole edges carry no gutter
+            assert gi is None
+            continue
+        seen += 1
+        assert max(out_dist(i, p) for p in go["verts"]) == pytest.approx(0.135, abs=0.002)
+        assert max(out_dist(i, p) for p in gi["verts"]) == pytest.approx(0.0, abs=1e-4)
+        assert min(out_dist(i, p) for p in gi["verts"]) == pytest.approx(-0.13, abs=1e-4)
+        a, b, c = facets[e["facets"][0]]["plane"]
+        tops = [p for p in gi["verts"] if p[2] > e["p0"][2] - 0.05]
+        assert len(tops) == 4 and all(p[2] - (a * p[0] + b * p[1] + c) == pytest.approx(0.008, abs=1e-4) for p in tops)
+        assert gi["min"][2] == pytest.approx(e["p0"][2] - 0.12, abs=1e-4)
+        fo, fi = out_sc["objects"][f"fascia {i}"], in_sc["objects"][f"fascia {i}"]
+        assert max(out_dist(i, p) for p in fi["verts"]) == pytest.approx(max(out_dist(i, p) for p in fo["verts"]) - 0.13,
+                                                                          abs=1e-4)
+        so, si = out_sc["objects"].get(f"soffit {i}"), in_sc["objects"].get(f"soffit {i}")
+        if so:
+            assert max(out_dist(i, p) for p in si["verts"]) == pytest.approx(-0.16, abs=1e-4)
+            assert min(out_dist(i, p) for p in si["verts"]) == pytest.approx(min(out_dist(i, p) for p in so["verts"]),
+                                                                              abs=1e-4)   # still ends on the wall face
+    assert seen >= 1
+    with pytest.raises(AssertionError, match="gutters.position"):     # a typo fails loudly, no silent default
+        _details_run(scene, tmp_path, {"gutters": {"position": "under"}}, "gut_bad")

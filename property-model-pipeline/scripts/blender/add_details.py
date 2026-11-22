@@ -28,6 +28,12 @@ geometry, placed from photo measurements. details.json (metres, model frame):
   "window_frame_color": [80, 68, 52],                                  # window/slider frames (default: trim)
   "concrete_color": [215, 207, 192],                                   # material "concrete" (walls, boxes, ...)
   "fascia_height": 0.2, "gutters": true, "soffits": true,
+            # gutters: true / false, or {"position": "outside" | "inside", "depth": 0.13, "height": 0.12}.
+            # "outside" (default): the eave line is the shingle drip edge and the gutter hangs outside it. "inside": the
+            # eave line was fitted to a LiDAR / ortho outline, whose outermost surface IS the gutter lip (check: no
+            # returns at gutter height within ~0.2 m outside the fitted eave), so the gutter's front face lies on the eave
+            # line, its top follows the roof plane 8 mm above it (the white band an orthophoto shows along the eave) and
+            # the fascia and soffit move in by `depth`; the roof outline (and every measured number) is unchanged
   "foundation": {"default_reveal": 0.25, "walls": {"M:-u": 0.54, "M:+v": 0.62}, "color": [r,g,b],   # siding-bottom z per wall
                  "skip": ["U", "M:+v"]},       # wings / walls with no foundation strip (an upper storey standing on a lower one)
   "openings": [ {"wall": "M:-u", "u": 9.98, "sill_z": 1.55, "width": 1.56, "height": 1.52,
@@ -87,7 +93,10 @@ geometry, placed from photo measurements. details.json (metres, model frame):
   "beam_ends": [ {"xy": [x,y], "size": [width, depth], "length": 1.0, "proud": null, "drop": 0.06, "color": [r,g,b]} ],
               # rafter tails / outlooker ends under the nearest eave or rake: xy is the visible tip (as traced on an
               # orthophoto); the beam runs back square to that edge, its top `drop` under the roof edge. "proud"
-              # overrides the tip's distance outside the edge line
+              # overrides the tip's distance outside the edge line (0.02: a purlin end flush with the fascia). Check
+              # each tip against LiDAR: a projecting end is hit at beam level in a +-0.2 m window beyond the edge about
+              # as often as the roof edge itself; ground-only returns there mean it does not project. A ridge beam
+              # running out past a prow or hip end (not square to any rake) is a "beams" entry with 3-D p0 / p1 instead
   "wall_boxes": [ {"wall": "M:+u", "u": 1.5, "z": 0.4, "size": [w, h, depth], "color": [r,g,b], "name": "AC sleeve"} ],
               # wall-mounted boxes (through-wall AC, vents, meters); z = bottom
   "downspouts": [ {"xy": [x,y], "top_z": 3.5, "bottom_z": 0.2, "label": "...",
@@ -119,7 +128,13 @@ geometry, placed from photo measurements. details.json (metres, model frame):
                  # presentation-only walls (e.g. a garage under a deck) that openings can name like model walls;
                  # thickness > 0 builds a solid wall extruded inward (away from the bearing)
   "corner_boards": true,
-  "lights": [ {"wall": "M:-v", "u": 5.4, "z": 2.9} ],
+  "lights": [ {"wall": "M:-v", "u": 5.4, "z": 2.9, "style": "shade|lantern", "color": [r,g,b], "label": "..."} ],
+             # "shade" (default): back plate, arm and a flat square shade under it, z = plate centre, colour default
+             #   black ("Light fixture (black)"); "lantern": a coach lantern - back plate, short arm and a box body
+             #   (cap, corner posts, bottom, glass) with z = body centre: "size": [width, height, depth] (default
+             #   0.2, 0.36, 0.18), "arm": body offset from the plate (0.05), "color": body, "glass_color": glass
+             #   (default the window glass), "emission": glass Emission Strength (default 0 = unlit; ~0.05-0.2 is a dim
+             #   lamp: a sunlit white wall renders ~1), "emission_color" (default warm (255,190,120))
   "text": [ {"wall": "G:+u", "u": 0.5, "z": 0.9, "text": "12", "size": 0.16, "material": "fixture", "color": [r,g,b],
              "plate": [w, h], "plate_color": [r,g,b]} ],  # "\n" stacks lines; or "xy": [x,y] + "azimuth": facing deg
                                                           # instead of wall/u (a plaque on a pier or post)
@@ -605,7 +620,42 @@ def edge_outward(model, e):
     return nrm
 
 
+def gutter_options(gutters):
+    """(enabled, inside, depth, height) from details.json "gutters" (bool or dict, see the docstring)."""
+    if isinstance(gutters, dict):
+        pos = gutters.get("position", "outside")
+        if pos not in ("outside", "inside"):
+            raise ValueError(f"gutters.position {pos!r}: expected 'outside' or 'inside'")
+        return (bool(gutters.get("enabled", True)), pos == "inside", float(gutters.get("depth", 0.13)),
+                float(gutters.get("height", 0.12)))
+    return bool(gutters), False, 0.13, 0.12
+
+
+def gutter_inside_mesh(p0, p1, nrm, plane, depth, height, lift=0.008):
+    """(verts, faces) of a gutter lying INSIDE an eave line p0 -> p1 (nrm = outward horizontal unit): front face on the
+    eave line, back face `depth` inside it, top following the roof plane (a, b, c) `lift` above it, bottom `height`
+    under the eave. Windings give outward normals."""
+    a, b, c0 = plane
+
+    def zp(q):
+        return a * q.x + b * q.y + c0
+    zb = min(p0.z, p1.z) - height
+    rows = []
+    for p in (p0, p1):
+        fo = Vector((p.x, p.y, 0))
+        bi = fo - nrm * depth
+        rows += [Vector((fo.x, fo.y, zb)), Vector((fo.x, fo.y, zp(fo) + lift)),
+                 Vector((bi.x, bi.y, zp(bi) + lift)), Vector((bi.x, bi.y, zb))]
+    # 0..3 at p0 (front bottom, front top, back top, back bottom), 4..7 at p1
+    faces = [[0, 4, 5, 1], [1, 5, 6, 2], [2, 6, 7, 3], [3, 7, 4, 0], [0, 1, 2, 3], [4, 7, 6, 5]]
+    d = p1 - p0
+    if Vector((d.x, d.y, 0)).cross(nrm).z > 0:          # keep the front face pointing outward whatever the edge direction
+        faces = [list(reversed(f)) for f in faces]
+    return rows, faces
+
+
 def add_trim(model, frames, c, mats, fascia_h, gutters, soffits):
+    g_on, g_in, g_depth, g_h = gutter_options(gutters)
     for i, e in enumerate(model["edges"]):
         if e["kind"] not in ("eave", "rake") or e["length_m"] < 0.15:
             continue
@@ -620,26 +670,32 @@ def add_trim(model, frames, c, mats, fascia_h, gutters, soffits):
         nrm = edge_outward(model, e)
         mid = (p0 + p1) / 2
         down = Vector((0, 0, -fascia_h))
+        eave = e["kind"] == "eave" and not is_hole_edge(f, e)     # no gutter / soffit inside a roof opening
+        gut = g_on and eave
+        inset = g_depth if (gut and g_in) else 0.0      # "inside" gutters: fascia and soffit sit behind the gutter
         # fascia: a thin board just inside the roof edge (also trims the edges of a roof opening)
-        oriented_box(f"fascia {i}", p0 - nrm * 0.03, d, nrm * 0.03, down, c, mats["fascia"])
-        if e["kind"] == "eave" and not is_hole_edge(f, e):     # no gutter / soffit inside a roof opening
-            if gutters:
+        oriented_box(f"fascia {i}", p0 - nrm * (0.03 + inset), d, nrm * 0.03, down, c, mats["fascia"])
+        if gut:
+            if g_in:
+                gv, gf = gutter_inside_mesh(p0, p1, nrm, f["plane"], g_depth, g_h)
+                mesh(f"gutter {i}", gv, gf, c, mats["gutter"])
+            else:
                 g0 = p0 + nrm * 0.005 + Vector((0, 0, -0.03))
-                oriented_box(f"gutter {i}", g0, d, nrm * 0.13, Vector((0, 0, -0.12)), c, mats["gutter"])
-            if soffits:
-                # horizontal soffit from the fascia back to the nearest parallel wall face (<= 2.5 m)
-                best = None
-                for k, (a, wd, wn, L, _) in frames.items():
-                    if abs(wd.dot(dh.normalized())) < 0.99:
-                        continue
-                    dist = (Vector((mid.x, mid.y, 0)) - a).dot(wn)
-                    along = (Vector((mid.x, mid.y, 0)) - a).dot(wd)
-                    if 0.05 < dist < 2.5 and -0.5 < along < L + 0.5 and (best is None or dist < best):
-                        best = dist
-                if best:
-                    z = min(p0.z, p1.z) - fascia_h
-                    s0 = Vector((p0.x, p0.y, z)) - nrm * 0.03
-                    oriented_box(f"soffit {i}", s0, Vector((d.x, d.y, 0)), -nrm * (best - 0.03), Vector((0, 0, -0.012)), c, mats["soffit"])
+                oriented_box(f"gutter {i}", g0, d, nrm * g_depth, Vector((0, 0, -g_h)), c, mats["gutter"])
+        if eave and soffits:
+            # horizontal soffit from the fascia back to the nearest parallel wall face (<= 2.5 m)
+            best = None
+            for k, (a, wd, wn, L, _) in frames.items():
+                if abs(wd.dot(dh.normalized())) < 0.99:
+                    continue
+                dist = (Vector((mid.x, mid.y, 0)) - a).dot(wn)
+                along = (Vector((mid.x, mid.y, 0)) - a).dot(wd)
+                if 0.05 < dist < 2.5 and -0.5 < along < L + 0.5 and (best is None or dist < best):
+                    best = dist
+            if best and best - 0.03 - inset > 0.02:
+                z = min(p0.z, p1.z) - fascia_h
+                s0 = Vector((p0.x, p0.y, z)) - nrm * (0.03 + inset)
+                oriented_box(f"soffit {i}", s0, Vector((d.x, d.y, 0)), -nrm * (best - 0.03 - inset), Vector((0, 0, -0.012)), c, mats["soffit"])
 
 
 def skipped(key, skip):
@@ -1240,15 +1296,67 @@ def add_downspouts(model, D, frames, c, mats):
             oriented_box(f"gutter leader {i}.{k}", p0 - sx / 2 - sz / 2, dv, sx, sz, c, mats["gutter"])
 
 
+LANTERN_SIZE = (0.2, 0.36, 0.18)       # default coach-lantern body: width along the wall, height, depth out from it
+
+
+def glass_material(name, rgb, rough=0.15, emission=0.0, emission_color=(255, 190, 120)):
+    """Lamp glass: a Principled BSDF of colour rgb, optionally glowing (emission = Emission Strength, ~radiance in the
+    sun's units: a sunlit white wall is ~1, so 0.05-0.2 reads as a dim lamp at dusk and disappears in daylight)."""
+    rgb, e = col(rgb), float(emission or 0.0)
+    ec = col(emission_color)
+    m = mat(f"{name[:28]} {rgb[0]:.3f} {rgb[1]:.3f} {rgb[2]:.3f} e{e:.2f}", rgb, rough)
+    b = m.node_tree.nodes.get("Principled BSDF")
+    if e > 0:
+        for k in ("Emission Color", "Emission"):            # Blender 4+ / 3.x socket names
+            if k in b.inputs:
+                b.inputs[k].default_value = (*ec, 1)
+                break
+        if "Emission Strength" in b.inputs:
+            b.inputs["Emission Strength"].default_value = e
+    return m
+
+
+def add_lantern(i, l, p, d, n, c, mats):
+    """Coach lantern on a wall: back plate, a short arm and a box body (cap, corner posts, bottom, glass) whose centre
+    is l["z"] high, `arm` m out from the plate. Body / glass colours from l["color"] / l["glass_color"]."""
+    w, h, dp = (float(v) for v in l.get("size", LANTERN_SIZE))
+    arm = float(l.get("arm", 0.05))
+    up = Vector((0, 0, 1))
+    body_m = pick(l, mats, "fixture", f"light {i} body", 0.45)
+    glass_m = (glass_material(f"light {i} glass", l["glass_color"], 0.15, l.get("emission", 0.0),
+                              l.get("emission_color", (255, 190, 120)))
+               if l.get("glass_color") is not None else mats["glass"])
+    plate_t = 0.02
+    oriented_box(f"light {i} plate", p - d * 0.05 - up * (h * 0.3), d * 0.1, n * plate_t, up * (h * 0.6), c, body_m)
+    oriented_box(f"light {i} arm", p - d * 0.015 + n * plate_t + up * (h * 0.15), d * 0.03, n * arm, up * 0.03, c, body_m)
+    o = p - d * (w / 2) + n * (plate_t + arm)               # body back-left-bottom corner (bottom at z - h / 2)
+    o = o - up * (h / 2)
+    cap_t, bot_t, post, ov = min(0.05, h * 0.15), min(0.035, h * 0.1), min(0.025, w * 0.15), 0.02
+    gh = h - cap_t - bot_t
+    parts = [(o - d * ov - n * 0.0 + up * gh + up * bot_t, d * (w + 2 * ov), n * (dp + ov), up * cap_t),   # cap
+             (o, d * w, n * dp, up * bot_t)]                                                              # bottom
+    for a_ in (0.0, w - post):                              # four corner posts
+        for b_ in (0.0, dp - post):
+            parts.append((o + d * a_ + n * b_ + up * bot_t, d * post, n * post, up * gh))
+    boxes_mesh(f"light {i} body", parts, c, body_m)
+    gi = 0.006                                              # glass set just inside the posts' outer faces
+    oriented_box(f"light {i} glass", o + d * gi + n * gi + up * bot_t, d * (w - 2 * gi), n * (dp - 2 * gi), up * gh,
+                 c, glass_m)
+
+
 def add_lights_and_text(D, frames, c, mats):
     import mathutils
     for i, l in enumerate(D.get("lights", [])):
         tag(f"lights[{i}]", l)
         a, d, n, L, _ = frames[l["wall"]]
         p = a + d * l["u"] + Vector((0, 0, l["z"]))
-        oriented_box(f"light {i} plate", p - d * 0.06 - Vector((0, 0, 0.08)), d * 0.12, n * 0.03, Vector((0, 0, 0.16)), c, mats["fixture"])
-        oriented_box(f"light {i} arm", p - d * 0.015 + Vector((0, 0, 0.04)), d * 0.03, n * 0.22, Vector((0, 0, 0.03)), c, mats["fixture"])
-        oriented_box(f"light {i} shade", p - d * 0.12 + n * 0.12 - Vector((0, 0, 0.1)), d * 0.24, n * 0.24, Vector((0, 0, 0.12)), c, mats["fixture"])
+        if l.get("style", "shade") == "lantern":
+            add_lantern(i, l, p, d, n, c, mats)
+            continue
+        fx = pick(l, mats, "fixture", f"light {i}", 0.4)
+        oriented_box(f"light {i} plate", p - d * 0.06 - Vector((0, 0, 0.08)), d * 0.12, n * 0.03, Vector((0, 0, 0.16)), c, fx)
+        oriented_box(f"light {i} arm", p - d * 0.015 + Vector((0, 0, 0.04)), d * 0.03, n * 0.22, Vector((0, 0, 0.03)), c, fx)
+        oriented_box(f"light {i} shade", p - d * 0.12 + n * 0.12 - Vector((0, 0, 0.1)), d * 0.24, n * 0.24, Vector((0, 0, 0.12)), c, fx)
     for i, t in enumerate(D.get("text", [])):
         tag(f"text[{i}]", t)
         if "wall" in t:

@@ -21,7 +21,11 @@ rock-bed overlays, curb lines, subject parcel, point features). yard.json (model
              #   the ring below (no undercut at concave outline corners); "surface": "foliage" gives a leafy two-tone
              #   material without joints or bedding (a mass the LiDAR cannot tell from rock, e.g. dense juniper);
              #   "foot": "terrain" starts the dome at the terrain under each outline point (default: every ring from the
-             #   outline's lowest grade - 0.15, which on a slope meets the upper ground as a steep sheet)
+             #   outline's lowest grade - 0.15, which on a slope meets the upper ground as a steep sheet); "max_over_terrain":
+             #   m clamps every dome vertex to min(dome z, terrain z + m) (terrain from the site_scene grid, bilinear), so an
+             #   assumed dome profile never stands far over a flank the LiDAR terrain already follows;
+             #   "max_over_terrain_local": [{"xy": [x,y], "radius": r, "max": m}] uses m within r of xy (a flank whose
+             #   terrain grid sits under the measured rock side at the outline edge)
              {"kind": "retaining_wall", "line": [[x,y],...], "top_z": z or "height": h, "thickness": 0.3,
               "material": "stone|concrete|drystack|timber|rock", "color": [r,g,b], "line_is": "centre|face", "uphill": "left|right",
               "cap_color": [[r,g,b],[r,g,b]]},          # optional: a separate (e.g. lighter) material on the top faces
@@ -30,11 +34,14 @@ rock-bed overlays, curb lines, subject parcel, point features). yard.json (model
              #   makes the terrain step inside the wall). "line_is": "face": the line is the exposed (downhill)
              #   face as measured from the LiDAR step, the thickness goes to the uphill side ("uphill": left /
              #   right of the line direction, or the higher grade). "rock": a natural rock face (boulder or ledge edge
-             #   the terrain steps at) in the boulder sandstone material. "drystack" is dry-laid thin flat stone: random
-             #   course heights (0.04-0.12 m) and stone lengths (0.15-0.6 m, random stagger), per-stone colour drawn
-             #   from the item's colour range (default buff sandstone), dark brown-grey 12 mm joints recessed 1.5 cm,
-             #   plain stone colour on the top faces; "drystack": {"course": [lo, hi], "stone": [lo, hi], "joint": m,
-             #   "joint_color": [r, g, b], "bump": m, ...} overrides (see drystack()).
+             #   the terrain steps at) in the boulder sandstone material. "drystack" is dry-laid thin flat stone:
+             #   independent random course heights (0.04-0.12 m, U-shaped: thin and thick courses side by side, every 1 m
+             #   of wall >= 7 courses with a height CoV >= 0.32; a packed 1-D course texture along z) and stone lengths
+             #   (0.15-0.6 m, mean stretched +-15 % per course, random stagger), per-stone colour drawn from the item's
+             #   colour range (default buff sandstone), 12 % of the stones x1.2 brighter, dark brown-grey 12 mm joints
+             #   recessed 1.5 cm, a 5 cm shadow under every bed joint, plain stone colour on the top faces;
+             #   "drystack": {"course": [lo, hi], "stone": [lo, hi], "joint": m, "joint_color": [r, g, b], "bump": m,
+             #   "shadow": m, "lift": share, "lift_k": x, "seed": n, ...} overrides (see drystack()).
              {"kind": "pier", "xy": [x,y], "size": [w,d], "top_z": z, "rotation": deg, "material": "concrete",
               "plaque": {"text": "...", "face": "-x|+x|-y|+y", "color": [r,g,b], "size": 0.18, "below_top": 0.35,
                          "scale_x": 1.0, "offset": 0.0}},   # numerals on a face; size = font size (digit height ~0.7 x
@@ -50,9 +57,10 @@ rock-bed overlays, curb lines, subject parcel, point features). yard.json (model
              #   the terrain under the treads below the line z0 -> z1
              {"kind": "rock_scatter", "polygon": [[x,y],...], "count": 12, "size": [0.3, 0.7], "seed": 1,
               "holes": [[[x,y],...]], "color": [[r,g,b],[r,g,b]]},
-             #   angular, partly buried stones (noisy icosphere 1 x 0.6-0.9 x 0.35-0.5, random yaw, 30 % below grade),
-             #   each coloured from the colour range; "stones": [[x, y, diameter], ...] places measured stones instead
-             #   of `count` random ones; "shape": "dome" + "height" (fraction of the width above grade): older domes
+             #   angular, partly buried flat stones (5-7-sided outlines, +-25 % radius jitter, 0.6-0.9 across, height
+             #   0.35-0.5 x the width, bevelled tilted flat top, random yaw, 30 % below grade), each coloured from the
+             #   colour range; "stones": [[x, y, diameter], ...] places measured stones instead of `count` random ones;
+             #   "shape": "ico" (older noisy icospheres) or "dome" + "height" (fraction of the width above grade)
              {"kind": "path_light", "xy": [x,y], "height": 0.5},
              {"kind": "grade_pad", "polygon": [[x,y],...], "z": z, "blend": 0.8, "surface": [[r,g,b],[r,g,b]]},
              #   levelled by build_site.py --grade yard.json; here only its optional surface is draped
@@ -87,6 +95,11 @@ renders on exactly the triangles the overlays were draped on; it is smooth-shade
 SHARP_DEG marked sharp and area-weighted normals (WeightedNormal, keep sharp). Draped overlays are
 smooth-shaded and wound counter-clockwise (normals up) for viewers that cull back faces.
 
+Materials: every material add_site makes carries the custom property "propmodel_site" (SITE_TAG). A material of the
+same name that the house blend already uses (e.g. add_details' 'Concrete' on concrete walls, coloured from the photos) is
+never taken over or recoloured: the site builds 'Site <name>' instead (the draped driveway / walk concrete is then
+'Site Concrete'; look it up through the 'concrete (draped)' object, not by the bare name).
+
 Every Site object carries a custom property "site_kind": the yard item kind that made it ("retaining_wall",
 "pier", ...), "overlay:<name>" for draped overlays, "curb" or "edging" (render_thumbnail.py --terrain keeps
 the hardscape by it).
@@ -103,6 +116,7 @@ to collection "Site"; the measured roof/walls keep their geometry above grade.
 """
 import json
 import math
+import random
 import sys
 
 import bpy
@@ -196,7 +210,47 @@ def sharpen(ob, deg=SHARP_DEG):
     return int(sharp.sum())
 
 
-def smooth_face_normals(ob, grid, range_min=1.0, rings=2, laplace=0.5, max_dz=0.3):
+def overlay_nodes(grid, pts_xy=(), polys=(), pad=0.75):
+    """Bool mask (ny * nx, grid order) of the terrain grid nodes that carry draped overlays: the four corners of every
+    cell holding an overlay vertex (``pts_xy``: the scene's street / concrete / bed overlay vertices, draped on the
+    terrain triangles by build_site) or meeting a polygon (``polys``: yard surfaces / paths draped here, grown by
+    ``pad`` cells)."""
+    import numpy as np
+    nx, ny, c = int(grid["nx"]), int(grid["ny"]), float(grid["cell"])
+    x0, y0 = float(grid["x0"]), float(grid["y0"])
+    cells = np.zeros((ny - 1, nx - 1), bool)
+    P = np.asarray(pts_xy, float).reshape(-1, 2)
+    if len(P):
+        i = np.clip(np.floor((P[:, 0] - x0) / c).astype(int), 0, nx - 2)
+        j = np.clip(np.floor((P[:, 1] - y0) / c).astype(int), 0, ny - 2)
+        cells[j, i] = True
+    if polys:
+        import shapely
+        from shapely.geometry import Polygon
+        cx, cy = np.meshgrid(x0 + c * (np.arange(nx - 1) + 0.5), y0 + c * (np.arange(ny - 1) + 0.5))
+        for ring in polys:
+            if len(ring) < 3:
+                continue
+            pg = Polygon([q[:2] for q in ring]).buffer(0)
+            if pg.is_empty:
+                continue
+            bx0, by0, bx1, by1 = pg.bounds
+            m = (cx >= bx0 - c) & (cx <= bx1 + c) & (cy >= by0 - c) & (cy <= by1 + c)
+            if m.any():
+                cells[m] |= shapely.contains_xy(pg.buffer(pad * c), cx[m], cy[m])
+    out = np.zeros((ny, nx), bool)
+    out[:-1, :-1] |= cells; out[:-1, 1:] |= cells; out[1:, :-1] |= cells; out[1:, 1:] |= cells
+    return out.ravel()
+
+
+def LineStringBuffer(line, half_width):
+    """Outline ring of a path centre line buffered by half its width (for overlay_nodes)."""
+    from shapely.geometry import LineString
+    g = LineString([q[:2] for q in line]).buffer(half_width, cap_style="flat")
+    return list(g.exterior.coords) if not g.is_empty and g.geom_type == "Polygon" else None
+
+
+def smooth_face_normals(ob, grid, range_min=1.0, rings=2, laplace=0.5, max_dz=0.3, fixed=None):
     """Shading of steep rock faces: a cliff running obliquely across the terrain grid is a staircase of cell-wide
     steps, whose triangles face alternately left and right of the cliff -- smooth shading then shows vertical flutes and
     dark triangular 'fangs' along the crest and foot. The terrain's normals are first baked (the WeightedNormal modifier
@@ -204,8 +258,9 @@ def smooth_face_normals(ob, grid, range_min=1.0, rings=2, laplace=0.5, max_dz=0.
     (the 'rock face' vertex group, also written) gets the area-weighted normal averaged over (2 `rings` + 1)^2 grid
     vertices: the face is shaded as the face, the geometry (measured heights) is untouched. `grid` = the scene's
     {"nx", "ny", "z"[, "x0", "y0", "cell"]} (terrain vertices in grid order; with the origin and cell, vertices off the
-    regular grid -- breakline nodes snapped onto a retaining-wall face -- are not moved). Returns the number of face
-    vertices."""
+    regular grid -- breakline nodes snapped onto a retaining-wall face -- are not moved). `fixed` (bool per vertex,
+    overlay_nodes()): vertices under a draped overlay are not moved either -- the overlays lie on the unsmoothed
+    triangles, and a vertex the pass lifts pokes the terrain through them. Returns the number of face vertices."""
     import numpy as np
     nx, ny = int(grid["nx"]), int(grid["ny"])
     me = ob.data
@@ -223,6 +278,8 @@ def smooth_face_normals(ob, grid, range_min=1.0, rings=2, laplace=0.5, max_dz=0.
         # Breakline vertices (build_site snapped them off the regular grid onto a retaining-wall face) stay put: they
         # carry the wall's step exactly on its faces, and the overlays were draped on them
         movable = face.copy()
+        if fixed is not None and len(fixed) == len(movable):
+            movable &= ~np.asarray(fixed, bool)
         if "x0" in grid and "cell" in grid:
             co = np.zeros(len(me.vertices) * 3); me.vertices.foreach_get("co", co); co = co.reshape(-1, 3)
             jj, ii = np.divmod(np.arange(nx * ny), nx)
@@ -280,9 +337,39 @@ def coll(name):
     return c
 
 
-def mat(name, rgb, rough=0.8, metal=0.0):
-    m = bpy.data.materials.get(name) or bpy.data.materials.new(name)
+SITE_TAG = "propmodel_site"          # custom property on every material add_site creates
+
+
+def site_material(name):
+    """The material add_site builds as ``name``, never one of the house's: a material add_site made before (tagged
+    SITE_TAG, e.g. when the site is rebuilt on a site blend) or an untagged one nobody uses is taken over; an untagged
+    material of that name WITH users (build_model / add_details made it, e.g. the house walls' 'Concrete') is left alone
+    and a new material 'Site ' + name is used instead (deterministic, so presentation scripts can find it). Its node
+    tree is reset to a bare Principled BSDF -> Material Output, so a re-used material is rebuilt from scratch and never
+    keeps old noise / ramp nodes. The result carries SITE_TAG."""
+    def own(m_):
+        return m_ is None or bool(m_.get(SITE_TAG)) or m_.users == 0
+    m = bpy.data.materials.get(name)
+    if not own(m):
+        alt = "Site " + name
+        m = bpy.data.materials.get(alt)
+        if not own(m):
+            m = bpy.data.materials.new(alt)          # an unrelated 'Site ...' material with users: Blender adds .001
+    if m is None:
+        m = bpy.data.materials.new(name if bpy.data.materials.get(name) is None else "Site " + name)
+    m[SITE_TAG] = True
     m.use_nodes = True
+    nt = m.node_tree
+    nt.nodes.clear()
+    out = nt.nodes.new("ShaderNodeOutputMaterial"); out.location = (300, 0)
+    b = nt.nodes.new("ShaderNodeBsdfPrincipled"); b.name = "Principled BSDF"
+    nt.links.new(b.outputs["BSDF"], out.inputs["Surface"])
+    return m
+
+
+def mat(name, rgb, rough=0.8, metal=0.0):
+    """Plain Principled material add_site owns (site_material: a house material of the same name is never taken)."""
+    m = site_material(name)
     b = m.node_tree.nodes.get("Principled BSDF")
     b.inputs["Base Color"].default_value = (*rgb, 1)
     b.inputs["Roughness"].default_value = rough
@@ -292,7 +379,8 @@ def mat(name, rgb, rough=0.8, metal=0.0):
 
 
 def textured(name, rgb_a, rgb_b, scale, bump=0.2, rough=0.9):
-    """Two-tone noise material (lawn, gravel, concrete) with a little bump."""
+    """Two-tone noise material (lawn, gravel, concrete) with a little bump. Built on a fresh node tree (mat ->
+    site_material clears the nodes of a re-used site material first)."""
     m = mat(name, rgb_a, rough)
     nt = m.node_tree
     b = nt.nodes.get("Principled BSDF")
@@ -648,10 +736,50 @@ def split_quad(verts, q):
     return [[a, b, d], [b, c_, d]] if use13 else [[a, b, c_], [a, c_, d]]
 
 
+def grid_z(grid, x, y):
+    """Bilinear height of a site-scene terrain grid (build_site.py "grid": x0, y0, nx, ny, cell, z row-major by y) at
+    (x, y); None outside the grid or next to a missing node."""
+    if not grid:
+        return None
+    nx, ny, c = int(grid["nx"]), int(grid["ny"]), float(grid["cell"])
+    fi, fj = (x - grid["x0"]) / c, (y - grid["y0"]) / c
+    if fi < -1e-9 or fj < -1e-9 or fi > nx - 1 + 1e-9 or fj > ny - 1 + 1e-9:
+        return None
+    i, j = min(max(int(math.floor(fi)), 0), nx - 2), min(max(int(math.floor(fj)), 0), ny - 2)
+    tx, ty = fi - i, fj - j
+    z = grid["z"]
+    q = [z[j * nx + i], z[j * nx + i + 1], z[(j + 1) * nx + i], z[(j + 1) * nx + i + 1]]
+    if any(v is None or v != v for v in q):
+        return None
+    return (q[0] * (1 - tx) * (1 - ty) + q[1] * tx * (1 - ty) + q[2] * (1 - tx) * ty + q[3] * tx * ty)
+
+
+def clamp_over_terrain(verts, zfun, max_over, local=None):
+    """Vertices (x, y, z) with z = min(z, zfun(x, y) + max_over) wherever zfun gives a height (None = no terrain: kept).
+    ``local``: [{"xy": [x, y], "radius": r, "max": m}, ...]: vertices within r (plan) of xy use m instead (the largest of
+    the entries that reach them), e.g. where the terrain grid at an outline edge sits under the measured flank.
+    Only heights change, so no face of a dome built on a consistent plan winding turns over. Returns (verts, n clamped)."""
+    out, n = [], 0
+    for x, y, z in verts:
+        t = zfun(x, y)
+        loc = [float(e["max"]) for e in (local or [])
+               if math.hypot(x - e["xy"][0], y - e["xy"][1]) <= float(e.get("radius", 0.0))]
+        mo = max(loc) if loc else max_over
+        if t is not None and z > t + mo:
+            z = t + mo
+            n += 1
+        out.append((x, y, z))
+    return out, n
+
+
 def k_boulder(it, G, c, M, i):
     """Rock: the outline at grade (+ 4-point midpoints: 2x the segments, measured vertices kept), rising in
     `rings` cos-spaced rings with a dome profile (`dome` [a, b]: h = (1 - rho^a)^(1/b)) to a broad rounded top at
-    top_z (the LiDAR height), closed by a centre vertex and smooth-shaded."""
+    top_z (the LiDAR height), closed by a centre vertex and smooth-shaded.
+    "max_over_terrain" (m): every dome vertex is clamped to min(dome z, terrain z at its xy + that), the terrain from the
+    site-scene grid (bilinear; the terrain mesh where there is no grid), so an assumed dome profile never stands far
+    over the measured surface on a flank the LiDAR terrain already follows (the terrain faces inside the outline that
+    then show through keep the boulder's colour: boulder_tones)."""
     from shapely.geometry import Polygon
     P = Polygon(it["polygon"]).buffer(0)
     if P.is_empty:
@@ -734,6 +862,16 @@ def k_boulder(it, G, c, M, i):
             faces += tris
         else:
             faces += [t for t in fan if _up(t)]
+    if it.get("max_over_terrain") is not None:
+        grid = (M or {}).get("_grid")
+
+        def _tz(x, y):
+            z_ = grid_z(grid, x, y) if grid else None
+            return G.z(x, y) if z_ is None else z_
+        verts, ncl = clamp_over_terrain(verts, _tz, float(it["max_over_terrain"]), it.get("max_over_terrain_local"))
+        print(f"boulder {it.get('name', i)!s:.40}: {ncl} of {len(verts)} dome vertices clamped to the terrain + "
+              f"{float(it['max_over_terrain']):.2f} m" + (f" ({len(it['max_over_terrain_local'])} local overrides)"
+                                                          if it.get("max_over_terrain_local") else ""))
     dflt = (M or {}).get("_tones", {}).get("rock", (ROCK_A, ROCK_B))[:2]
     if it.get("surface") == "foliage":
         # a mass the LiDAR cannot tell from rock (dense juniper): leafy two-tone noise, no joints or bedding
@@ -754,39 +892,137 @@ def _lin(v):
     return v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4
 
 
+# shadow: 5 cm under the joint above (the round-5..9 Voronoi mask shaded within 2 cm of whichever joint was nearer, above the
+# course's random feature point, i.e. part of many courses' feet too; 5 cm under the top joint alone gives the same face tone)
 DRYSTACK = {"course": (0.04, 0.12), "stone": (0.15, 0.6), "joint": 0.012, "joint_color": (0.08, 0.072, 0.062),
-            "weathered": 0.85, "bump": 0.015, "shadow": 0.02, "shadow_dark": 0.6, "step": 0.015}
+            "weathered": 0.85, "bump": 0.015, "shadow": 0.05, "shadow_dark": 0.6, "step": 0.015, "tilt": 0.08,
+            "ragged": 0.004,
+            "course_shape": 0.55, "course_cov": 0.32, "period": 4.096, "stone_random": 0.6, "stone_course": 0.15,
+            "lift": 0.12, "lift_k": 1.2}
+DRYSTACK_TEX_RES = 0.001          # m per pixel of the course texture (1-D, along z)
+DRYSTACK_TEX_RANGE = 0.25         # m: distances to the bed joints are stored as value x this (8 bit: 1 mm steps)
+
+
+def drystack_courses(seed, course=(0.04, 0.12), shape=0.55, period=4.096, window=1.0, min_cov=0.32, min_n=7, tries=2000,
+                     mean_tol=0.05):
+    """Course heights (m, bottom to top) of a dry-stack tile ``period`` m tall that repeats up the wall: each drawn
+    independently from lo + (hi - lo) Beta(shape, shape) (``course`` = (lo, hi); shape < 1 is U-shaped: thin and thick
+    courses side by side, as hand-laid ledgestone, coefficient of variation ~0.34 for 0.55), then all scaled to close
+    the period exactly. The first seed from ``seed`` on whose every ``window`` m stretch (starting at any course joint,
+    wrapping round the period) holds >= ``min_n`` whole courses with a height CoV >= ``min_cov`` and whose mean course is
+    within ``mean_tol`` of 0.5 (lo + hi) (the joint share of the face, i.e. its tone, stays that of the nominal mean)
+    is used. Returns (heights, the seed used)."""
+    lo, hi = float(course[0]), float(course[1])
+    best = None
+    for k in range(tries):
+        rnd = random.Random(seed + 7919 * k)
+        hs = []
+        while sum(hs) < period:
+            hs.append(lo + (hi - lo) * rnd.betavariate(shape, shape))
+        if sum(hs) - period > 0.5 * hs[-1]:
+            hs.pop()                                   # closer to the period without the last course
+        f = period / sum(hs)
+        hs = [h * f for h in hs]
+        worst = 9.0
+        n = len(hs)
+        for i in range(n):
+            acc, win = 0.0, []
+            for j in range(n):
+                h = hs[(i + j) % n]
+                if acc + h > window + 1e-9:
+                    break
+                acc += h
+                win.append(h)
+            m_ = sum(win) / max(len(win), 1)
+            cov = (sum((h - m_) ** 2 for h in win) / max(len(win) - 1, 1)) ** 0.5 / m_ if len(win) >= 2 else 0.0
+            worst = min(worst, cov if len(win) >= min_n else 0.0)
+        mean_ok = abs(period / len(hs) / (0.5 * (lo + hi)) - 1.0) <= mean_tol
+        if worst >= min_cov and mean_ok:
+            return hs, seed + 7919 * k
+        worst = worst if mean_ok else worst - 1.0
+        if best is None or worst > best[0]:
+            best = (worst, hs, seed + 7919 * k)
+    return best[1], best[2]
+
+
+def drystack_course_pixels(heights, res=0.001, rng_range=0.25, seed=0):
+    """RGBA rows of the 1-D course texture of drystack_courses() heights: per pixel (res m, bottom up) R = distance to
+    the course's top joint, G = distance to its bottom joint (both / rng_range, clamped to 1), B = the course's random
+    value (0..1), A = 1. Returns (width, flat list of floats)."""
+    rnd = random.Random(seed * 31 + 5)
+    vals = [rnd.random() for _ in heights]
+    period = sum(heights)
+    w = max(1, int(round(period / res)))
+    out = []
+    k, z0 = 0, 0.0
+    for p in range(w):
+        z = (p + 0.5) * period / w
+        while k < len(heights) - 1 and z >= z0 + heights[k]:
+            z0 += heights[k]; k += 1
+        top, bot = z0 + heights[k] - z, z - z0
+        out += [min(1.0, max(0.0, top / rng_range)), min(1.0, max(0.0, bot / rng_range)), vals[k], 1.0]
+    return w, out
 
 
 def drystack(name, rgb_a, rgb_b, course=None, stone=None, joint=None, joint_color=None, weathered=None, bump=None,
-             shadow=None, shadow_dark=None, step=None, **_old):
+             shadow=None, shadow_dark=None, step=None, seed=None, lift=None, lift_k=None, course_shape=None,
+             course_cov=None, period=None, stone_random=None, stone_course=None, tilt=None, ragged=None, **_old):
     """Dry-stacked thin flat stone (sandstone ledgestone), in wall coordinates (object x along the wall, z up;
     k_retaining_wall builds each segment in such a frame):
 
-    * courses of random height between ``course`` = (lo, hi) m (default 4-12 cm): a 1-D Voronoi along z (randomness 1
-      gives cell lengths from 0.5 to 1.5 x the mean);
-    * stones of random length ``stone`` = (lo, hi) m (default 0.15-0.6 m) along each course: a 1-D Voronoi along x whose
-      phase is shifted by a random number per course, so head joints are staggered at random (no regular bond);
+    * courses of independent random height between ``course`` = (lo, hi) m (default 4-12 cm), drawn U-shaped
+      (Beta(``course_shape``, same), thin and thick courses side by side; every 1 m of wall holds >= 7 courses with a
+      height coefficient of variation >= ``course_cov``: drystack_courses) and stored in a 1-D course texture along z
+      (1 mm pixels, repeating every ``period`` m: distances to the course's top and bottom joints and a random value
+      per course; the heights are kept in m["drystack_courses"]);
+    * stones of random length along each course: a 1-D Voronoi along x (mean 0.5 (lo + hi) of ``stone`` = (lo, hi) m,
+      default 0.15-0.6 m; randomness ``stone_random`` gives 1 -+ that x the mean), its mean stretched by up to
+      +-``stone_course`` per course and its phase shifted by a random number per course, so head joints are staggered
+      at random (no regular bond);
     * per-stone colour drawn between the two tones ``rgb_a`` .. ``rgb_b`` (the yard item's colour range, linear; buff
-      sandstone by default), one stone in eight a little darker (``weathered`` x rgb_a), with a faint grain;
+      sandstone by default), one stone in eight a little darker (``weathered`` x rgb_a), with a faint grain; a random
+      ``lift`` share of the stones (by stone id; default 12 %) ``lift_k`` x brighter (default 1.2, clamped at 1.0
+      linear): the sunlit pale stones of a ledgestone face;
     * joints ``joint`` m wide in ``joint_color`` (dark brown-grey, linear ~0.08), recessed by ``bump`` m (1-2 cm);
-    * a light shadow band ``shadow`` m deep under every bed joint (x ``shadow_dark`` of the sRGB value);
-    * each stone up to +-``step`` / 2 m higher or lower than its neighbours, so bed joints step at the head joints;
+    * a light shadow band ``shadow`` m deep under every bed joint (x ``shadow_dark`` of the sRGB value; default 5 cm);
+    * each stone up to +-``step`` / 2 m higher or lower than its neighbours, so bed joints step at the head joints, and
+      its bed joints tilted by up to +-``tilt`` / 2 (m per m) about its middle (tapered flagstones, not parallel bricks);
+      a fine noise of +-``ragged`` m roughens every joint edge;
     * TOP faces (normal z > 0.5: the tier's cap) are plain stone colour: no joint or shadow lines, so a tier seen from
       above reads as a light cap line, as the orthos show it.
-    Joint edges are noise-distorted by a centimetre or two, so the courses wander like hand-laid stone. Old keyword
-    arguments (joint_dark, jitter) are accepted and ignored."""
+    Joint edges are noise-distorted by a centimetre or two, so the courses wander like hand-laid stone. Node labels
+    "joint" (map ranges fed by a node labelled "courses..." = bed-joint distance / mean course, or "stones..." = head-joint
+    distance / mean stone), "overhang shadow", "joint dark" and "stone jitter" are the presentation hooks (widths,
+    joint colour, tone range) that a presentation script may retune. Old keyword arguments (joint_dark, jitter) are
+    accepted and ignored."""
     P = dict(DRYSTACK)
     for k, v in (("course", course), ("stone", stone), ("joint", joint), ("joint_color", joint_color),
-                 ("weathered", weathered), ("bump", bump), ("shadow", shadow), ("shadow_dark", shadow_dark), ("step", step)):
+                 ("weathered", weathered), ("bump", bump), ("shadow", shadow), ("shadow_dark", shadow_dark), ("step", step),
+                 ("lift", lift), ("lift_k", lift_k), ("course_shape", course_shape), ("course_cov", course_cov),
+                 ("period", period), ("stone_random", stone_random), ("stone_course", stone_course), ("tilt", tilt),
+                 ("ragged", ragged)):
         if v is not None:
             P[k] = v
+    seed = int(seed) if seed is not None else sum(ord(ch) for ch in name)
     mean = [0.5 * (a + b) for a, b in zip(rgb_a, rgb_b)]
     darkest = tuple(P["weathered"] * v for v in rgb_a)
     m = mat(name, tuple(mean), 0.9)
     nt = m.node_tree
     b = nt.nodes.get("Principled BSDF")
     N = nt.nodes.new
+    c_mean = 0.5 * (P["course"][0] + P["course"][1]); s_mean = 0.5 * (P["stone"][0] + P["stone"][1])
+    # course texture (1-D, along z)
+    heights, used = drystack_courses(seed, P["course"], P["course_shape"], P["period"], min_cov=P["course_cov"])
+    w, px = drystack_course_pixels(heights, DRYSTACK_TEX_RES, DRYSTACK_TEX_RANGE, seed=used)
+    period = sum(heights)
+    iname = f"{name} courses"
+    img = bpy.data.images.get(iname)
+    if img is not None:
+        bpy.data.images.remove(img)
+    img = bpy.data.images.new(iname, width=w, height=1, alpha=True, float_buffer=False)
+    img.colorspace_settings.name = "Non-Color"
+    img.pixels.foreach_set(px)
+    img.pack()
     tc = N("ShaderNodeTexCoord")
     # wander: a centimetre-scale distortion of the coordinates
     wz = N("ShaderNodeTexNoise"); wz.inputs["Scale"].default_value = 4.0; wz.inputs["Detail"].default_value = 2.0
@@ -794,49 +1030,81 @@ def drystack(name, rgb_a, rgb_b, course=None, stone=None, joint=None, joint_colo
     dv = N("ShaderNodeVectorMath"); dv.operation = "MULTIPLY_ADD"; dv.inputs[1].default_value = (0.03, 0.03, 0.008)
     nt.links.new(wz.outputs["Color"], dv.inputs[0]); nt.links.new(tc.outputs["Object"], dv.inputs[2])
     sep = N("ShaderNodeSeparateXYZ"); nt.links.new(dv.outputs[0], sep.inputs[0])
+    # ragged joint edges: a fine noise on z only
+    rg = N("ShaderNodeTexNoise"); rg.inputs["Scale"].default_value = 25.0; rg.inputs["Detail"].default_value = 2.0
+    rg.label = "ragged joints"
+    nt.links.new(tc.outputs["Object"], rg.inputs["Vector"])
+
+    def course_tex(z_socket, label):
+        u = N("ShaderNodeMath"); u.operation = "DIVIDE"; u.inputs[1].default_value = period
+        nt.links.new(z_socket, u.inputs[0])
+        cv = N("ShaderNodeCombineXYZ"); cv.inputs["Y"].default_value = 0.5
+        nt.links.new(u.outputs[0], cv.inputs["X"])
+        t = N("ShaderNodeTexImage"); t.image = img; t.interpolation = "Closest"; t.extension = "REPEAT"; t.label = label
+        nt.links.new(cv.outputs[0], t.inputs["Vector"])
+        sc = N("ShaderNodeSeparateColor"); nt.links.new(t.outputs["Color"], sc.inputs[0])
+        return sc
+
+    def math(op, a_, b_=None, label="", v=None):
+        n_ = N("ShaderNodeMath"); n_.operation = op; n_.label = label
+        for k_, x_ in enumerate((a_, b_)):
+            if x_ is None:
+                continue
+            if isinstance(x_, (int, float)):
+                n_.inputs[k_].default_value = x_
+            else:
+                nt.links.new(x_, n_.inputs[k_])
+        return n_
+    c1 = course_tex(sep.outputs["Z"], "courses (stone ids)")              # course random value: c1 Blue
+    # stones along x: mean stretched per course (1 +- stone_course), phase shifted per course
+    r2 = math("FRACT", math("MULTIPLY", c1.outputs[2], 7.31).outputs[0])
+    stretch = math("MULTIPLY_ADD", r2.outputs[0], 2.0 * P["stone_course"], label="stone stretch per course")
+    stretch.inputs[2].default_value = 1.0 - P["stone_course"]
+    wx = math("DIVIDE", sep.outputs["X"], stretch.outputs[0])
+    sh = math("MULTIPLY_ADD", c1.outputs[2], 37.0); nt.links.new(wx.outputs[0], sh.inputs[2])
 
     def vor1(w_socket, mean_len, feature, label):
         v = N("ShaderNodeTexVoronoi"); v.voronoi_dimensions = "1D"; v.feature = feature; v.label = label
-        v.inputs["Scale"].default_value = 1.0 / mean_len; v.inputs["Randomness"].default_value = 1.0
+        v.inputs["Scale"].default_value = 1.0 / mean_len; v.inputs["Randomness"].default_value = P["stone_random"]
         nt.links.new(w_socket, v.inputs["W"])
         return v
-    c_mean = 0.5 * (P["course"][0] + P["course"][1]); s_mean = 0.5 * (P["stone"][0] + P["stone"][1])
-    cid = vor1(sep.outputs["Z"], c_mean, "F1", "courses")                  # random number per course
-    sh = N("ShaderNodeMath"); sh.operation = "MULTIPLY_ADD"; sh.inputs[1].default_value = 37.0
-    nt.links.new(cid.outputs["Color"], sh.inputs[0]); nt.links.new(sep.outputs["X"], sh.inputs[2])
     sid = vor1(sh.outputs[0], s_mean, "F1", "stones")                     # random colour per stone
     sedge = vor1(sh.outputs[0], s_mean, "DISTANCE_TO_EDGE", "stones")     # head joints
+    sdist = math("MULTIPLY", sedge.outputs["Distance"], stretch.outputs[0], label="stones: head-joint distance / mean")
     rs = N("ShaderNodeSeparateColor"); nt.links.new(sid.outputs["Color"], rs.inputs[0])
-    zo = N("ShaderNodeMath"); zo.operation = "MULTIPLY_ADD"; zo.inputs[1].default_value = P["step"]
-    zo.inputs[2].default_value = -0.5 * P["step"]
-    nt.links.new(rs.outputs[2], zo.inputs[0])
-    zs = N("ShaderNodeMath"); zs.operation = "ADD"
-    nt.links.new(sep.outputs["Z"], zs.inputs[0]); nt.links.new(zo.outputs[0], zs.inputs[1])
-    cedge = vor1(zs.outputs[0], c_mean, "DISTANCE_TO_EDGE", "courses (stepped)")
-    cid2 = vor1(zs.outputs[0], c_mean, "F1", "courses (stepped)")
+    zo = math("MULTIPLY_ADD", rs.outputs[2], P["step"]); zo.inputs[2].default_value = -0.5 * P["step"]
+    # tilt about the stone's middle: (W - feature W) x slope, slope from another random value of the stone
+    rt = math("FRACT", math("MULTIPLY", rs.outputs[0], 13.7).outputs[0])
+    slope = math("MULTIPLY_ADD", rt.outputs[0], P["tilt"], label="stone tilt"); slope.inputs[2].default_value = -0.5 * P["tilt"]
+    dxw = math("SUBTRACT", sh.outputs[0], sid.outputs["W"])
+    tz = math("MULTIPLY", dxw.outputs[0], slope.outputs[0])
+    rz = math("MULTIPLY_ADD", rg.outputs["Fac"], 2.0 * P["ragged"]); rz.inputs[2].default_value = -P["ragged"]
+    zo2 = math("ADD", zo.outputs[0], tz.outputs[0])
+    zo3 = math("ADD", zo2.outputs[0], rz.outputs[0])
+    zs = math("ADD", sep.outputs["Z"], zo3.outputs[0])
+    c2 = course_tex(zs.outputs[0], "courses (stepped joints)")
+    bed = math("MINIMUM", c2.outputs[0], c2.outputs[1])
+    bdist = math("MULTIPLY", bed.outputs[0], DRYSTACK_TEX_RANGE / c_mean, label="courses: bed-joint distance / mean")
+    topd = math("MULTIPLY", c2.outputs[0], DRYSTACK_TEX_RANGE / c_mean, label="courses: depth under the joint above / mean")
 
-    def jmask(edge, scale_):
+    def jmask(dist_socket, scale_):
         mr = N("ShaderNodeMapRange"); mr.clamp = True; mr.label = "joint"
         mr.inputs["From Min"].default_value = 0.5 * P["joint"] * scale_
         mr.inputs["From Max"].default_value = 0.9 * P["joint"] * scale_
         mr.inputs["To Min"].default_value = 1.0; mr.inputs["To Max"].default_value = 0.0
-        nt.links.new(edge.outputs["Distance"], mr.inputs["Value"])
+        nt.links.new(dist_socket, mr.inputs["Value"])
         return mr
-    jc, js = jmask(cedge, 1.0 / c_mean), jmask(sedge, 1.0 / s_mean)
-    jm0 = N("ShaderNodeMath"); jm0.operation = "MAXIMUM"
-    nt.links.new(jc.outputs["Result"], jm0.inputs[0]); nt.links.new(js.outputs["Result"], jm0.inputs[1])
+    jc, js = jmask(bdist.outputs[0], 1.0 / c_mean), jmask(sdist.outputs[0], 1.0 / s_mean)
+    jm0 = math("MAXIMUM", jc.outputs["Result"], js.outputs["Result"])
     # no joints on the top faces (the cap of the tier): world normal z > 0.5
     geo = N("ShaderNodeNewGeometry"); gsep = N("ShaderNodeSeparateXYZ"); nt.links.new(geo.outputs["Normal"], gsep.inputs[0])
-    side = N("ShaderNodeMath"); side.operation = "LESS_THAN"; side.inputs[1].default_value = 0.5; side.label = "side faces"
-    nt.links.new(gsep.outputs["Z"], side.inputs[0])
-    jm = N("ShaderNodeMath"); jm.operation = "MULTIPLY"; jm.label = "joints"
-    nt.links.new(jm0.outputs[0], jm.inputs[0]); nt.links.new(side.outputs[0], jm.inputs[1])
+    side = math("LESS_THAN", gsep.outputs["Z"], 0.5, label="side faces")
+    jm = math("MULTIPLY", jm0.outputs[0], side.outputs[0], label="joints")
     # stone colour: rgb_a .. rgb_b by the stone's random value (one in eight weathered darker), faint grain
-    rnd = N("ShaderNodeSeparateColor"); nt.links.new(sid.outputs["Color"], rnd.inputs[0])
     ramp = N("ShaderNodeValToRGB"); ramp.label = "stone jitter"
     ramp.color_ramp.elements[0].color = (*darkest, 1); ramp.color_ramp.elements[1].color = (*rgb_b, 1)
     e = ramp.color_ramp.elements.new(0.12); e.color = (*rgb_a, 1)
-    nt.links.new(rnd.outputs[0], ramp.inputs["Fac"])
+    nt.links.new(rs.outputs[0], ramp.inputs["Fac"])
     gr = N("ShaderNodeTexNoise"); gr.inputs["Scale"].default_value = 40.0; gr.inputs["Detail"].default_value = 3.0
     nt.links.new(tc.outputs["Object"], gr.inputs["Vector"])
     grm = N("ShaderNodeMapRange"); grm.inputs["To Min"].default_value = 0.94; grm.inputs["To Max"].default_value = 1.06
@@ -846,42 +1114,39 @@ def drystack(name, rgb_a, rgb_b, course=None, stone=None, joint=None, joint_colo
     for k in ("X", "Y", "Z"):
         nt.links.new(grm.outputs["Result"], gv.inputs[k])
     nt.links.new(ramp.outputs["Color"], grain.inputs[6]); nt.links.new(gv.outputs[0], grain.inputs[7])
+    # lifted stones: a random `lift` share of the stones (their green random value) `lift_k` x brighter, clamped at 1
+    lsel = math("GREATER_THAN", rs.outputs[1], 1.0 - P["lift"], label="lifted stones")
+    lift_ = N("ShaderNodeMix"); lift_.data_type = "RGBA"; lift_.blend_type = "MULTIPLY"; lift_.label = "lifted stones"
+    lift_.clamp_result = True
+    lift_.inputs[7].default_value = (P["lift_k"], P["lift_k"], P["lift_k"], 1)
+    nt.links.new(lsel.outputs[0], lift_.inputs["Factor"]); nt.links.new(grain.outputs[2], lift_.inputs[6])
     # joints: a dark brown-grey mortar-less gap colour
     dark = N("ShaderNodeMix"); dark.data_type = "RGBA"; dark.blend_type = "MIX"; dark.label = "joint dark"
     dark.inputs[7].default_value = (*P["joint_color"], 1)
-    nt.links.new(jm.outputs[0], dark.inputs["Factor"]); nt.links.new(grain.outputs[2], dark.inputs[6])
-    # overhang shadow: in the upper half of a course, within `shadow` of its edge (side faces only)
-    above = N("ShaderNodeMath"); above.operation = "GREATER_THAN"
-    nt.links.new(zs.outputs[0], above.inputs[0])
-    nt.links.new(cid2.outputs["W"], above.inputs[1])
-    sdist = N("ShaderNodeMapRange"); sdist.clamp = True; sdist.label = "overhang shadow"
-    sdist.inputs["From Min"].default_value = 0.5 * P["joint"] / c_mean
-    sdist.inputs["From Max"].default_value = (0.5 * P["joint"] + P["shadow"]) / c_mean
-    sdist.inputs["To Min"].default_value = 1.0; sdist.inputs["To Max"].default_value = 0.0
-    nt.links.new(cedge.outputs["Distance"], sdist.inputs["Value"])
-    sh2 = N("ShaderNodeMath"); sh2.operation = "MULTIPLY"
-    nt.links.new(sdist.outputs["Result"], sh2.inputs[0]); nt.links.new(above.outputs[0], sh2.inputs[1])
-    sh3 = N("ShaderNodeMath"); sh3.operation = "MULTIPLY"
-    nt.links.new(sh2.outputs[0], sh3.inputs[0]); nt.links.new(side.outputs[0], sh3.inputs[1])
+    nt.links.new(jm.outputs[0], dark.inputs["Factor"]); nt.links.new(lift_.outputs[2], dark.inputs[6])
+    # overhang shadow: within `shadow` under the bed joint above (side faces only)
+    shd = N("ShaderNodeMapRange"); shd.clamp = True; shd.label = "overhang shadow"
+    shd.inputs["From Min"].default_value = 0.5 * P["joint"] / c_mean
+    shd.inputs["From Max"].default_value = (0.5 * P["joint"] + P["shadow"]) / c_mean
+    shd.inputs["To Min"].default_value = 1.0; shd.inputs["To Max"].default_value = 0.0
+    nt.links.new(topd.outputs[0], shd.inputs["Value"])
+    sh3 = math("MULTIPLY", shd.outputs["Result"], side.outputs[0])
     sdk = P["shadow_dark"] ** 2.2
     shade = N("ShaderNodeMix"); shade.data_type = "RGBA"; shade.blend_type = "MULTIPLY"; shade.label = "overhang shadow"
     shade.inputs[7].default_value = (sdk, sdk, sdk, 1)
     nt.links.new(sh3.outputs[0], shade.inputs["Factor"]); nt.links.new(dark.outputs[2], shade.inputs[6])
     nt.links.new(shade.outputs[2], b.inputs["Base Color"])
     # relief: each stone proud by half to all of `bump` (its random value), joints recessed by `bump`, a little grain
-    h = N("ShaderNodeMath"); h.operation = "MULTIPLY_ADD"; h.inputs[1].default_value = 0.5; h.inputs[2].default_value = 0.5
-    nt.links.new(rnd.outputs[2], h.inputs[0])
-    inv = N("ShaderNodeMath"); inv.operation = "SUBTRACT"; inv.inputs[0].default_value = 1.0
-    nt.links.new(jm.outputs[0], inv.inputs[1])
-    hh = N("ShaderNodeMath"); hh.operation = "MULTIPLY"
-    nt.links.new(h.outputs[0], hh.inputs[0]); nt.links.new(inv.outputs[0], hh.inputs[1])
-    hg = N("ShaderNodeMath"); hg.operation = "MULTIPLY_ADD"; hg.inputs[1].default_value = 0.1
-    nt.links.new(gr.outputs["Fac"], hg.inputs[0]); nt.links.new(hh.outputs[0], hg.inputs[2])
+    h = math("MULTIPLY_ADD", rs.outputs[2], 0.5); h.inputs[2].default_value = 0.5
+    inv = math("SUBTRACT", 1.0, jm.outputs[0])
+    hh = math("MULTIPLY", h.outputs[0], inv.outputs[0])
+    hg = math("MULTIPLY_ADD", gr.outputs["Fac"], 0.1); nt.links.new(hh.outputs[0], hg.inputs[2])
     bp = N("ShaderNodeBump"); bp.label = "stone relief"
     bp.inputs["Strength"].default_value = 1.0; bp.inputs["Distance"].default_value = P["bump"]
     nt.links.new(hg.outputs[0], bp.inputs["Height"]); nt.links.new(bp.outputs["Normal"], b.inputs["Normal"])
     m.diffuse_color = (*mean, 1)
     m["drystack"] = {k: (list(v) if isinstance(v, tuple) else v) for k, v in P.items()}
+    m["drystack_courses"] = [round(v, 5) for v in heights]
     return m
 
 
@@ -1132,12 +1397,83 @@ def rock_stone(rnd, x, y, r, zg, noise=0.25, yscale=(0.6, 0.9), zscale=(0.35, 0.
     return verts, faces
 
 
+def stone_outline(rnd, r, sides=(5, 7), jitter=0.25, yscale=(1.0, 1.0), corners=4, corner_deg=30.0, tries=50):
+    """Plan outline of an angular flat stone (a slab, not an ellipse): `sides` (an int or a [lo, hi] range) vertices
+    at evenly spread angles (each moved by up to +-a quarter of the angular step) and radii r x (1 +- `jitter`), y
+    squeezed by U(yscale) (elongated slabs), counter-clockwise around (0, 0). Redrawn (up to `tries` times) until at
+    least `corners` corners turn by more than `corner_deg` degrees and the outline is convex enough not to fold (every
+    turn positive), so the stone reads as an angular slab from above. Pure Python (math + the given random.Random)."""
+    def turns(P):
+        out = []
+        for k in range(len(P)):
+            (ax, ay), (bx, by), (cx_, cy_) = P[k - 1], P[k], P[(k + 1) % len(P)]
+            a1, a2 = math.atan2(by - ay, bx - ax), math.atan2(cy_ - by, cx_ - bx)
+            out.append(math.degrees((a2 - a1 + math.pi) % (2 * math.pi) - math.pi))
+        return out
+    lo, hi = (sides, sides) if isinstance(sides, int) else (int(sides[0]), int(sides[-1]))
+    best = None
+    for _ in range(int(tries)):
+        n = rnd.randint(lo, hi)
+        ph = rnd.uniform(0, 2 * math.pi)
+        sy = rnd.uniform(*yscale)
+        P = []
+        for q in range(n):
+            a = ph + 2 * math.pi * (q + rnd.uniform(-0.25, 0.25)) / n
+            rr = r * (1.0 + rnd.uniform(-jitter, jitter))
+            P.append((rr * math.cos(a), rr * sy * math.sin(a)))
+        tr = turns(P)
+        ok = all(t > 0 for t in tr)
+        score = sum(t > corner_deg for t in tr)
+        if ok and score >= corners:
+            return P
+        if ok and (best is None or score > best[0]):
+            best = (score, P)
+    return best[1] if best else P
+
+
+def slab_stone(rnd, x, y, r, zg, sides=(5, 7), jitter=0.25, yscale=(0.6, 0.9), zscale=(0.35, 0.5), sink=0.3,
+               bevel=(0.88, 0.62), tilt=0.15):
+    """One angular flat landscape stone (default rock_scatter shape): a stone_outline() prism of height
+    h = 2 r U(zscale) (the icosphere stones' height range), sunk `sink` of h below `zg`: the buried foot ring, a
+    shoulder ring at 0.7 h inset to bevel[0] and a flat top at bevel[1] of the outline, tilted by up to `tilt` x h
+    across the stone; random yaw. Returns (verts, faces) in world coordinates (faces: sides, bevel, one n-gon top)."""
+    P = stone_outline(rnd, r, sides=sides, jitter=jitter, yscale=yscale)
+    n = len(P)
+    h = 2 * r * rnd.uniform(*zscale)
+    zb = zg - sink * h
+    yaw = rnd.uniform(0, 2 * math.pi)
+    cy_, sy_ = math.cos(yaw), math.sin(yaw)
+    ua = rnd.uniform(0, 2 * math.pi); ux, uy = math.cos(ua), math.sin(ua)
+    dd = [px * ux + py * uy for px, py in P]
+    d0, d1 = min(dd), max(dd)
+    verts = []
+    for k_, (sc, zz) in enumerate(((1.0, None), (bevel[0], 0.7 * h), (bevel[1], None))):
+        for (px, py), d_ in zip(P, dd):
+            qx, qy = px * sc, py * sc
+            if k_ == 0:
+                z = zb
+            elif k_ == 1:
+                z = zb + zz
+            else:                                    # planar tilted top: its highest corner at zb + h
+                z = zb + h - tilt * h * (d1 - d_) / max(d1 - d0, 1e-9)
+            verts.append((x + qx * cy_ - qy * sy_, y + qx * sy_ + qy * cy_, z))
+    faces = []
+    for ring in (0, 1):
+        for k in range(n):
+            a, b = ring * n + k, ring * n + (k + 1) % n
+            faces.append([a, b, b + n, a + n])
+    faces.append([2 * n + k for k in range(n)])
+    return verts, faces
+
+
 def k_rock_scatter(it, G, c, M, i):
-    """Loose landscape rocks in a bed (seeded, so rebuilds are identical): angular, partly buried stones (rock_stone:
-    noisy icosphere, 1 x 0.6-0.9 x 0.35-0.5, random yaw, 30 % of the height below grade), each with its own colour
-    drawn from the item's colour range. "stones": [[x, y, diameter], ...] places measured stones, else `count` random
-    ones in `polygon` (minus `holes`); "noise", "yscale", "zscale", "sink" override the shape; "shape": "dome" keeps the
-    older smooth dome (k_boulder) with "height" = fraction of the width above grade."""
+    """Loose landscape rocks in a bed (seeded, so rebuilds are identical): angular, partly buried flat stones
+    (slab_stone: a 5-7-sided outline with +-25 % radius jitter -- at least 4 corners turning > 30 deg -- squeezed to
+    0.6-0.9 across, height 0.35-0.5 x the width with a bevelled, slightly tilted flat top, random yaw, 30 % of the height
+    below grade), each with its own colour drawn from the item's colour range. "stones": [[x, y, diameter], ...] places
+    measured stones, else `count` random ones in `polygon` (minus `holes`); "sides", "jitter", "yscale", "zscale",
+    "sink" override the shape; "shape": "ico" gives the older noisy icosphere (rock_stone; "noise"), "dome" the older
+    smooth dome (k_boulder) with "height" = fraction of the width above grade."""
     import random
     from shapely.geometry import Polygon, Point
     P = Polygon(it["polygon"]).buffer(0) if it.get("polygon") else Polygon()
@@ -1173,8 +1509,13 @@ def k_rock_scatter(it, G, c, M, i):
             k_boulder({"polygon": poly, "top_z": zg + 2 * r * rnd.uniform(hlo, hhi), "color": it.get("color"),
                        "name": nm}, G, c, M, f"{i}.{len(placed)}")
             continue
-        v, f = rock_stone(rnd, x, y, r, zg, noise=it.get("noise", 0.25), yscale=it.get("yscale", (0.6, 0.9)),
-                          zscale=it.get("zscale", (0.35, 0.5)), sink=it.get("sink", 0.3))
+        if it.get("shape") == "ico":
+            v, f = rock_stone(rnd, x, y, r, zg, noise=it.get("noise", 0.25), yscale=it.get("yscale", (0.6, 0.9)),
+                              zscale=it.get("zscale", (0.35, 0.5)), sink=it.get("sink", 0.3))
+        else:
+            v, f = slab_stone(rnd, x, y, r, zg, sides=it.get("sides", (5, 7)), jitter=it.get("jitter", 0.25),
+                              yscale=it.get("yscale", (0.6, 0.9)), zscale=it.get("zscale", (0.35, 0.5)),
+                              sink=it.get("sink", 0.3))
         t = rnd.random()
         col = tuple(a + (b - a) * t for a, b in zip(ca, cb))
         m_ = stone(f"Garden stone {i}.{len(placed)}", col, tuple(min(1.0, 1.12 * v_) for v_ in col), 6.0, 0.5)
@@ -1383,6 +1724,7 @@ def main():
         "parcel": mat("Lot line", (0.95, 0.2, 0.2), 0.5),
     }
     M["lawn"] = M["ground"]
+    M["_grid"] = S.get("grid")             # terrain grid (bilinear heights: boulder max_over_terrain)
     # terrain (ground / rock faces) + draped overlays
     # explicit triangles along each cell's chosen fold (the same triangles the overlays were draped on); smooth
     # shading with creases kept sharp (> SHARP_DEG) and area-weighted normals: no dark folded shards on slopes
@@ -1397,8 +1739,17 @@ def main():
     if hp or hc:
         print(f"terrain: reference ground hidden {hp}; not rendered: collections {hc}")
     if S.get("grid") and Y.get("face_normals", True):
-        nf = smooth_face_normals(terrain, S["grid"])
-        print(f"terrain: {nf} steep-face vertices shaded with smoothed normals (vertex group 'rock face')")
+        fixed = None
+        if all(k in S["grid"] for k in ("x0", "y0", "cell")):
+            ovxy = [v[:2] for o in (S.get("overlays") or {}).values() for v in o.get("verts", [])]
+            dr = [it.get("polygon") for it in Y.get("items", []) if it.get("kind") in ("surface", "grade_pad")
+                  and it.get("polygon") and (it.get("kind") == "surface" or it.get("surface"))]
+            dr += [LineStringBuffer(it["line"], float(it.get("width", 0.9)) / 2) for it in Y.get("items", [])
+                   if it.get("kind") == "path" and len(it.get("line", [])) >= 2]
+            fixed = overlay_nodes(S["grid"], ovxy, [r for r in dr if r])
+        nf = smooth_face_normals(terrain, S["grid"], fixed=fixed)
+        print(f"terrain: {nf} steep-face vertices shaded with smoothed normals (vertex group 'rock face')"
+              + (f"; {int(fixed.sum())} vertices under draped overlays kept in place" if fixed is not None else ""))
     classes = S.get("classes", [])
     if S.get("vertex_rock") and len(S["vertex_rock"]) == len(S["verts"]) and any(v > 0 for v in S["vertex_rock"]):
         # one material blending ground and rock by the per-vertex rock weight (soft boulder edges)
