@@ -72,7 +72,11 @@ geometry, placed from photo measurements. details.json (metres, model frame):
                    "shape": "box|pipe", "color": [r,g,b], "label": "..."} ],
                  # placed on the roof surface; "pipe" = round stack of diameter `size` (plumbing vent); ridge caps
                  # are automatic
-  "skylights": [ {"xy": [x,y], "size": [across, along_slope], "curb": 0.15, "label": "..."} ],   # on the top facet at xy
+  "skylights": [ {"xy": [x,y], "size": [across, along_slope], "curb": 0.15, "label": "...",   # on the top facet at xy
+                  "curb_color": [r,g,b], "glass_color": [r,g,b], "glass_roughness": 0.2, "frame": 0.05, "dome": 0.0} ],
+                 # curb: height of the curb top along the roof normal; frame: curb rim left visible around the glazing;
+                 # dome > 0: domed / hipped glazing rising this far above the curb top at its centre (read the rim and
+                 # crown heights off the LiDAR residuals to the roof plane). Default colours: trim curb, window glass
   "chimneys": [ {"center": [x,y], "size": [a,b], "azimuth": deg_of_a, "top_z": 7.9, "material": "siding|brick|stone",
                  "color": [r,g,b], "label": "...",
                  "shoulder": {"z": 7.25, "size": [a,b]},      # wider lower chase up to z, the stack above it
@@ -85,10 +89,15 @@ geometry, placed from photo measurements. details.json (metres, model frame):
   "corner_boards": true,
   "lights": [ {"wall": "M:-v", "u": 5.4, "z": 2.9} ],
   "text": [ {"wall": "G:+u", "u": 0.5, "z": 0.9, "text": "12", "size": 0.16, "material": "fixture", "color": [r,g,b],
-             "plate": [w, h], "plate_color": [r,g,b]} ]   # "\n" stacks lines; or "xy": [x,y] + "azimuth": facing deg
+             "plate": [w, h], "plate_color": [r,g,b]} ],  # "\n" stacks lines; or "xy": [x,y] + "azimuth": facing deg
                                                           # instead of wall/u (a plaque on a pier or post)
+  "caveats": ["what is not measured, and by how much it may be off", ...]
 }
 Walls are named "<wing>:<side>" as in model.json (e.g. "M:-u"); u runs from bottom[0] to bottom[1].
+Provenance: every object built from a list entry carries custom properties "details" (e.g. "stairs[1]") and "label"
+(the entry's full "label", else its "name"), so the measured / assumed status written in a label travels with the
+geometry. The text block "Details notes" in the .blend lists every labelled entry, repeats the ones whose label has a
+caveat word (assumed, extrapolated, not measured, +/-, ...) and the top-level "caveats" strings.
 Colours: [r,g,b] in 0..1 are linear; any component > 1 means 8-bit sRGB (e.g. [225,215,180] read off a photo)
 and is converted to linear.
 """
@@ -280,6 +289,54 @@ def raised_panels(name, base, d, n, w, h, rows, cols, c, m, margin=0.06, gap=0.0
             oriented_box(f"{name} panel", p, d * pw, n * proud, Vector((0, 0, ph)), c, m)
 
 
+_TAG = {}          # provenance stamped on every object made while it is set (see tag())
+
+
+def tag(key=None, entry=None):
+    """Objects created from now on carry custom properties details=key and label=entry's label (or name);
+    tag() with no key stops tagging (trim, foundation, ... are not built from one entry)."""
+    _TAG.clear()
+    if key:
+        _TAG["details"] = key
+        lab = (entry or {}).get("label") or (entry or {}).get("name")
+        if lab:
+            _TAG["label"] = str(lab)
+
+
+def stamp(ob):
+    for k, v in _TAG.items():
+        ob[k] = v
+    return ob
+
+
+CAVEAT_WORDS = ("assumed", "extrapolated", "estimated", "approximate", "approx", "unverified", "not measured",
+                "by eye", "±", "+/-")
+LIST_KEYS = ("openings", "extra_walls", "decks", "stairs", "ceilings", "boxes", "panels", "beams", "beam_ends",
+             "wall_boxes", "downspouts", "roof_vents", "skylights", "chimneys", "lights", "text")
+
+
+def details_notes(D):
+    """(text, n_labelled, n_flagged): every labelled entry of details.json, the ones not fully measured (a caveat
+    word in the label) repeated, and the top-level "caveats" strings."""
+    rows, flagged = [], []
+    for k, v in D.items():
+        if isinstance(v, dict) and v.get("label"):
+            rows.append((k, str(v["label"])))
+    for k in LIST_KEYS:
+        for i, e in enumerate(D.get(k, []) or []):
+            lab = (e.get("label") or e.get("name")) if isinstance(e, dict) else None
+            if lab:
+                rows.append((f"{k}[{i}]", str(lab)))
+    for key, lab in rows:
+        if any(w in lab.lower() for w in CAVEAT_WORDS):
+            flagged.append(f"- {key}: {lab}")
+    cav = [f"- {c}" for c in D.get("caveats", []) or []]
+    lines = ["Details: labelled entries", *[f"{k}: {lab}" for k, lab in rows]]
+    if flagged or cav:
+        lines += ["", "Caveats (not fully measured):", *cav, *flagged]
+    return "\n".join(lines) + "\n", len(rows), len(flagged) + len(cav)
+
+
 def mesh(name, verts, faces, c, m):
     me = bpy.data.meshes.new(name)
     me.from_pydata([tuple(v) for v in verts], [], faces)
@@ -287,7 +344,7 @@ def mesh(name, verts, faces, c, m):
     ob = bpy.data.objects.new(name, me)
     c.objects.link(ob)
     ob.data.materials.append(m)
-    return ob
+    return stamp(ob)
 
 
 BOX_FACES = [[0, 3, 2, 1], [4, 5, 6, 7], [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]]
@@ -700,6 +757,7 @@ def facet_z(model, x, y):
 
 def add_roof_extras(model, D, c, mats):
     up = Vector((0, 0, 1))
+    tag()
     for i, e in enumerate(model["edges"]):
         if e["kind"] not in ("ridge", "hip") or e["length_m"] < 0.3:
             continue
@@ -707,6 +765,7 @@ def add_roof_extras(model, D, c, mats):
         side = (p1 - p0).cross(up).normalized()
         oriented_box(f"ridge cap {i}", p0 - side * 0.15 + up * 0.005, p1 - p0, side * 0.30, up * 0.05, c, mats["cap"])
     for i, v in enumerate(D.get("roof_vents", [])):
+        tag(f"roof_vents[{i}]", v)
         x, y = v["xy"]
         z = facet_z(model, x, y)
         if z is None:
@@ -752,6 +811,7 @@ def facet_z_one(f, x, y):
 
 def add_skylights_chimneys(model, D, c, mats):
     for i, s in enumerate(D.get("skylights", [])):
+        tag(f"skylights[{i}]", s)
         x, y = s["xy"]
         pl = facet_plane(model, x, y)
         if pl is None:
@@ -766,13 +826,36 @@ def add_skylights_chimneys(model, D, c, mats):
             nrm = -nrm
         w, l = s.get("size", (0.6, 1.2))
         h = s.get("curb", 0.15)
+        fw = min(s.get("frame", 0.05), 0.45 * min(w, l))        # curb rim left visible around the glazing
+        dome = max(float(s.get("dome", 0.0)), 0.0)
         ctr = Vector((x, y, a * x + b * y + c0))
         o = ctr - across * (w / 2) - along * (l / 2)
         nm = s.get("label", f"skylight {i}")[:40]
-        oriented_box(f"{nm} curb", o - nrm * 0.03, across * w, along * l, nrm * (h + 0.03), c, mats["trim"])
-        oriented_box(f"{nm} glass", o + across * 0.05 + along * 0.05 + nrm * h, across * (w - 0.1), along * (l - 0.1),
-                     nrm * 0.02, c, mats["glass"])
+        curb_m = pick(s, mats, "trim", f"skylight {i} curb", 0.5, key="curb_color", mkey="curb_material")
+        glass_m = pick(s, mats, "glass", f"skylight {i} glass", s.get("glass_roughness", 0.2), key="glass_color",
+                       mkey="glass_material")
+        oriented_box(f"{nm} curb", o - nrm * 0.03, across * w, along * l, nrm * (h + 0.03), c, curb_m)
+        g0, gw, gl = o + across * fw + along * fw + nrm * h, w - 2 * fw, l - 2 * fw
+        if dome <= 0:
+            oriented_box(f"{nm} glass", g0, across * gw, along * gl, nrm * 0.02, c, glass_m)
+            continue
+        # domed / hipped glazing: 4 rings from the curb top to a flat crown `dome` above it (quarter-sine profile)
+        inset = 0.4 * min(gw, gl)
+        ccw = across.cross(along).dot(nrm) > 0
+        verts, faces = [], []
+        for k in range(4):
+            t = k / 3
+            d, e = inset * t, dome * math.sin(t * math.pi / 2)
+            ring = [(d, d), (gw - d, d), (gw - d, gl - d), (d, gl - d)]
+            if not ccw:
+                ring.reverse()
+            verts += [g0 + across * p + along * q + nrm * e for p, q in ring]
+        for k in range(3):
+            faces += [[4 * k + j, 4 * k + (j + 1) % 4, 4 * (k + 1) + (j + 1) % 4, 4 * (k + 1) + j] for j in range(4)]
+        faces.append([12, 13, 14, 15])
+        mesh(f"{nm} glass", verts, faces, c, glass_m)
     for i, ch in enumerate(D.get("chimneys", [])):
+        tag(f"chimneys[{i}]", ch)
         x, y = ch["center"]
         A, B = ch.get("size", (0.9, 0.9))
         t = math.radians(ch.get("azimuth", 0.0))
@@ -804,6 +887,7 @@ def add_skylights_chimneys(model, D, c, mats):
 def add_beams(model, D, c, mats):
     """Straight beams (rim/porch beams, headers, trellis rafters lying in a roof plane)."""
     for i, bm in enumerate(D.get("beams", [])):
+        tag(f"beams[{i}]", bm)
         p0, p1 = list(bm["p0"]), list(bm["p1"])
         w, h = bm.get("size", (0.15, 0.2))
         nm = bm.get("name", f"beam {i}")[:40]
@@ -832,6 +916,7 @@ def add_beam_ends(model, D, c, mats):
     """Rafter tails / outlooker ends showing under eaves and rakes, placed from their traced tips."""
     edges = [e for e in model["edges"] if e["kind"] in ("eave", "rake") and e["length_m"] > 0.3]
     for i, be in enumerate(D.get("beam_ends", [])):
+        tag(f"beam_ends[{i}]", be)
         q = Vector((be["xy"][0], be["xy"][1], 0))
         best = None
         for e in edges:
@@ -860,7 +945,8 @@ def add_beam_ends(model, D, c, mats):
 
 
 def add_extra_walls(D, frames, c, mats):
-    for w in D.get("extra_walls", []):
+    for i, w in enumerate(D.get("extra_walls", [])):
+        tag(f"extra_walls[{i}]", w)
         (x0, y0, z0), (x1, y1, z1) = w["bottom"]
         top = w["top_z"]
         m = pick(w, mats, "siding", f"wall {w['name']}", 0.85)
@@ -894,6 +980,7 @@ def add_corner_boards(model, frames, fnd, c, mats, width=0.1):
 
 def add_wall_boxes(D, frames, c, mats):
     for i, wb in enumerate(D.get("wall_boxes", [])):
+        tag(f"wall_boxes[{i}]", wb)
         a, d, n, L, _ = frames[wb["wall"]]
         w, h, dep = wb.get("size", (0.6, 0.4, 0.25))
         p = a + d * (wb["u"] - w / 2) + Vector((0, 0, wb["z"]))
@@ -929,6 +1016,7 @@ def add_downspouts(model, D, frames, c, mats):
     """Downspouts on wall faces, with optional leaders from the gutter outlet (see the docstring)."""
     tol = D.get("downspout_max_gap", 0.15)
     for i, ds in enumerate(D.get("downspouts", [])):
+        tag(f"downspouts[{i}]", ds)
         x, y = ds["xy"]
         gap = wall_gap((x, y), frames)
         if gap > tol:
@@ -959,12 +1047,14 @@ def add_downspouts(model, D, frames, c, mats):
 def add_lights_and_text(D, frames, c, mats):
     import mathutils
     for i, l in enumerate(D.get("lights", [])):
+        tag(f"lights[{i}]", l)
         a, d, n, L, _ = frames[l["wall"]]
         p = a + d * l["u"] + Vector((0, 0, l["z"]))
         oriented_box(f"light {i} plate", p - d * 0.06 - Vector((0, 0, 0.08)), d * 0.12, n * 0.03, Vector((0, 0, 0.16)), c, mats["fixture"])
         oriented_box(f"light {i} arm", p - d * 0.015 + Vector((0, 0, 0.04)), d * 0.03, n * 0.22, Vector((0, 0, 0.03)), c, mats["fixture"])
         oriented_box(f"light {i} shade", p - d * 0.12 + n * 0.12 - Vector((0, 0, 0.1)), d * 0.24, n * 0.24, Vector((0, 0, 0.12)), c, mats["fixture"])
     for i, t in enumerate(D.get("text", [])):
+        tag(f"text[{i}]", t)
         if "wall" in t:
             a, d, n, L, _ = frames[t["wall"]]
             p = a + d * t["u"] + Vector((0, 0, t["z"]))
@@ -988,6 +1078,7 @@ def add_lights_and_text(D, frames, c, mats):
         ob.rotation_euler = mathutils.Matrix((d, Vector((0, 0, 1)), n)).transposed().to_euler()
         cu.materials.append(pick(t, mats, "trim", f"text {i}", 0.5))
         c.objects.link(ob)
+        stamp(ob)
 
 
 def main():
@@ -1036,32 +1127,47 @@ def main():
         for ob in bpy.data.collections["Roof facets"].objects:
             ob.data.materials.clear()
             ob.data.materials.append(rm)
+    tag()
     add_foundation(frames, D.get("foundation", {}), c, mats, D.get("openings", []))
     add_trim(model, frames, c, mats, D.get("fascia_height", 0.2), D.get("gutters", True), D.get("soffits", True))
     add_extra_walls(D, frames, c, mats)
-    for o in D.get("openings", []):
+    for i, o in enumerate(D.get("openings", [])):
+        tag(f"openings[{i}]", o)
         add_opening(o, frames, c, mats)
     add_roof_extras(model, D, c, mats)
     add_skylights_chimneys(model, D, c, mats)
     add_beams(model, D, c, mats)
     add_beam_ends(model, D, c, mats)
+    tag()
     if D.get("corner_boards", True):
         add_corner_boards(model, frames, D.get("foundation", {}), c, mats)
     add_wall_boxes(D, frames, c, mats)
     add_lights_and_text(D, frames, c, mats)
     for i, dk in enumerate(D.get("decks", [])):
+        tag(f"decks[{i}]", dk)
         add_deck(dk, c, mats, i)
     for i, st in enumerate(D.get("stairs", [])):
+        tag(f"stairs[{i}]", st)
         add_stairs(st, c, mats, i)
     for i, ce in enumerate(D.get("ceilings", [])):
+        tag(f"ceilings[{i}]", ce)
         pts = [(x, y, ce["z"]) for x, y in ce["polygon"]]
         mesh(f"porch ceiling {i}", pts, [list(range(len(pts)))], c, pick(ce, mats, "soffit", f"ceiling {i}", 0.6))
-    for b in D.get("boxes", []):
+    for i, b in enumerate(D.get("boxes", [])):
+        tag(f"boxes[{i}]", b)
         box(b["name"], b["min"], b["max"], c, pick(b, mats, "trim", b["name"], 0.7))
-    for pn in D.get("panels", []):
+    for i, pn in enumerate(D.get("panels", [])):
+        tag(f"panels[{i}]", pn)
         pts = [tuple(p) for p in pn["polygon"]]
         mesh(pn.get("name", "panel"), pts, [list(range(len(pts)))], c, pick(pn, mats, "siding", pn.get("name", "panel"), 0.8))
     add_downspouts(model, D, frames, c, mats)
+    tag()
+    notes, n_lab, n_cav = details_notes(D)
+    txt = bpy.data.texts.get("Details notes") or bpy.data.texts.new("Details notes")
+    txt.clear()
+    txt.write(notes)
+    txt.use_fake_user = True                    # kept in the saved file with no other user
+    print(f"details notes: {n_lab} labelled entries, {n_cav} caveats (not fully measured) -> text 'Details notes'")
     bpy.ops.wm.save_as_mainfile(filepath=out)
     print("details added:", len(c.objects), "objects ->", out)
 

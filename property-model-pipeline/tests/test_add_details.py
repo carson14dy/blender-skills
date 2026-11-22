@@ -229,3 +229,33 @@ def test_downspout_wall_gap_warning_roof_drop_and_pipe_vent(scene, tmp_path):
     assert v["max"][0] - v["min"][0] == pytest.approx(0.1, abs=0.002)
     zr = f_n["plane"][0] * 2.0 + f_n["plane"][1] * 2.5 + f_n["plane"][2]
     assert v["max"][2] == pytest.approx(zr + 0.3, abs=0.01)
+
+
+def test_skylight_colours_curb_and_dome(scene, tmp_path):
+    mj, _, _ = scene
+    f_n = next(f for f in mj["facets"] if f["plane"][1] < 0)     # north slope
+    a, b, c = f_n["plane"]
+    nz = 1 / math.sqrt(1 + a * a + b * b)                        # vertical -> roof-normal distance
+
+    def above(p):                                                # height above the roof plane, along its normal
+        return (p[2] - (a * p[0] + b * p[1] + c)) * nz
+
+    extra = {"skylights": [
+        {"xy": [2.5, 2.0], "size": [1.0, 1.4], "curb": 0.15, "curb_color": [235, 232, 222],
+         "glass_color": [55, 48, 40], "label": "flat unit"},
+        {"xy": [-0.5, 2.2], "size": [1.2, 0.8], "curb": 0.2, "dome": 0.3, "frame": 0.04,
+         "curb_color": [70, 60, 50], "glass_color": [55, 48, 40], "label": "dome unit"},
+        {"xy": [0.5, 3.0], "size": [0.6, 0.6], "label": "plain unit"}]}
+    _, sc, _ = _details_run(scene, tmp_path, extra, "skylights")
+    o, mats = sc["objects"], sc["materials"]
+    flat_c, flat_g = o["flat unit curb"], o["flat unit glass"]
+    assert max(above(p) for p in flat_c["verts"]) == pytest.approx(0.15, abs=0.005)
+    assert min(above(p) for p in flat_g["verts"]) == pytest.approx(0.15, abs=0.005)
+    assert mats[flat_c["mat"]] == pytest.approx([0.831, 0.807, 0.730], abs=0.005)   # sRGB 235,232,222 -> linear
+    assert mats[flat_g["mat"]] == pytest.approx([0.038, 0.030, 0.021], abs=0.003)   # sRGB 55,48,40 -> linear
+    dome = o["dome unit glass"]
+    assert dome["n"] == 16                                       # 4 rings, flat crown
+    assert max(above(p) for p in dome["verts"]) == pytest.approx(0.5, abs=0.005)     # curb 0.2 + dome 0.3
+    assert min(above(p) for p in dome["verts"]) == pytest.approx(0.2, abs=0.005)
+    assert mats[o["dome unit curb"]["mat"]] != mats[flat_c["mat"]]                     # per-unit curb colour
+    assert o["plain unit curb"]["mat"] == "Trim (white)" and o["plain unit glass"]["mat"] == "Glass"   # defaults

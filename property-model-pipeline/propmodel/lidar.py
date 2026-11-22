@@ -295,7 +295,7 @@ def _cell_median_near_min(iy, ix, z, zmin, band):
 
 
 def ground_surface(local, cell=0.5, windows=(1.5, 3.0, 6.0, 12.0), slope=0.6, dh0=0.3, dh_max=3.0, exclude=None,
-                   zstat="min", band=0.25):
+                   zstat="min", band=0.25, despike=None, despike_cells=2):
     """Progressive morphological ground filter (Zhang et al. 2003) on the lowest LAST return per cell.
 
     Steep lots break a single ground plane (heights above it tilt with the hill) and many 3DEP sets
@@ -308,6 +308,12 @@ def ground_surface(local, cell=0.5, windows=(1.5, 3.0, 6.0, 12.0), slope=0.6, dh
     the cell minimum instead of the minimum itself. The minimum of n noisy returns on a slope sits
     low by ~slope * cell / 2 plus the low tail of the noise (about 0.1 m on a 0.5 m cell of a steep
     lot); the band keeps grass tops and low shrubs out of the median.
+
+    ``despike`` (m, default off): a dense shrub returns only single pulses from its top, which the morphological
+    windows (dh >= dh0 + slope * 1.5 m) accept as ground; the TIN then puts a pyramid on the slope. Ground cells
+    standing more than ``despike`` above the median of the ground cells in their 3x3 window, in 8-connected groups of
+    at most ``despike_cells`` cells (a shrub, not a ridge line or a bank), are dropped from the ground (class 2 cells
+    are kept) and bridged from the ground around them.
     """
     from scipy import ndimage
     from scipy.interpolate import griddata
@@ -347,6 +353,22 @@ def ground_surface(local, cell=0.5, windows=(1.5, 3.0, 6.0, 12.0), slope=0.6, dh
         if zval is not None:
             fresh = np.isnan(zval[jy, jx])
             zval[jy[fresh], jx[fresh]] = zmin[jy[fresh], jx[fresh]]
+    if despike is not None and despike > 0:
+        v = np.where(ground & np.isfinite(zmin), zmin if zval is None else np.where(np.isnan(zval), zmin, zval), np.nan)
+        win = np.stack([np.pad(v, 1, constant_values=np.nan)[1 + dj:1 + dj + ny, 1 + di:1 + di + nx]
+                        for dj in (-1, 0, 1) for di in (-1, 0, 1)])
+        with np.errstate(invalid="ignore"), __import__("warnings").catch_warnings():
+            __import__("warnings").simplefilter("ignore", RuntimeWarning)
+            med = np.nanmedian(win, axis=0)
+            nval = np.isfinite(win).sum(0)
+            high = np.isfinite(v) & (nval >= 5) & (v - med > despike)
+        if len(cls2):
+            c2 = np.zeros((ny, nx), bool); c2[jy, jx] = True
+            high &= ~c2
+        if high.any():
+            lab, n = ndimage.label(high, np.ones((3, 3)))
+            size = ndimage.sum(high, lab, range(1, n + 1))
+            ground &= ~np.isin(lab, [k + 1 for k, sz in enumerate(size) if sz <= despike_cells])
     gy_, gx_ = np.nonzero(ground & np.isfinite(zmin))
     pts = np.column_stack([x0 + (gx_ + 0.5) * cell, y0 + (gy_ + 0.5) * cell])
     vals = zmin[gy_, gx_] if zval is None else np.where(np.isnan(zval[gy_, gx_]), zmin[gy_, gx_], zval[gy_, gx_])
@@ -531,6 +553,98 @@ def despike(Z, nodes, cell, above=0.3, sigma=0.25, max_change=None, edge_nodes=N
             G = ndimage.gaussian_filter(out, sigma / cell, mode="nearest")
             out = np.where(e, G, out)
     return out
+
+
+def veg_floor(Z, mask, cell, window=2.0, dh=0.1):
+    """Ground under dense shrubs: inside ``mask`` (bool grid: a shrub / mulch bed) z = min(z, grey opening of the grid
+    with a ``window`` m square + ``dh``). Evergreen shrubs return single pulses from their tops, which the ground
+    filter keeps; the opening removes bumps narrower than the window (shrubs) and keeps planes, slopes and hollows,
+    so the bed follows the envelope of the ground around the shrubs. Nodes outside the mask are untouched."""
+    from scipy import ndimage
+    m = np.asarray(mask, bool)
+    if not m.any():
+        return np.array(Z, float, copy=True)
+    k = max(3, int(round(window / cell)) | 1)
+    op = ndimage.grey_opening(np.asarray(Z, float), size=(k, k), mode="nearest")
+    return np.where(m, np.minimum(Z, op + dh), Z)
+
+
+def clamp_spikes(Z, cell, skip=None, rock=None, above=0.3, below=0.3, passes=2, sigma=0.25, max_change=None,
+                 fill_rock=True, floor=None, bump=None, bump_nodes=4, ring=0, bump_passes=3, ring_exclude=None,
+                 floor_clamp=True, peak=None):
+    """Final terrain despike on EVERY grid node (not only rock-raised ones): spikes left by shrub tops the ground
+    filter kept, single solid cells, sampling holes, render as lit pyramids.
+
+    ``passes`` times: z = min(z, 3x3 median + ``above``) on every node not in ``skip`` (bool grid: breakline bands,
+    grade pads -- their steps are measured and intended). On ``rock`` nodes (bool grid, e.g. rock_rise > 0.2; with
+    ``fill_rock`` also the nodes its 3x3 closing adds: no-return pits inside a boulder top) also
+    z = max(z, 3x3 median - ``below``), which lifts one-node pits where a boulder's sampling hole let the ground
+    through. Then a Gaussian of ``sigma`` m over those rock nodes only (``max_change`` m limits how far it moves a
+    node; None = free). A straight cliff edge keeps its height (its 3x3 median is the high side); a 2x2 bump is
+    clamped (only 4 of 9 nodes are high), and one-cell-wide fins are cut down.
+
+    ``floor`` (grid, nan = none; e.g. each node cell's measured height - 0.1): on rock nodes the Gaussian never takes a
+    node below it, nor does the clamp where ``floor_clamp`` is True or a bool grid that holds the node (e.g. traced
+    rock outlines: there a measured point is rock, elsewhere it may be a shrub top), so measured rock points keep their height while the artefacts around them
+    (unsupported spikes, sawtooth outline teeth over empty cells) are clamped and smoothed.
+    ``peak`` (m): also z = min(z, highest of the 8 neighbours + peak) (a lone node a little over the clamp still
+    renders as a lit pyramid; a rounded rock top is only centimetres above its highest neighbour).
+    ``bump`` (m): afterwards, nodes off the rock that stand more than this above the 5x5 median in 8-connected
+    groups of at most ``bump_nodes`` (a 2x2 block on a slope passes the 3x3 test because its window holds the block
+    and the slope above it) are set to that median, up to ``bump_passes`` times (lowering one bump can leave the next
+    node standing out). ``ring`` > 0 extends the rock Gaussian over that many rings of nodes around the rock (the
+    foot of a boulder), so a one-cell cliff at the rock outline becomes a short ramp instead of a cell-sized tooth
+    (``ring_exclude``: nodes the ring must not lift, e.g. a shrub bed levelled to its ground envelope).
+    Returns (new grid, rock nodes used)."""
+    from scipy import ndimage
+    Z = np.array(Z, float, copy=True)
+    free = np.ones(Z.shape, bool) if skip is None else ~np.asarray(skip, bool)
+    rk = np.zeros(Z.shape, bool) if rock is None else np.asarray(rock, bool).copy()
+    if fill_rock and rk.any():
+        rk |= ndimage.binary_closing(rk, np.ones((3, 3)), border_value=0)
+    rk &= free
+    if floor is None or floor_clamp is False or floor_clamp is None:
+        fl = None
+    else:
+        fc = rk if floor_clamp is True else (rk & np.asarray(floor_clamp, bool))
+        fl = np.where(fc, np.asarray(floor, float), np.nan)
+    ring8 = np.ones((3, 3), bool); ring8[1, 1] = False
+    for _ in range(max(1, int(passes))):
+        med = ndimage.median_filter(Z, size=3, mode="nearest")
+        Zc = np.minimum(Z, med + above)
+        if peak is not None:          # a lone peak (higher than all 8 neighbours) renders as a lit pyramid
+            Zc = np.minimum(Zc, ndimage.maximum_filter(Z, footprint=ring8, mode="nearest") + peak)
+        if fl is not None:            # a measured rock point (its own cell's lowest last return) is not a spike
+            Zc = np.where(np.isfinite(fl), np.maximum(Zc, np.minimum(Z, fl)), Zc)
+        Z = np.where(free, Zc, Z)
+        if rk.any() and below is not None:
+            Z = np.where(rk, np.maximum(Z, med - below), Z)
+    if sigma and sigma > 0 and rk.any():
+        G = ndimage.gaussian_filter(Z, sigma / cell, mode="nearest")
+        if max_change is not None:
+            G = np.clip(G, Z - max_change, Z + max_change)
+        if floor is not None:
+            fl2 = np.asarray(floor, float)
+            G = np.where(np.isfinite(fl2), np.maximum(G, np.minimum(Z, fl2)), G)
+        sm = rk
+        if ring and ring > 0:
+            sm = (ndimage.binary_dilation(rk, np.ones((3, 3)), iterations=int(ring)) & free) | rk
+            if ring_exclude is not None:
+                sm &= ~(np.asarray(ring_exclude, bool) & ~rk)
+        Z = np.where(sm, G, Z)
+    if bump is not None and bump > 0:
+        for _ in range(max(1, int(bump_passes))):
+            m5 = ndimage.median_filter(Z, size=5, mode="nearest")
+            high = (Z - m5 > bump) & free & ~rk
+            if not high.any():
+                break
+            lab, n = ndimage.label(high, np.ones((3, 3)))
+            size = ndimage.sum(high, lab, range(1, n + 1))
+            sel = np.isin(lab, [k + 1 for k, sz in enumerate(size) if sz <= bump_nodes])
+            if not sel.any():
+                break
+            Z = np.where(sel, m5, Z)
+    return Z, rk
 
 
 def accept_planes(planes, xyz, min_pts=150, max_rms=0.06, max_slope=1.0, min_area=8.0, cell=0.5):

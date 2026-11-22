@@ -235,3 +235,73 @@ def test_ground_stays_under_a_cantilevered_storey():
     keep2 = build_site.standing_cells([lower, upper], extra, Z, fx, fy, 0.25, raised={"M"})
     assert build_site.standing_cells([lower, upper], [], Z, fx, fy, 0.25)[(fy < -0.3) & (fy > -1.7) & (np.abs(fx) < 2.5)].all()
     assert keep2[(fy < -1.2) & (fy > -1.8) & (np.abs(fx) < 0.7)].all()
+
+
+def test_clamp_spikes_removes_a_lone_spike_everywhere_and_keeps_a_box_boulder():
+    """The final despike acts on every node (not only rock-raised ones): a +0.8 m single-node spike on a sloping
+    lawn is cut to within 0.1 m of its highest neighbour; a 3 m box boulder (rock nodes, measured floor) keeps its
+    footprint within one cell and its top height."""
+    c = 0.25
+    X, Y = np.meshgrid(np.arange(40) * c, np.arange(40) * c)
+    slope = 0.3 * Y
+    Z = slope.copy(); Z[10, 12] += 0.8                                    # lone spike on the slope (not rock)
+    box = (np.abs(X - 6.5) <= 1.5) & (np.abs(Y - 6.5) <= 1.5)
+    Z = np.where(box, slope + 2.0, Z)
+    rock = box.copy()
+    floor = np.where(box, slope + 2.0 - 0.1, np.nan)                       # each cell's measured height - 0.1
+    D, rk = lidar.clamp_spikes(Z, c, rock=rock, floor=floor, peak=0.1, bump=0.4, ring=1)
+    nb = [D[10 + dj, 12 + di] for dj in (-1, 0, 1) for di in (-1, 0, 1) if dj or di]
+    assert D[10, 12] - max(nb) <= 0.1 + 1e-9 and D[10, 12] - slope[10, 12] < 0.2
+    from scipy.ndimage import binary_dilation, binary_erosion
+    high = (D - slope) > 1.0
+    assert not (binary_erosion(box, np.ones((3, 3))) & ~high).any()        # footprint kept to one cell inside ...
+    assert not (high & ~binary_dilation(box, np.ones((3, 3)))).any()       # ... and one cell outside
+    inner = binary_erosion(box, np.ones((3, 3)), iterations=2)
+    assert np.all(D[inner] - slope[inner] >= 1.9 - 1e-9)                   # measured top kept (floor)
+    # pits inside rock (a no-return cell at ground level) are lifted to the 3x3 median - 0.3 and smoothed
+    Zp = Z.copy(); Zp[26, 26] = slope[26, 26]
+    Dp, _ = lidar.clamp_spikes(Zp, c, rock=box & ~((X == X[26, 26]) & (Y == Y[26, 26])), floor=floor)
+    assert Dp[26, 26] - slope[26, 26] > 1.5
+    # skipped nodes (breakline bands, pads) are never touched
+    skip = np.zeros_like(box); skip[10, 12] = True
+    Ds, _ = lidar.clamp_spikes(Z, c, skip=skip)
+    assert Ds[10, 12] == Z[10, 12]
+
+
+def test_veg_floor_cuts_shrub_tops_to_the_ground_envelope():
+    c = 0.25
+    X, Y = np.meshgrid(np.arange(40) * c, np.arange(40) * c)
+    ground = -0.4 * Y
+    shrub = (np.abs(X - 5.0) <= 0.5) & (Y > 2) & (Y < 8)                 # 1 m wide, 1.2 m tall juniper row
+    Z = ground + np.where(shrub, 1.2, 0.0)
+    mask = (X > 3) & (X < 7) & (Y > 1.5) & (Y < 8.5)                        # a bed (away from the grid border)
+    V = lidar.veg_floor(Z, mask, c, window=2.0, dh=0.1)
+    assert np.all(np.abs(V[shrub] - ground[shrub]) <= 0.1 + 1e-9)        # shrub tops gone, slope kept
+    assert np.allclose(V[~mask], Z[~mask])                                 # outside the mask untouched
+    assert np.allclose(V[mask & ~shrub], Z[mask & ~shrub])
+
+
+def test_ground_surface_despike_drops_an_isolated_shrub_cell():
+    """A dense shrub returns single pulses from its top; the morphological windows accept a 0.5 m, 1 m tall shrub
+    as ground and the TIN puts a pyramid on the slope. despike drops isolated high ground cells."""
+    rng = np.random.default_rng(11)
+    slope = lambda x, y: 0.5 * y
+    pts = _pts(rng, -6, 6, -6, 6, 0.17, slope, noise=0.02)
+    x0, y0 = pts[:, 0].min(), pts[:, 1].min()                              # the filter's 0.5 m cells start here
+    sx, sy = x0 + 12 * 0.5, y0 + 12 * 0.5
+    shrub = (pts[:, 0] >= sx) & (pts[:, 0] < sx + 0.5) & (pts[:, 1] >= sy) & (pts[:, 1] < sy + 0.5)
+    pts[shrub, 2] += 1.0                                                   # one cell of dense shrub, 1 m tall
+    q = np.array([sx + 0.25]), np.array([sy + 0.25])
+    plain = lidar.ground_surface(pts, cell=0.5, zstat="median")
+    clean = lidar.ground_surface(pts, cell=0.5, zstat="median", despike=0.3)
+    assert lidar.surface_z(plain, *q)[0] - slope(*q)[0] > 0.5             # the shrub is "ground" without it
+    assert abs(lidar.surface_z(clean, *q)[0] - slope(*q)[0]) < 0.15
+    far = np.array([sx - 3.0, sx + 3.0, sx + 2.0]), np.array([sy - 2.0, sy + 2.5, sy - 4.0])
+    assert np.allclose(lidar.surface_z(clean, *far), lidar.surface_z(plain, *far), atol=1e-6)
+
+
+def test_bed_entries_accept_labelled_no_solid_beds():
+    data = [[[0, 0], [1, 0], [1, 1]], {"polygon": [[2, 2], [4, 2], [4, 4], [2, 4]], "label": "bed; shrubs", "no_solid": True},
+            {"polygon": [[5, 5], [6, 5], [6, 6]], "label": "mulch"}]
+    polys, veg = build_site.bed_entries(data)
+    assert len(polys) == 3 and len(veg) == 1 and abs(veg[0].area - 4.0) < 1e-9

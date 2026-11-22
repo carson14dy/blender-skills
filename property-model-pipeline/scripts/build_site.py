@@ -41,6 +41,17 @@ are wound counter-clockwise (normals up). Each terrain cell is folded along the 
 less in height (split_diagonals); the quad is written so that its own 0-2 diagonal is that fold, and
 add_site.py triangulates along it, so the drapes and the rendered terrain use the same triangles.
 Use --cell 0.25 near a house (QL1 LiDAR has ~2 returns per 0.25 m cell).
+
+Spikes (lit pyramids): the filtered ground drops isolated shrub-top cells (--ground-despike, lidar.ground_surface), and
+every node is despiked twice -- after the rock merge and again after the pads / breaklines (whose own nodes are
+skipped) -- by lidar.clamp_spikes: z <= 3x3 median + --spike-clamp and <= highest neighbour + --peak-clamp; rock nodes
+(rock_rise > --spike-rock and the pits their closing adds) are also lifted to >= 3x3 median - --pit-clamp and smoothed
+with a Gaussian (--rock-smooth, one ring of foot nodes with --rock-smooth-ring) that never goes below the measured
+height of the node's own cell (--rock-smooth-floor); small off-rock bumps over the 5x5 median take that median
+(--bump-clamp). Shrub / mulch beds: --beds entries may be {"polygon", "label", "no_solid": true} and --veg-mask lists
+more; there the single returns are shrub tops, not rock: no solid merge, no rock-outline quantile, and the terrain is
+capped at the grey opening of the ground (--veg-window, --veg-dh: lidar.veg_floor). Inside traced rock outlines no node
+stays below its cell's lowest last return (--rock-floor-last).
 """
 import argparse
 import json
@@ -194,6 +205,26 @@ def rock_outlines(features, boulders=None):
             if not pg.is_empty:
                 out.append((pg, float(it["top_z"]) if "top_z" in it else None))
     return out
+
+
+def bed_entries(data):
+    """Bed polygons from a beds json: each entry is a ring [[x,y],...] or a dict {"polygon": ring, "label": "...",
+    "no_solid": true}. Returns (all bed polygons, the no_solid ones). A no_solid bed (shrubs / mulch: dense evergreen
+    shrubs return single, planar-looking pulses that pass the solid-surface test) is also a vegetation mask: no
+    solid-surface merge, no rock-outline quantile and no rock edge growth inside it, so the terrain there is the
+    filtered ground (lowest last returns), not the shrub tops."""
+    polys, veg = [], []
+    for e in data or []:
+        ring = e.get("polygon") if isinstance(e, dict) else e
+        if not ring or len(ring) < 3:
+            continue
+        pg = Polygon(ring).buffer(0)
+        if pg.is_empty:
+            continue
+        polys.append(pg)
+        if isinstance(e, dict) and e.get("no_solid"):
+            veg.append(pg)
+    return polys, veg
 
 
 def roof_plan(model, overhang=0.5):
@@ -455,6 +486,8 @@ def main():
     ap.add_argument("--rock-q", type=float, default=0.9,
                     help="inside traced rock outlines the terrain takes this quantile of the single returns per cell "
                          "(not above the outline's top_z + 0.1; 0 = off)")
+    ap.add_argument("--rock-floor-last", type=int, default=1,
+                    help="inside traced rock outlines no node stays below its cell's lowest last return (1 = on, 0 = off)")
     ap.add_argument("--despike", type=float, default=0.3,
                     help="rock-raised nodes: z = min(z, 3x3 median + this), then a Gaussian of --despike-sigma (0 = off)")
     ap.add_argument("--despike-sigma", type=float, default=0.25, help="Gaussian sigma (m) of the despike pass")
@@ -465,6 +498,45 @@ def main():
     ap.add_argument("--despike-passes", type=int, default=2, help="passes of the edge smoothing")
     ap.add_argument("--despike-clamp", type=float, default=0.05,
                     help="the despike Gaussian moves no node by more than this (m), so measured cliff edges stay (0 = no limit)")
+    ap.add_argument("--veg-mask", help="json list of polygons (rings or {polygon} dicts): shrub / bed areas whose single returns "
+                                       "are vegetation, not rock: kept out of the --keep-rocks solid merge, the rock-outline "
+                                       "quantile and the edge growth (terrain = filtered ground). --beds entries with "
+                                       "\"no_solid\": true are added to it")
+    ap.add_argument("--spike-clamp", type=float, default=0.3,
+                    help="despike of every terrain node, after the rock merge and again after the pads and breaklines: "
+                         "z = min(z, 3x3 median + this), --spike-passes times; in the second stage breakline bands, grade "
+                         "pads and cut-out rings are skipped (0 = off)")
+    ap.add_argument("--spike-passes", type=int, default=2, help="passes of the final despike")
+    ap.add_argument("--spike-floor", type=int, default=1, choices=[0, 1, 2],
+                    help="where the --rock-smooth-floor also protects measured rock points from the 3x3 clamp: 1 = inside "
+                         "traced rock outlines (default), 2 = on every rock node, 0 = nowhere (every peak is cut to the "
+                         "3x3 median + --spike-clamp)")
+    ap.add_argument("--spike-rock", type=float, default=0.2,
+                    help="final despike: nodes the rock merge raised more than this (m; + the pits their 3x3 closing adds) "
+                         "are also clamped from below (--pit-clamp) and smoothed (--rock-smooth)")
+    ap.add_argument("--peak-clamp", type=float, default=0.1,
+                    help="despike: z = min(z, highest of the 8 neighbours + this) (lone peaks; 0 = off)")
+    ap.add_argument("--pit-clamp", type=float, default=0.3, help="final despike, rock nodes: z = max(z, 3x3 median - this) (0 = off)")
+    ap.add_argument("--rock-smooth", type=float, default=0.25,
+                    help="final despike: Gaussian sigma (m) over the rock nodes only (0 = off)")
+    ap.add_argument("--rock-smooth-clamp", type=float, default=0.0,
+                    help="final despike: the rock Gaussian moves no node by more than this (m; 0 = no limit)")
+    ap.add_argument("--rock-smooth-floor", type=float, default=0.1,
+                    help="despike: on rock nodes neither the clamp nor the Gaussian takes a node more than this below the "
+                         "measured height of its own cell (max of its lowest last return and q90 single return), so measured "
+                         "rock keeps its height (negative = no floor)")
+    ap.add_argument("--rock-smooth-ring", type=int, default=1,
+                    help="final despike: the rock Gaussian also covers this many rings of nodes round the rock (its foot)")
+    ap.add_argument("--bump-clamp", type=float, default=0.4,
+                    help="final despike: off-rock nodes more than this above the 5x5 median, in groups of <= 4 nodes, take "
+                         "that median (0 = off)")
+    ap.add_argument("--ground-despike", type=float, default=0.3,
+                    help="filtered ground: isolated ground cells (<= 2) more than this above the median of their 3x3 ground "
+                         "cells are shrub tops, not ground (0 = off)")
+    ap.add_argument("--veg-window", type=float, default=2.0,
+                    help="inside --veg-mask / no_solid beds the terrain is capped at the grey opening of this window (m) + "
+                         "--veg-dh: shrub tops the ground filter kept are cut to the envelope of the ground around them")
+    ap.add_argument("--veg-dh", type=float, default=0.1, help="see --veg-window")
     ap.add_argument("--wall-gap", type=float, default=0.0,
                     help="draped overlays stop this far short of every retaining wall's faces (m; they are draped on the "
                          "terrain triangles themselves, which step inside the wall, so 0 meets the face cleanly)")
@@ -491,7 +563,8 @@ def main():
     ap.add_argument("project"); ap.add_argument("features"); ap.add_argument("out")
     ap.add_argument("--half", type=float, default=34.0); ap.add_argument("--cell", type=float, default=0.5)
     ap.add_argument("--bed-width", type=float, default=0.9, help="rock bed band around the walls (m)")
-    ap.add_argument("--beds", help="json list of extra bed polygons [[x,y],...] (e.g. under decks)")
+    ap.add_argument("--beds", help="json list of extra bed polygons [[x,y],...] or {polygon, label, no_solid} dicts (e.g. under "
+                                   "decks; no_solid: a shrub / mulch bed that is also a --veg-mask)")
     ap.add_argument("--paving", help="json list of extra concrete polygons [[x,y],...] (aprons, stoops the GIS misses)")
     ap.add_argument("--cutouts", help="json list of polygons [[x,y],...] cut out of the ground and every surface "
                                       "(window-well pits, stair wells); add_site.py builds what goes in the hole")
@@ -511,6 +584,11 @@ def main():
     g = pts[pts[:, 3] == 2]
     gx, gy, gz = g[:, 0], g[:, 1], g[:, 2] - datum
 
+    bed_polys, veg_polys = bed_entries(json.load(open(a.beds))) if a.beds else ([], [])
+    if a.veg_mask:
+        veg_polys += bed_entries(json.load(open(a.veg_mask)))[0]
+    veg = unary_union(veg_polys) if veg_polys else Polygon()
+
     # ---- terrain grid -----------------------------------------------------
     from scipy.interpolate import griddata
     from scipy.ndimage import median_filter
@@ -519,6 +597,8 @@ def main():
     ys = np.arange(-h, h + 1e-9, c)
     X, Y = np.meshgrid(xs, ys)
     rock_rise = np.zeros(X.shape)          # how far the rock merge raised each node above the filtered ground
+    rock_low = None                        # measured height of each node's cell (solid merge): floor of the rock smoothing
+    in_outlines = np.zeros(X.shape, bool)  # nodes inside traced rock outlines
     if a.ground == "filtered" or (a.ground == "auto" and len(g) < 0.1 * len(pts)):
         # LiDAR delivered with few class-2 points (e.g. Montana statewide QL1): find the ground with the
         # progressive morphological filter on last returns; the house, decks and anything listed in
@@ -529,8 +609,15 @@ def main():
         if a.ground_exclude:
             ex += [Polygon(q).buffer(0) for q in json.load(open(a.ground_exclude))]
         exu = unary_union(ex)
-        surf = L.ground_surface(pts, cell=a.ground_cell or max(c, 0.5), exclude=exu, zstat=a.ground_stat)
+        surf = L.ground_surface(pts, cell=a.ground_cell or max(c, 0.5), exclude=exu, zstat=a.ground_stat,
+                                despike=a.ground_despike if a.ground_despike > 0 else None)
         Z = L.surface_z(surf, X.ravel(), Y.ravel()).reshape(X.shape) - datum
+        if not veg.is_empty and a.veg_window > 0:
+            vm = shapely.contains_xy(veg, X, Y)
+            Zv = L.veg_floor(Z, vm, c, window=a.veg_window, dh=a.veg_dh)
+            print(f"terrain: vegetation mask lowers {int((Z - Zv > 0.05).sum())} nodes to the ground envelope "
+                  f"(max {(Z - Zv).max():.2f} m)")
+            Z = Zv
         print(f"terrain: filtered ground surface ({int(surf['ground'].sum())} ground cells, {a.ground_stat} per cell)")
         if a.keep_rocks and a.rocks == "solid":
             # boulders and outcrops are real terrain the morphological filter shaves off: take the max of the
@@ -541,13 +628,20 @@ def main():
             sol = L.solid_surface(loc, xs[0] - c / 2, ys[0] - c / 2, len(xs), len(ys), cell=c, radius=a.solid_radius,
                                   min_single=a.solid_single, max_rms=a.solid_rms)
             Zs = sol["Z"]
+            # measured rock height of each node cell: the higher of its lowest last return and its q90 single return
+            with np.errstate(invalid="ignore"):
+                rock_low = np.fmax(sol["low"], sol["q90_single"])
             # never solid: the roof plan and decks / excludes (+ a small margin; a boulder can stand right at the
             # drip line) and paving with cars. The ground filter above keeps its wider exclusion.
             mb = a.solid_mask_buffer
             nog = unary_union([roof_plan(model).buffer(mb)]
                               + [Polygon(q).buffer(0).buffer(mb) for q in (json.load(open(a.ground_exclude)) if a.ground_exclude else [])]
-                              + [Polygon(q).buffer(0) for q in (json.load(open(a.paving_like)) if a.paving_like else [])])
+                              + [Polygon(q).buffer(0) for q in (json.load(open(a.paving_like)) if a.paving_like else [])]
+                              + [veg])
             nogm = shapely.contains_xy(nog, X, Y)
+            if not veg.is_empty:
+                print(f"terrain: vegetation mask (no solid / rock merge) {veg.area:.1f} m2, "
+                      f"{int(shapely.contains_xy(veg, X, Y).sum())} nodes")
             Zs[nogm] = np.nan
             ngrow = int(np.ceil(a.solid_radius / c)) + 1 if a.solid_grow < 0 else a.solid_grow
             Z, acc = L.merge_solid(Zg, Zs, c, rise=a.solid_rise, min_patch=a.solid_patch, max_rise=a.rock_max,
@@ -568,10 +662,19 @@ def main():
                     m_ = shapely.contains_xy(pg, X, Y)
                     inside |= m_
                     cap[m_] = np.maximum(cap[m_], (tz + 0.1) if tz is not None else np.inf)
+                in_outlines = inside & ~nogm
                 with np.errstate(invalid="ignore"):
                     take = inside & ~nogm & np.isfinite(q) & (q > Z) & (q <= cap) & (q - Zg < a.rock_max)
                 Z = np.where(take, q, Z)
                 print(f"terrain: {len(outl)} rock outlines, {int(take.sum())} nodes raised to the q{a.rock_q:g} single return")
+                if a.rock_floor_last:
+                    # a traced outline is rock by inspection (vegetation was excluded when it was traced): no node in it
+                    # stays below the lowest last return of its own cell (cells with mixed pulses have no q90 single return)
+                    low = sol["low"]
+                    with np.errstate(invalid="ignore"):
+                        tk2 = inside & ~nogm & np.isfinite(low) & (low > Z) & (low <= cap) & (low - Zg < a.rock_max)
+                    Z = np.where(tk2, low, Z)
+                    print(f"terrain: rock outlines, {int(tk2.sum())} more nodes raised to their cell's lowest last return")
             rock_rise = Z - Zg
             if a.despike > 0:
                 from scipy.ndimage import binary_dilation
@@ -600,7 +703,7 @@ def main():
             from scipy.ndimage import binary_dilation
             canopy = binary_dilation(canopy, iterations=1)       # trunks and branch edges next to canopy cells
             keep = np.isfinite(zmin) & ~canopy & (zmin - Z < a.rock_max) & (zmin - Z > -0.5)
-            nog = unary_union([exu.buffer(0.5)] + [Polygon(q).buffer(0) for q in (json.load(open(a.paving_like)) if a.paving_like else [])])
+            nog = unary_union([exu.buffer(0.5), veg] + [Polygon(q).buffer(0) for q in (json.load(open(a.paving_like)) if a.paving_like else [])])
             keep &= ~shapely.contains_xy(nog, X, Y)
             Z = np.where(keep, zmin, Z)
             print(f"terrain: {int(keep.sum())} cells keep their rock/grade returns ({100 * keep.mean():.0f} %)")
@@ -611,8 +714,32 @@ def main():
     if not (a.keep_rocks and a.rocks == "solid"):
         Z = median_filter(Z, size=3, mode="nearest")      # (the solid merge filtered its ground part already)
 
+    # ---- final despike of every node (lit pyramids: shrub tops the ground filter kept, single solid cells,
+    # sampling holes in boulder tops, a 2x2 block on a slope), first stage: before the pads and breaklines, so the
+    # wall bands take their side grades from a clean surface
+    def _despike(Z, rock_rise, skip, stage, smooth=True):
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+        from propmodel import lidar as L
+        floor = (rock_low - a.rock_smooth_floor) if (rock_low is not None and a.rock_smooth_floor >= 0) else None
+        Zn, rk_n = L.clamp_spikes(Z, c, skip=skip, rock=rock_rise > a.spike_rock, above=a.spike_clamp,
+                                  below=a.pit_clamp if (a.pit_clamp > 0 and smooth) else None, passes=a.spike_passes,
+                                  sigma=a.rock_smooth if smooth else 0,
+                                  max_change=a.rock_smooth_clamp if a.rock_smooth_clamp > 0 else None,
+                                  floor=floor, bump=a.bump_clamp if a.bump_clamp > 0 else None, ring=a.rock_smooth_ring,
+                                  ring_exclude=shapely.contains_xy(veg, X, Y) if not veg.is_empty else None,
+                                  floor_clamp={0: False, 1: in_outlines, 2: True}[a.spike_floor],
+                                  peak=a.peak_clamp if a.peak_clamp > 0 else None)
+        dz = Zn - Z
+        print(f"terrain: despike ({stage}) lowered {int((dz < -0.01).sum())} nodes (max {-dz.min():.2f} m), raised "
+              f"{int((dz > 0.01).sum())} (max {dz.max():.2f} m)" + (f"; {int(rk_n.sum())} rock nodes smoothed" if smooth else "")
+              + (f", {int(skip.sum())} skipped" if skip is not None else ""))
+        return Zn, rock_rise + dz
+    if a.spike_clamp > 0:
+        Z, rock_rise = _despike(Z, rock_rise, None, "after the rock merge")
+
     # ---- grade pads and retaining-wall breaklines ------------------------------
     pads = grade_pads(json.load(open(a.grade))) if a.grade else []
+    padmask = np.zeros(X.shape, bool)       # pad + blend nodes (the final despike leaves them alone)
     if pads:
         for pad in pads:
             pp = Polygon(pad["polygon"]).buffer(0)
@@ -621,6 +748,7 @@ def main():
             w = np.clip(1.0 - dist / bl, 0.0, 1.0) if bl > 0 else (dist <= 0).astype(float)
             w[(rock_rise > 0.5) & (dist > 0)] = 0.0        # the blend never drags a boulder / outcrop down
             Z = w * float(pad["z"]) + (1 - w) * Z
+            padmask |= w > 0
             print(f"terrain: grade pad z={pad['z']} over {pp.area:.1f} m2")
     _Zw = Z.copy()
 
@@ -672,8 +800,8 @@ def main():
     window = Polygon([(-h, -h), (h, -h), (h, h), (-h, h)])
     street, concrete = street.intersection(window), concrete.intersection(window)
     beds = house.buffer(a.bed_width, join_style="mitre").difference(house) if a.bed_width > 0 else Polygon()
-    if a.beds:
-        beds = unary_union([beds] + [Polygon(p).buffer(0) for p in json.load(open(a.beds))])
+    if bed_polys:
+        beds = unary_union([beds] + bed_polys)
     beds = beds.difference(concrete).difference(street)
     cut = unary_union([Polygon(p).buffer(0) for p in json.load(open(a.cutouts))]) if a.cutouts else Polygon()
     if not cut.is_empty:
@@ -687,6 +815,15 @@ def main():
             if ring.sum() >= 4:
                 w = np.clip((1.5 - dist) / 0.9, 0.0, 1.0)
                 Z = w * float(np.median(Z[ring])) + (1 - w) * Z
+
+    # ---- final despike, second stage: what the pads, breaklines and cut-outs left (their own nodes keep their steps)
+    if a.spike_clamp > 0:
+        skip = padmask.copy()
+        if walls:
+            skip |= _band_owner(walls, X, Y, c) != -1
+        if not cut.is_empty:
+            skip |= shapely.distance(cut, shapely.points(X.ravel(), Y.ravel())).reshape(X.shape) < 1.5
+        Z, rock_rise = _despike(Z, rock_rise, skip, "after pads / breaklines")
 
     # face centres
     cx = (X[:-1, :-1] + X[1:, 1:]) / 2

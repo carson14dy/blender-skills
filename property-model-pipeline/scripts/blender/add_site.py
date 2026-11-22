@@ -21,8 +21,10 @@ rock-bed overlays, curb lines, subject parcel, point features). yard.json (model
              #   0.3 m under the lower of the two grades beside it (build_site.py --breaklines yard.json
              #   makes the terrain step inside the wall). "line_is": "face": the line is the exposed (downhill)
              #   face as measured from the LiDAR step, the thickness goes to the uphill side ("uphill": left /
-             #   right of the line direction, or the higher grade). "drystack" is coursed ledgestone (brick
-             #   texture with varied stone lengths, dark joints, bump).
+             #   right of the line direction, or the higher grade). "drystack" is dry-laid ledgestone: random
+             #   course heights (0.05-0.15 m) and stone lengths (0.25-0.75 m, no regular bond), dark 12 mm joints,
+             #   per-stone colour jitter around the mean of the two colours and relief; "drystack": {"course": [lo, hi],
+             #   "stone": [lo, hi], "joint": m, "joint_dark": 0.35, "jitter": [r, g, b], "bump": m} overrides.
              {"kind": "pier", "xy": [x,y], "size": [w,d], "top_z": z, "rotation": deg, "material": "concrete",
               "plaque": {"text": "...", "face": "-x|+x|-y|+y", "color": [r,g,b], "size": 0.18}},   # numerals on a face
              {"kind": "steps", "line": [[x,y],[x,y]], "width": 1.2, "z0": z_bottom, "z1": z_top, "risers": n,
@@ -45,8 +47,10 @@ rock-bed overlays, curb lines, subject parcel, point features). yard.json (model
   "keep_wall_bottoms": ["M"]          # wing ids whose walls stand on another storey: not extended to the terrain
 }
 
-Boulders without a colour, the "rock" terrain tone and the rock material carry a fracture mask (Voronoi
-F2 - F1 < 0.03 darkens the stone to 55 %), so outcrops read as jointed sandstone rather than plaster.
+Boulders, the "rock" terrain tone and the rock material carry a sparse joint mask (Voronoi cells ~1.9 m, lines
+under 2 cm at 0.82 x the stone value, on about half of the cell edges) and faint horizontal bedding (noise stretched
+6:1 in xy:z, +-8 % value), so outcrops read as smooth, jointed and bedded sandstone rather than plaster or a
+turtle-shell crack net.
 
 Terrain faces carry build_site.py's surface class: "ground" (soil / grass) or "rock" (boulders and
 outcrops the LiDAR rock merge raised, or traced rock outlines). With the scene's per-vertex "vertex_rock"
@@ -75,8 +79,13 @@ import bmesh
 from mathutils import Vector
 from mathutils.bvhtree import BVHTree
 
-# buff sandstone (linear RGB), the default rock tone: sunlit Rimrock sandstone reads ~(178,169,159) sRGB
-ROCK_A, ROCK_B = (0.42, 0.38, 0.31), (0.50, 0.45, 0.37)
+# buff sandstone (linear RGB), the default rock tone: sunlit Rimrock sandstone reads ~(178,169,159) sRGB; warm buff
+# (+4 R / -6 B in sRGB over a neutral grey-buff), as the orthos show the rock tops
+ROCK_A, ROCK_B = (0.442, 0.38, 0.284), (0.524, 0.45, 0.341)
+# stone surface pattern: few long joints (Voronoi cells ~1.9 m, lines < 2 cm, 0.82 x the stone value) and faint
+# horizontal bedding (noise stretched 6:1 in xy:z, +-8 % value) -- sandstone, not crazy paving
+CRACK_SCALE, CRACK_WIDTH, CRACK_DARK = 0.53, 0.01, 0.82
+BEDDING_STRETCH, BEDDING_AMP, BEDDING_SCALE = 6.0, 0.08, 0.8
 SHARP_DEG = 50.0      # terrain edges whose two faces differ by more than this are shaded sharp
 
 
@@ -174,26 +183,57 @@ def textured(name, rgb_a, rgb_b, scale, bump=0.2, rough=0.9):
     return m
 
 
-def add_cracks(nt, color_socket, scale=1.6, width=0.03, dark=0.55, coverage=0.5):
-    """Fracture lines on stone: where Voronoi F2 - F1 (world position, `scale` cells per metre, slightly
+def add_bedding(nt, color_socket, stretch=None, amp=None, scale=None):
+    """Horizontal bedding on stone: the colour times 1 +- `amp` from a low-frequency noise of the world position
+    stretched `stretch`:1 in xy:z (layers run level across a boulder). Returns the new colour socket."""
+    stretch = BEDDING_STRETCH if stretch is None else stretch
+    amp = BEDDING_AMP if amp is None else amp
+    geo = nt.nodes.new("ShaderNodeNewGeometry")
+    sq = nt.nodes.new("ShaderNodeVectorMath"); sq.operation = "MULTIPLY"; sq.label = "bedding stretch"
+    sq.inputs[1].default_value = (1.0, 1.0, stretch)
+    nt.links.new(geo.outputs["Position"], sq.inputs[0])
+    nz = nt.nodes.new("ShaderNodeTexNoise"); nz.label = "bedding"
+    nz.inputs["Scale"].default_value = BEDDING_SCALE if scale is None else scale
+    nz.inputs["Detail"].default_value = 2.0
+    nt.links.new(sq.outputs[0], nz.inputs["Vector"])
+    mr = nt.nodes.new("ShaderNodeMapRange"); mr.clamp = True; mr.label = "bedding amplitude"
+    mr.inputs["From Min"].default_value = 0.3; mr.inputs["From Max"].default_value = 0.7
+    mr.inputs["To Min"].default_value = 1.0 - amp; mr.inputs["To Max"].default_value = 1.0 + amp
+    nt.links.new(nz.outputs["Fac"], mr.inputs["Value"])
+    mix = nt.nodes.new("ShaderNodeMix"); mix.data_type = "RGBA"; mix.blend_type = "MULTIPLY"; mix.label = "bedding"
+    mix.inputs["Factor"].default_value = 1.0
+    cv = nt.nodes.new("ShaderNodeCombineXYZ")
+    for k in ("X", "Y", "Z"):
+        nt.links.new(mr.outputs["Result"], cv.inputs[k])
+    nt.links.new(color_socket, mix.inputs[6]); nt.links.new(cv.outputs[0], mix.inputs[7])
+    return mix.outputs[2]
+
+
+def add_cracks(nt, color_socket, scale=None, width=None, dark=None, coverage=0.5):
+    """Joint lines on stone: where Voronoi F2 - F1 (world position, `scale` cells per metre, slightly
     noise-distorted) is below `width` the colour is multiplied by `dark` -- on about `coverage` of the cell
     edges (a large noise switches joints on and off, so the stone reads as jointed, not as crazy paving).
+    Defaults: CRACK_SCALE (cells ~1.9 m), CRACK_WIDTH (lines width / scale < 2 cm wide), CRACK_DARK (0.82).
     Returns the new colour socket."""
+    scale = CRACK_SCALE if scale is None else scale
+    width = CRACK_WIDTH if width is None else width
+    dark = CRACK_DARK if dark is None else dark
     geo = nt.nodes.new("ShaderNodeNewGeometry")
     nz = nt.nodes.new("ShaderNodeTexNoise"); nz.inputs["Scale"].default_value = 1.5
     nt.links.new(geo.outputs["Position"], nz.inputs["Vector"])
     dist = nt.nodes.new("ShaderNodeVectorMath"); dist.operation = "MULTIPLY_ADD"
-    dist.inputs[1].default_value = (0.08, 0.08, 0.08)
+    dist.inputs[1].default_value = (0.08 * 1.6 / scale,) * 3          # wiggle in proportion to the cell size
     nt.links.new(nz.outputs["Color"], dist.inputs[0]); nt.links.new(geo.outputs["Position"], dist.inputs[2])
     f = []
     for feat in ("F1", "F2"):
         v = nt.nodes.new("ShaderNodeTexVoronoi"); v.feature = feat; v.inputs["Scale"].default_value = scale
+        v.label = "cracks"
         nt.links.new(dist.outputs[0], v.inputs["Vector"]); f.append(v)
     sub = nt.nodes.new("ShaderNodeMath"); sub.operation = "SUBTRACT"
     nt.links.new(f[1].outputs["Distance"], sub.inputs[0]); nt.links.new(f[0].outputs["Distance"], sub.inputs[1])
-    lt = nt.nodes.new("ShaderNodeMath"); lt.operation = "LESS_THAN"; lt.inputs[1].default_value = width
+    lt = nt.nodes.new("ShaderNodeMath"); lt.operation = "LESS_THAN"; lt.inputs[1].default_value = width; lt.label = "crack width"
     nt.links.new(sub.outputs[0], lt.inputs[0])
-    on = nt.nodes.new("ShaderNodeTexNoise"); on.inputs["Scale"].default_value = 0.8; on.inputs["Detail"].default_value = 1.0
+    on = nt.nodes.new("ShaderNodeTexNoise"); on.inputs["Scale"].default_value = 0.8 * scale / 1.6; on.inputs["Detail"].default_value = 1.0
     nt.links.new(geo.outputs["Position"], on.inputs["Vector"])
     gate = nt.nodes.new("ShaderNodeMath"); gate.operation = "GREATER_THAN"; gate.inputs[1].default_value = 1.0 - coverage
     nt.links.new(on.outputs["Fac"], gate.inputs[0])
@@ -206,12 +246,12 @@ def add_cracks(nt, color_socket, scale=1.6, width=0.03, dark=0.55, coverage=0.5)
 
 
 def stone(name, rgb_a, rgb_b, scale, bump=0.6):
-    """Two-tone noise stone with fracture lines (boulders, outcrops)."""
+    """Two-tone noise stone with bedding and sparse joints (boulders, outcrops)."""
     m = textured(name, rgb_a, rgb_b, scale, bump)
     nt = m.node_tree
     b = nt.nodes.get("Principled BSDF")
     col = b.inputs["Base Color"].links[0].from_socket
-    nt.links.new(add_cracks(nt, col), b.inputs["Base Color"])
+    nt.links.new(add_cracks(nt, add_bedding(nt, col)), b.inputs["Base Color"])
     return m
 
 
@@ -245,7 +285,8 @@ def blend_by_attribute(name, ground, rock, attr, edge=0.5, soft=0.18):
     nt.links.new(add.outputs[0], mr.inputs["Value"])
     mix = nt.nodes.new("ShaderNodeMix"); mix.data_type = "RGBA"
     nt.links.new(mr.outputs["Result"], mix.inputs["Factor"])
-    nt.links.new(rp_g.outputs["Color"], mix.inputs[6]); nt.links.new(add_cracks(nt, rp_r.outputs["Color"]), mix.inputs[7])
+    nt.links.new(rp_g.outputs["Color"], mix.inputs[6])
+    nt.links.new(add_cracks(nt, add_bedding(nt, rp_r.outputs["Color"])), mix.inputs[7])
     nt.links.new(mix.outputs[2], b.inputs["Base Color"])
     bp = nt.nodes.new("ShaderNodeBump"); bp.inputs["Strength"].default_value = 0.4
     nt.links.new(nz_r.outputs["Fac"], bp.inputs["Height"]); nt.links.new(bp.outputs["Normal"], b.inputs["Normal"])
@@ -394,46 +435,156 @@ def k_boulder(it, G, c, M, i):
     mesh(it.get("name", f"boulder {i}"), verts, faces, c, rock)
 
 
-def drystack(name, rgb_a, rgb_b, mortar=(0.10, 0.09, 0.07)):
-    """Dry-stacked flat stone (ledgestone): a brick texture in wall coordinates (along the wall x, height z)
-    with low courses (0.10 m), stones 0.42 m long with lengths varied by squash every third course, thin
-    dark joints, two stone tones, noise-distorted joints and a bump from the joint mask. The texture runs on
-    the object's own coordinates; k_retaining_wall builds each segment in a local frame (x along the wall)."""
-    m = mat(name, rgb_a, 0.9)
+def _srgb(v):
+    return v * 12.92 if v <= 0.0031308 else 1.055 * v ** (1 / 2.4) - 0.055
+
+
+def _lin(v):
+    return v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4
+
+
+DRYSTACK = {"course": (0.05, 0.15), "stone": (0.25, 0.75), "joint": 0.015, "joint_dark": 0.3,
+            "jitter": (25, 22, 22), "bump": 0.008, "shadow": 0.035, "shadow_dark": 0.3, "step": 0.02}
+
+
+def drystack(name, rgb_a, rgb_b, course=None, stone=None, joint=None, joint_dark=None, jitter=None, bump=None,
+             shadow=None, shadow_dark=None, step=None):
+    """Dry-stacked flat stone (ledgestone), in wall coordinates (object x along the wall, z up; k_retaining_wall
+    builds each segment in such a frame):
+
+    * courses of random height between ``course`` = (lo, hi) m: a 1-D Voronoi along z (randomness 1 gives cell
+      lengths from 0.5 to 1.5 x the mean);
+    * stones of random length ``stone`` = (lo, hi) m along each course: a 1-D Voronoi along x whose phase is shifted
+      by a random number per course, so head joints never line up (no regular bond);
+    * joint / shadow lines ``joint`` m wide (10-15 mm), darkened to ``joint_dark`` x the stone's sRGB value;
+    * per-stone colour: the mean of the two tones (the yard item's colours) jittered by up to +-``jitter`` sRGB levels
+      (r, g, b; one stone in eight down to -1.7 x ``jitter``, weathered), with a little warm / cool shift per stone and a
+      faint grain;
+    * per-stone relief of up to ``bump`` m (5-10 mm), joints recessed;
+    * the shadow each course's overhanging stones cast on the top of the course below: a band ``shadow`` m deep
+      under every bed joint, fading from ``shadow_dark`` x the stone's sRGB value (a 12 mm joint alone is under a pixel
+      from the street, and dry-laid walls read by these shadow lines);
+    * each stone sits up to +-``step`` / 2 m higher or lower than its neighbours, so bed joints step at every head joint.
+    Joint edges are noise-distorted by a centimetre or two, so the courses wander like hand-laid stone."""
+    P = dict(DRYSTACK)
+    for k, v in (("course", course), ("stone", stone), ("joint", joint), ("joint_dark", joint_dark),
+                 ("jitter", jitter), ("bump", bump), ("shadow", shadow), ("shadow_dark", shadow_dark), ("step", step)):
+        if v is not None:
+            P[k] = v
+    mean = [0.5 * (a + b) for a, b in zip(rgb_a, rgb_b)]
+    sm = [_srgb(v) * 255 for v in mean]
+    lo = tuple(_lin(max(0.0, c - j) / 255) for c, j in zip(sm, P["jitter"]))
+    hi = tuple(_lin(min(255.0, c + j) / 255) for c, j in zip(sm, P["jitter"]))
+    darkest = tuple(_lin(max(0.0, c - 1.7 * j) / 255) for c, j in zip(sm, P["jitter"]))   # a few weathered stones
+    m = mat(name, tuple(mean), 0.9)
     nt = m.node_tree
     b = nt.nodes.get("Principled BSDF")
-    tc = nt.nodes.new("ShaderNodeTexCoord")
-    nz = nt.nodes.new("ShaderNodeTexNoise"); nz.inputs["Scale"].default_value = 3.0
-    nt.links.new(tc.outputs["Object"], nz.inputs["Vector"])
-    dist = nt.nodes.new("ShaderNodeVectorMath"); dist.operation = "MULTIPLY_ADD"
-    dist.inputs[1].default_value = (0.04, 0.04, 0.04)
-    nt.links.new(nz.outputs["Color"], dist.inputs[0]); nt.links.new(tc.outputs["Object"], dist.inputs[2])
-    # brick texture is laid out in its X (along) and Y (up): map object (x along wall, z up) -> (x, z)
-    sep = nt.nodes.new("ShaderNodeSeparateXYZ"); nt.links.new(dist.outputs[0], sep.inputs[0])
-    comb = nt.nodes.new("ShaderNodeCombineXYZ")
-    nt.links.new(sep.outputs["X"], comb.inputs["X"]); nt.links.new(sep.outputs["Z"], comb.inputs["Y"])
-    nt.links.new(sep.outputs["Y"], comb.inputs["Z"])
-    br = nt.nodes.new("ShaderNodeTexBrick")
-    br.offset = 0.5; br.offset_frequency = 2; br.squash = 0.6; br.squash_frequency = 3
-    br.inputs["Scale"].default_value = 1.0
-    br.inputs["Row Height"].default_value = 0.10; br.inputs["Brick Width"].default_value = 0.42
-    br.inputs["Mortar Size"].default_value = 0.012; br.inputs["Mortar Smooth"].default_value = 0.2
-    br.inputs["Color1"].default_value = (*rgb_a, 1); br.inputs["Color2"].default_value = (*rgb_b, 1)
-    br.inputs["Mortar"].default_value = (*mortar, 1)
-    nt.links.new(comb.outputs[0], br.inputs["Vector"])
-    nt.links.new(br.outputs["Color"], b.inputs["Base Color"])
-    bp = nt.nodes.new("ShaderNodeBump"); bp.inputs["Strength"].default_value = 0.4; bp.inputs["Distance"].default_value = 0.02
-    inv = nt.nodes.new("ShaderNodeMath"); inv.operation = "SUBTRACT"; inv.inputs[0].default_value = 1.0
-    nt.links.new(br.outputs["Fac"], inv.inputs[1])                    # Fac = 1 in the joints: joints are low
-    nt.links.new(inv.outputs[0], bp.inputs["Height"]); nt.links.new(bp.outputs["Normal"], b.inputs["Normal"])
-    m.diffuse_color = (*[0.5 * (x + y) for x, y in zip(rgb_a, rgb_b)], 1)
+    N = nt.nodes.new
+    tc = N("ShaderNodeTexCoord")
+    # wander: a centimetre-scale distortion of the coordinates
+    wz = N("ShaderNodeTexNoise"); wz.inputs["Scale"].default_value = 4.0; wz.inputs["Detail"].default_value = 2.0
+    nt.links.new(tc.outputs["Object"], wz.inputs["Vector"])
+    dv = N("ShaderNodeVectorMath"); dv.operation = "MULTIPLY_ADD"; dv.inputs[1].default_value = (0.03, 0.03, 0.012)
+    nt.links.new(wz.outputs["Color"], dv.inputs[0]); nt.links.new(tc.outputs["Object"], dv.inputs[2])
+    sep = N("ShaderNodeSeparateXYZ"); nt.links.new(dv.outputs[0], sep.inputs[0])
+
+    def vor1(w_socket, mean_len, feature, label):
+        v = N("ShaderNodeTexVoronoi"); v.voronoi_dimensions = "1D"; v.feature = feature; v.label = label
+        v.inputs["Scale"].default_value = 1.0 / mean_len; v.inputs["Randomness"].default_value = 1.0
+        nt.links.new(w_socket, v.inputs["W"])
+        return v
+    c_mean = 0.5 * (P["course"][0] + P["course"][1]); s_mean = 0.5 * (P["stone"][0] + P["stone"][1])
+    cid = vor1(sep.outputs["Z"], c_mean, "F1", "courses")                  # random number per course
+    sh = N("ShaderNodeMath"); sh.operation = "MULTIPLY_ADD"; sh.inputs[1].default_value = 37.0
+    nt.links.new(cid.outputs["Color"], sh.inputs[0]); nt.links.new(sep.outputs["X"], sh.inputs[2])
+    sid = vor1(sh.outputs[0], s_mean, "F1", "stones")                     # random colour per stone
+    sedge = vor1(sh.outputs[0], s_mean, "DISTANCE_TO_EDGE", "stones")     # head joints
+    # bed joints again, with each stone's own vertical offset (joints step at the head joints)
+    rs = N("ShaderNodeSeparateColor"); nt.links.new(sid.outputs["Color"], rs.inputs[0])
+    zo = N("ShaderNodeMath"); zo.operation = "MULTIPLY_ADD"; zo.inputs[1].default_value = P["step"]
+    zo.inputs[2].default_value = -0.5 * P["step"]
+    nt.links.new(rs.outputs[2], zo.inputs[0])
+    zs = N("ShaderNodeMath"); zs.operation = "ADD"
+    nt.links.new(sep.outputs["Z"], zs.inputs[0]); nt.links.new(zo.outputs[0], zs.inputs[1])
+    cedge = vor1(zs.outputs[0], c_mean, "DISTANCE_TO_EDGE", "courses (stepped)")
+    cid2 = vor1(zs.outputs[0], c_mean, "F1", "courses (stepped)")
+    # joint masks (1 in the joint): distance to the cell edge (scaled units) below half the joint width
+    def jmask(edge, scale_):
+        mr = N("ShaderNodeMapRange"); mr.clamp = True; mr.label = "joint"
+        mr.inputs["From Min"].default_value = 0.5 * P["joint"] * scale_
+        mr.inputs["From Max"].default_value = 0.9 * P["joint"] * scale_
+        mr.inputs["To Min"].default_value = 1.0; mr.inputs["To Max"].default_value = 0.0
+        nt.links.new(edge.outputs["Distance"], mr.inputs["Value"])
+        return mr
+    jc, js = jmask(cedge, 1.0 / c_mean), jmask(sedge, 1.0 / s_mean)
+    jm = N("ShaderNodeMath"); jm.operation = "MAXIMUM"; jm.label = "joints"
+    nt.links.new(jc.outputs["Result"], jm.inputs[0]); nt.links.new(js.outputs["Result"], jm.inputs[1])
+    # stone colour: lo..hi by the stone's random value, a warm / cool shift by a second random channel, faint grain
+    rnd = N("ShaderNodeSeparateColor"); nt.links.new(sid.outputs["Color"], rnd.inputs[0])
+    ramp = N("ShaderNodeValToRGB"); ramp.label = "stone jitter"
+    ramp.color_ramp.elements[0].color = (*darkest, 1); ramp.color_ramp.elements[1].color = (*hi, 1)
+    e = ramp.color_ramp.elements.new(0.12); e.color = (*lo, 1)
+    nt.links.new(rnd.outputs[0], ramp.inputs["Fac"])
+    warm = N("ShaderNodeMapRange"); warm.inputs["To Min"].default_value = -0.05; warm.inputs["To Max"].default_value = 0.05
+    nt.links.new(rnd.outputs[1], warm.inputs["Value"])
+    wv = N("ShaderNodeCombineXYZ")
+    a1 = N("ShaderNodeMath"); a1.operation = "ADD"; a1.inputs[0].default_value = 1.0
+    s1 = N("ShaderNodeMath"); s1.operation = "SUBTRACT"; s1.inputs[0].default_value = 1.0
+    nt.links.new(warm.outputs["Result"], a1.inputs[1]); nt.links.new(warm.outputs["Result"], s1.inputs[1])
+    nt.links.new(a1.outputs[0], wv.inputs["X"]); wv.inputs["Y"].default_value = 1.0; nt.links.new(s1.outputs[0], wv.inputs["Z"])
+    tint = N("ShaderNodeMix"); tint.data_type = "RGBA"; tint.blend_type = "MULTIPLY"; tint.inputs["Factor"].default_value = 1.0
+    nt.links.new(ramp.outputs["Color"], tint.inputs[6]); nt.links.new(wv.outputs[0], tint.inputs[7])
+    gr = N("ShaderNodeTexNoise"); gr.inputs["Scale"].default_value = 40.0; gr.inputs["Detail"].default_value = 3.0
+    nt.links.new(tc.outputs["Object"], gr.inputs["Vector"])
+    grm = N("ShaderNodeMapRange"); grm.inputs["To Min"].default_value = 0.93; grm.inputs["To Max"].default_value = 1.07
+    nt.links.new(gr.outputs["Fac"], grm.inputs["Value"])
+    grain = N("ShaderNodeMix"); grain.data_type = "RGBA"; grain.blend_type = "MULTIPLY"; grain.inputs["Factor"].default_value = 1.0
+    gv = N("ShaderNodeCombineXYZ")
+    for k in ("X", "Y", "Z"):
+        nt.links.new(grm.outputs["Result"], gv.inputs[k])
+    nt.links.new(tint.outputs[2], grain.inputs[6]); nt.links.new(gv.outputs[0], grain.inputs[7])
+    # joints: the stone colour at joint_dark x its sRGB value (linear factor joint_dark ** 2.2)
+    jdk = P["joint_dark"] ** 2.2
+    dark = N("ShaderNodeMix"); dark.data_type = "RGBA"; dark.blend_type = "MULTIPLY"; dark.label = "joint dark"
+    dark.inputs[7].default_value = (jdk, jdk, jdk, 1)
+    nt.links.new(jm.outputs[0], dark.inputs["Factor"]); nt.links.new(grain.outputs[2], dark.inputs[6])
+    # overhang shadow: in the upper half of a course (above the course's feature point), within `shadow` of its edge
+    above = N("ShaderNodeMath"); above.operation = "GREATER_THAN"
+    nt.links.new(zs.outputs[0], above.inputs[0])
+    nt.links.new(cid2.outputs["W"], above.inputs[1])                   # the course's feature point (metres)
+    sdist = N("ShaderNodeMapRange"); sdist.clamp = True; sdist.label = "overhang shadow"
+    sdist.inputs["From Min"].default_value = 0.5 * P["joint"] / c_mean
+    sdist.inputs["From Max"].default_value = (0.5 * P["joint"] + P["shadow"]) / c_mean
+    sdist.inputs["To Min"].default_value = 1.0; sdist.inputs["To Max"].default_value = 0.0
+    nt.links.new(cedge.outputs["Distance"], sdist.inputs["Value"])
+    sh2 = N("ShaderNodeMath"); sh2.operation = "MULTIPLY"
+    nt.links.new(sdist.outputs["Result"], sh2.inputs[0]); nt.links.new(above.outputs[0], sh2.inputs[1])
+    sdk = P["shadow_dark"] ** 2.2
+    shade = N("ShaderNodeMix"); shade.data_type = "RGBA"; shade.blend_type = "MULTIPLY"; shade.label = "overhang shadow"
+    shade.inputs[7].default_value = (sdk, sdk, sdk, 1)
+    nt.links.new(sh2.outputs[0], shade.inputs["Factor"]); nt.links.new(dark.outputs[2], shade.inputs[6])
+    nt.links.new(shade.outputs[2], b.inputs["Base Color"])
+    # relief: each stone proud by up to `bump` (its random value), joints recessed, a little grain
+    h = N("ShaderNodeMath"); h.operation = "MULTIPLY_ADD"; h.inputs[1].default_value = 0.5; h.inputs[2].default_value = 0.5
+    nt.links.new(rnd.outputs[2], h.inputs[0])
+    inv = N("ShaderNodeMath"); inv.operation = "SUBTRACT"; inv.inputs[0].default_value = 1.0
+    nt.links.new(jm.outputs[0], inv.inputs[1])
+    hh = N("ShaderNodeMath"); hh.operation = "MULTIPLY"
+    nt.links.new(h.outputs[0], hh.inputs[0]); nt.links.new(inv.outputs[0], hh.inputs[1])
+    hg = N("ShaderNodeMath"); hg.operation = "MULTIPLY_ADD"; hg.inputs[1].default_value = 0.15
+    nt.links.new(gr.outputs["Fac"], hg.inputs[0]); nt.links.new(hh.outputs[0], hg.inputs[2])
+    bp = N("ShaderNodeBump"); bp.label = "stone relief"
+    bp.inputs["Strength"].default_value = 1.0; bp.inputs["Distance"].default_value = P["bump"]
+    nt.links.new(hg.outputs[0], bp.inputs["Height"]); nt.links.new(bp.outputs["Normal"], b.inputs["Normal"])
+    m.diffuse_color = (*mean, 1)
+    m["drystack"] = {k: (list(v) if isinstance(v, tuple) else v) for k, v in P.items()}
     return m
 
 
 def _wall_material(it, i):
     kind = it.get("material", "stone")
     if kind == "drystack":
-        return drystack(f"Dry-stack stone {i}", *_two(it, (0.40, 0.35, 0.27), (0.66, 0.60, 0.50)))
+        return drystack(f"Dry-stack stone {i}", *_two(it, (0.40, 0.35, 0.27), (0.66, 0.60, 0.50)), **it.get("drystack", {}))
     if kind == "concrete":
         return textured(f"Retaining wall (concrete) {i}", *_two(it, (0.40, 0.39, 0.36), (0.47, 0.46, 0.43)), 3.0, 0.08)
     if kind == "timber":

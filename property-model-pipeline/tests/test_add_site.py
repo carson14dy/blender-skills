@@ -28,9 +28,27 @@ for o in bpy.data.collections["Site"].objects:
     vs = [o.matrix_world @ v.co for v in o.data.vertices]
     out["objects"][o.name] = {"min": [min(v[i] for v in vs) for i in range(3)], "max": [max(v[i] for v in vs) for i in range(3)],
                               "mat": o.data.materials[0].name if o.data.materials else None}
+out["nodes"] = {}
 for m in bpy.data.materials:
     if m.use_nodes and m.node_tree:
         out["materials"][m.name] = sorted({n.bl_idname for n in m.node_tree.nodes})
+        nd = []
+        for n in m.node_tree.nodes:
+            e = {"type": n.bl_idname, "label": n.label}
+            if n.bl_idname == "ShaderNodeTexVoronoi":
+                e.update(dims=n.voronoi_dimensions, feature=n.feature, scale=n.inputs["Scale"].default_value)
+            elif n.bl_idname == "ShaderNodeMix" and n.data_type == "RGBA":
+                e.update(b=list(n.inputs[7].default_value)[:3])
+            elif n.bl_idname == "ShaderNodeVectorMath":
+                e.update(v=list(n.inputs[1].default_value))
+            elif n.bl_idname == "ShaderNodeMapRange":
+                e.update(to=[n.inputs["To Min"].default_value, n.inputs["To Max"].default_value])
+            elif n.bl_idname == "ShaderNodeMath":
+                e.update(v=n.inputs[1].default_value)
+            elif n.bl_idname == "ShaderNodeBump":
+                e.update(distance=n.inputs["Distance"].default_value)
+            nd.append(e)
+        out["nodes"][m.name] = nd
 json.dump(out, open(sys.argv[2], "w"))
 """
 
@@ -74,12 +92,39 @@ def test_face_walls_stand_on_the_uphill_side_of_their_line(site):
     assert abs(w["max"][2] - 0.1) < 1e-4 and w["min"][2] < -1.2               # level top, foot under the low side
 
 
-def test_drystack_is_a_brick_coursed_stone_and_rocks_are_fractured(site):
+def test_drystack_is_random_coursed_ledgestone(site):
+    """Dry-stack: random course heights (1-D Voronoi along z, mean 0.1 m -> 0.05-0.15 m), random stone lengths with
+    no regular bond (1-D Voronoi along x, mean 0.5 m), dark joints (0.35 x sRGB value), 5-10 mm relief; no brick."""
     mat = site["objects"]["face wall"]["mat"]
-    assert "ShaderNodeTexBrick" in site["materials"][mat]
-    assert "ShaderNodeBump" in site["materials"][mat]
-    rock = site["materials"][site["objects"]["rock"]["mat"]]
-    assert "ShaderNodeTexVoronoi" in rock                                        # crack mask on boulders
+    assert "ShaderNodeTexBrick" not in site["materials"][mat]
+    nodes = site["nodes"][mat]
+    vor = [n for n in nodes if n["type"] == "ShaderNodeTexVoronoi"]
+    assert all(n["dims"] == "1D" for n in vor)
+    courses = {round(n["scale"], 3) for n in vor if n["label"].startswith("courses")}
+    stones = {round(n["scale"], 3) for n in vor if n["label"] == "stones"}
+    assert courses == {10.0} and stones == {2.0}                       # mean 0.1 m courses, 0.5 m stones
+    assert {"F1", "DISTANCE_TO_EDGE"} <= {n["feature"] for n in vor if n["label"] == "stones"}
+    jd = [n["b"][0] for n in nodes if n["label"] == "joint dark"]
+    assert jd and 0.05 <= jd[0] <= 0.15                                 # 0.3-0.35 x the sRGB value
+    bump = [n["distance"] for n in nodes if n["type"] == "ShaderNodeBump"]
+    assert bump and 0.005 <= bump[0] <= 0.01
+
+
+def test_rocks_have_sparse_joints_and_bedding(site):
+    """Rock: joint cells ~1.9 m (Voronoi scale ~0.53), lines < 2 cm (width / scale), joints at >= 0.8 x the stone
+    value, horizontal bedding from a noise stretched 6:1 in xy:z at +-8 % -- no dense dark crack net."""
+    for mat in (site["objects"]["rock"]["mat"],):
+        nodes = site["nodes"][mat]
+        cr = [n for n in nodes if n["type"] == "ShaderNodeTexVoronoi" and n["label"] == "cracks"]
+        assert cr and all(0.45 <= n["scale"] <= 0.6 for n in cr)
+        width = [n["v"] for n in nodes if n["label"] == "crack width"][0]
+        assert width / cr[0]["scale"] < 0.02
+        dark = [n["b"][0] for n in nodes if n["type"] == "ShaderNodeMix" and n["label"] == "cracks"]
+        assert dark and dark[0] >= 0.8
+        st = [n["v"] for n in nodes if n["label"] == "bedding stretch"]
+        assert st and st[0][2] / st[0][0] == 6.0
+        amp = [n["to"] for n in nodes if n["label"] == "bedding amplitude"][0]
+        assert abs(amp[1] - 1.08) < 1e-6 and abs(amp[0] - 0.92) < 1e-6
 
 
 def test_level_rail_top(site):
@@ -105,7 +150,7 @@ json.dump(out, open(sys.argv[2], "w"))
 
 def test_terrain_is_folded_creased_and_overlays_face_up(tmp_path):
     """Quads become the two triangles of their 0-2 fold, a 3 m step between neighbouring cells is a sharp
-    crease with area-weighted normals, a clockwise overlay triangle is flipped normal-up, rock is buff."""
+    crease with area-weighted normals, a clockwise overlay triangle is flipped normal-up, rock is warm buff."""
     blend = str(tmp_path / "empty.blend")
     (tmp_path / "empty.py").write_text(EMPTY)
     _run([str(tmp_path / "empty.py"), blend])
@@ -126,6 +171,6 @@ def test_terrain_is_folded_creased_and_overlays_face_up(tmp_path):
     assert r["sharp"] >= 2                                      # the cliff's top and foot are creases
     assert "WEIGHTED_NORMAL" in r["mods"] and r["keep_sharp"] == [True]
     assert r["overlay_nz"] and min(r["overlay_nz"]) > 0.99     # flipped to face up
-    assert r["rock"] and all(abs(a - b) < 0.01 for a, b in zip(r["rock"][0], (0.42, 0.38, 0.31)))
+    assert r["rock"] and all(abs(a - b) < 0.01 for a, b in zip(r["rock"][0], (0.442, 0.38, 0.284)))   # warm buff
     # every Site object is tagged with what made it (render_thumbnail.py --terrain keeps the hardscape by it)
     assert r["kinds"]["concrete (draped)"] == "overlay:concrete" and r["kinds"]["boulder 0"] == "boulder"
