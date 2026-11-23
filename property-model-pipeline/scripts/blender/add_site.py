@@ -83,13 +83,22 @@ rock-bed overlays, curb lines, subject parcel, point features). yard.json (model
               "cover_specular": None},
              #   specular / cover_specular: Principled 'Specular IOR Level' (None = Blender default); a matte near-black
              #   cover needs ~0.1 and roughness ~0.9 to read as dark from above (set_specular)
-             {"kind": "mailbox" | "light_post", "xy": [x,y], "rotation": deg} ],
+             {"kind": "mailbox" | "light_post", "xy": [x,y], "rotation": deg},
+             {"kind": "dish", "xy": [x,y], "z": z, "size": [0.8, 0.55], "azimuth": 180, "elevation": 20,
+              "mast_offset": 0.25, "color": [r,g,b]} ],
+             #   satellite dish: closed oval shell facing `azimuth` / `elevation`, LNB arm + LNB, bracket and a mast
+             #   from 0.1 m under the terrain at its foot (k_dish)
   # every item may carry "z" (absolute base, model frame) instead of sitting on the terrain
   "materials": {"rock_bed": [[r,g,b],[r,g,b]], "ground": [...], "rock": [...], "street": [...], "concrete": [...]},
                                       # two-tone overrides ("lawn" is accepted for "ground")
   "show_parcel": true,
   "overlay_skirt": 0.10,              # m: vertical skirt under every draped overlay's outer edge (overlay_skirt; 0 = off)
-  "keep_wall_bottoms": ["M"]          # wing ids whose walls stand on another storey: not extended to the terrain
+  "keep_wall_bottoms": ["M"],         # wing ids whose walls stand on another storey: not extended to the terrain
+  "chase_base": {"follow": true, "below": 0.05}   # optional: an exterior chimney chase's base FOLLOWS the terrain
+                                      # (every base vertex at terrain - below, raised or lowered; follow_bottoms) instead
+                                      # of the default deep footing (lowered only to terrain - 0.3 m; lower_bottoms);
+                                      # "cut_terrain": false keeps the terrain inside the chase footprint (default: cut
+                                      # out, its edge "cut_inset" m (0.001) inside the stone faces; cut_terrain)
 }
 
 Boulders, the "rock" terrain tone and the rock material carry a sparse joint mask (Voronoi cells ~1.9 m, lines
@@ -127,8 +136,15 @@ flat plane at the model datum would cover everything below it on a hillside lot 
 
 Grounding: walls and foundation strips are extended to 0.3 m below the terrain under them
 (terrain is the LiDAR ground, so the house sits exactly as surveyed), deck posts, stair
-stringers, downspouts, piers and stoops are cut to land on the terrain. Everything added goes
-to collection "Site"; the measured roof/walls keep their geometry above grade.
+stringers, downspouts, piers and stoops are cut to land on the terrain, and an exterior chimney chase
+(add_details "chimneys[i].chase") never has its base less than 0.3 m under the terrain (lower_bottoms: lowered only,
+so a chase built from the house-side ground grid never stands on air over a lower site terrain); with yard.json
+"chase_base": {"follow": true, "below": m} its base vertices sit at terrain - m instead (follow_bottoms: raised or
+lowered, every bottom edge kept >= 1 cm in the ground between them), so on a slope no terrain stands more than m over
+the base and none of it floats. The terrain inside a chase's plan footprint is then cut out (cut_terrain: the terrain
+faces are bisected along every footprint edge 1 mm inside the stone faces and the pieces inside are removed), so the
+ground ends at the stone instead of running on inside it, and no terrain lies within the stone volume. Everything added
+goes to collection "Site"; the measured roof/walls keep their geometry above grade.
 """
 import json
 import math
@@ -689,6 +705,157 @@ def snap_bottoms(objs, ground, below=0.0, tol=0.06):
                     n += 1
         me.update()
     return n
+
+
+def is_chase(ob):
+    """An exterior chimney chase made by add_details.py (custom property details = "chimneys[i].chase", or a name ending
+    in " chase")."""
+    import re
+    return bool(re.fullmatch(r"chimneys\[\d+\]\.chase", str(ob.get("details", "")))) or ob.name.endswith(" chase")
+
+
+def lower_bottoms(objs, ground, below=0.3, tol=0.06):
+    """Lower (never raise) each object's lowest vertices (within tol of its minimum) to terrain - below wherever the
+    terrain over them is less than `below`: an exterior chimney chase whose base add_details set from the house-side
+    ground grid stands on air where the site terrain is lower (a LiDAR plane pad, a cut-out, a re-filtered surface).
+    Returns the number of vertices lowered."""
+    n = 0
+    for ob in objs:
+        if ob.type != "MESH":
+            continue
+        me = ob.data
+        mw = ob.matrix_world
+        zs = [(mw @ v.co).z for v in me.vertices]
+        if not zs:
+            continue
+        zmin = min(zs)
+        for v, zw in zip(me.vertices, zs):
+            if zw > zmin + tol:
+                continue
+            w = mw @ v.co
+            gz = ground.z(w.x, w.y)
+            if gz is not None and w.z > gz - below + 1e-6:
+                w.z = gz - below
+                v.co = mw.inverted() @ w
+                n += 1
+        me.update()
+    return n
+
+
+def follow_bottoms(objs, ground, below=0.05, tol=0.06, step=0.1, min_embed=0.01):
+    """Set each object's lowest vertices (within tol of its minimum) to terrain - below, raising or lowering them, so an
+    exterior chimney chase's base follows the ground with a shallow, even embedment instead of a deep flat footing
+    (yard.json "chase_base": {"follow": true, "below": m}). Then every bottom edge (both ends base vertices) is checked
+    against the terrain every `step` m along it, and where the edge would come within `min_embed` m of the ground (a
+    terrain that bulges between two base vertices) both ends are lowered by the excess, so the base never shows a gap.
+    Returns (vertices moved, edges lowered)."""
+    n = ne = 0
+    for ob in objs:
+        if ob.type != "MESH":
+            continue
+        me = ob.data
+        mw = ob.matrix_world
+        inv = mw.inverted()
+        W = [mw @ v.co for v in me.vertices]
+        if not W:
+            continue
+        zmin = min(w.z for w in W)
+        base = {v.index for v, w in zip(me.vertices, W) if w.z <= zmin + tol}
+        for k in base:
+            gz = ground.z(W[k].x, W[k].y)
+            if gz is not None and abs(W[k].z - (gz - below)) > 1e-6:
+                W[k].z = gz - below
+                n += 1
+        for e in me.edges:
+            a, b = e.vertices
+            if a not in base or b not in base:
+                continue
+            L = (W[b] - W[a]).length
+            m = max(2, int(math.ceil(L / step)))
+            exc = 0.0
+            for s in range(1, m):
+                p = W[a].lerp(W[b], s / m)
+                gz = ground.z(p.x, p.y)
+                if gz is not None:
+                    exc = max(exc, p.z - (gz - min_embed))
+            if exc > 1e-6:
+                W[a].z -= exc
+                W[b].z -= exc
+                ne += 1
+        for k in base:
+            me.vertices[k].co = inv @ W[k]
+        me.update()
+    return n, ne
+
+
+def plan_hull(pts):
+    """Convex hull of 2-D points, counter-clockwise (monotone chain; collinear points dropped). A chimney chase is a
+    vertical prism, so the hull of all its vertices' xy is its plan footprint."""
+    P = sorted({(round(float(x), 7), round(float(y), 7)) for x, y in pts})
+    if len(P) < 3:
+        return P
+
+    def cross(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+    lo, hi = [], []
+    for p in P:
+        while len(lo) >= 2 and cross(lo[-2], lo[-1], p) <= 0:
+            lo.pop()
+        lo.append(p)
+    for p in reversed(P):
+        while len(hi) >= 2 and cross(hi[-2], hi[-1], p) <= 0:
+            hi.pop()
+        hi.append(p)
+    return lo[:-1] + hi[:-1]
+
+
+def cut_terrain(terrain, outlines, inset=0.001):
+    """Remove the terrain inside convex plan outlines (counter-clockwise; plan_hull of an exterior chimney chase): the
+    terrain faces whose bounds meet an outline are bisected by a vertical plane along each outline edge, moved `inset` m
+    inside, and the pieces inside every edge are deleted. The ground then ends just under the stone faces instead of
+    running on inside the stone (with a base embedded under the terrain there is no gap, and no terrain lies within the
+    stone volume). The pieces lie in the planes of the triangles they came from (the surface does not move); vertex,
+    corner and face attributes of new elements are interpolated / copied by bmesh. Returns (faces removed, plan area
+    removed in m2)."""
+    me = terrain.data
+    mw = terrain.matrix_world.copy()
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bm.transform(mw)
+    n_del, area = 0, 0.0
+    for ring in outlines:
+        ring = [tuple(map(float, p[:2])) for p in ring]
+        if len(ring) < 3:
+            continue
+        planes = []
+        for k in range(len(ring)):
+            (ax, ay), (bx, by) = ring[k], ring[(k + 1) % len(ring)]
+            L = math.hypot(bx - ax, by - ay)
+            if L < 1e-9:
+                continue
+            nrm = Vector(((by - ay) / L, -(bx - ax) / L, 0.0))          # outward normal of a CCW ring
+            planes.append((Vector((ax, ay, 0.0)) - nrm * inset, nrm))
+        x0, x1 = min(p[0] for p in ring) - 1e-3, max(p[0] for p in ring) + 1e-3
+        y0, y1 = min(p[1] for p in ring) - 1e-3, max(p[1] for p in ring) + 1e-3
+        cand = [f for f in bm.faces
+                if min(v.co.x for v in f.verts) <= x1 and max(v.co.x for v in f.verts) >= x0
+                and min(v.co.y for v in f.verts) <= y1 and max(v.co.y for v in f.verts) >= y0]
+        if not cand:
+            continue
+        for co, nrm in planes:
+            geom = list({e for f in cand for e in f.edges}) + list({v for f in cand for v in f.verts}) + cand
+            ret = bmesh.ops.bisect_plane(bm, geom=geom, dist=1e-6, plane_co=co, plane_no=nrm,
+                                         clear_inner=False, clear_outer=False)
+            cand = [g for g in ret["geom"] if isinstance(g, bmesh.types.BMFace) and g.is_valid]
+        inside = [f for f in cand if all((f.calc_center_median() - co).dot(nrm) < -1e-7 for co, nrm in planes)]
+        area += sum(f.calc_area() * abs(f.normal.z) for f in inside)
+        n_del += len(inside)
+        bmesh.ops.delete(bm, geom=inside, context="FACES")
+    bm.transform(mw.inverted())
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+    return n_del, area
 
 
 def obox(name, xy, wd, z0, z1, rot, c, m):
@@ -1906,10 +2073,92 @@ def k_discs(it, G, c, M, i):
         cylinder(f"{it.get('name', 'disc')} {i} disc {k}", (x, y), r, z0, z1, c, m_, seg=20)
 
 
+def beam(name, p0, p1, w, c, m):
+    """A square bar of side w from p0 to p1 (any direction)."""
+    p0, p1 = Vector(p0), Vector(p1)
+    d = (p1 - p0).normalized()
+    e1 = d.cross(Vector((0, 0, 1)))
+    if e1.length < 1e-6:
+        e1 = d.cross(Vector((1, 0, 0)))
+    e1 = e1.normalized() * (w / 2)
+    e2 = d.cross(e1).normalized() * (w / 2)
+    ring = [e1 + e2, -e1 + e2, -e1 - e2, e1 - e2]
+    v = [tuple(p0 + r) for r in ring] + [tuple(p1 + r) for r in ring]
+    f = [[0, 3, 2, 1], [4, 5, 6, 7], [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]]
+    return mesh(name, v, f, c, m)
+
+
+def dish_frame(azimuth, elevation):
+    """(n, u, v) of a dish facing compass bearing `azimuth` (deg, 0 = north, 90 = east) with its face normal
+    `elevation` deg over the horizon: n the facing direction, v up the face (world up projected on the face plane),
+    u = v x n horizontal across it, so (u, v, n) is right-handed (u x v = n: a loop counter-clockwise in (u, v) faces n)."""
+    a, e = math.radians(azimuth), math.radians(elevation)
+    n = Vector((math.sin(a) * math.cos(e), math.cos(a) * math.cos(e), math.sin(e)))
+    up = Vector((0.0, 0.0, 1.0))
+    v = up - n * up.dot(n)
+    v = v.normalized() if v.length > 1e-6 else Vector((-math.sin(a), -math.cos(a), 0.0))
+    return n, v.cross(n).normalized(), v
+
+
+def k_dish(it, G, c, M, i):
+    """Satellite dish on a mast: {"xy": [x, y] (rim centre, plan), "z": rim-centre z (absolute; or "height" over the
+    terrain), "size": [w, h] (oval rim, m; default 0.8 x 0.55), "azimuth": deg (compass bearing the face looks to),
+    "elevation": deg (face normal over the horizon), "depth": sag of the face at its centre (0.06), "mast": diameter
+    (0.05), "mast_offset": m behind the rim centre (0.25), "color": [r, g, b], "mast_color": [r, g, b]}.
+    A closed shallow oval shell (front sagging `depth` behind the rim plane, 1 cm thick, with a rim band), an LNB arm from
+    the lower rim to the focus in front of the face, the LNB, a bracket from the shell's back to the mast top and the
+    mast from there down to 0.1 m under the terrain at its foot (grounded wherever the terrain is). Objects are named
+    "<name> (shell)", "(LNB arm)", "(LNB)", "(bracket)", "(mast)" ("satellite dish <i>" when the name is longer than 40
+    characters; the full name goes to the custom property "label")."""
+    x, y = it["xy"]
+    w, h = it.get("size", (0.8, 0.55))
+    a_, b_ = w / 2.0, h / 2.0
+    zc = float(it["z"]) if "z" in it else G.z(x, y, 0) + float(it.get("height", 1.0))
+    C = Vector((x, y, zc))
+    n, u, v = dish_frame(float(it.get("azimuth", 180.0)), float(it.get("elevation", 20.0)))
+    depth, th, seg, rings = float(it.get("depth", 0.06)), 0.01, 32, 5
+    label = it.get("name", "satellite dish")
+    nm = label if len(label) <= 40 else f"satellite dish {i}"     # object names end in the part: keep them short (63 max)
+    shell_m = mat(f"Dish {i}", tuple(it.get("color", (0.55, 0.57, 0.57))), 0.45)
+    dark = mat(f"Dish mast {i}", tuple(it.get("mast_color", (0.03, 0.03, 0.03))), 0.5, 0.3)
+
+    def S(r, t, back=0.0):
+        return C + u * (a_ * r * math.cos(t)) + v * (b_ * r * math.sin(t)) - n * (depth * (1.0 - r * r) + back)
+    verts, faces = [], []
+    for back in (0.0, th):                      # front shell (0) and back shell (th behind it)
+        base = len(verts)
+        verts.append(tuple(S(0.0, 0.0, back)))
+        for k in range(1, rings + 1):
+            verts += [tuple(S(k / rings, 2 * math.pi * j / seg, back)) for j in range(seg)]
+        ring = lambda k, j, base=base: base + 1 + (k - 1) * seg + (j % seg)
+        fs = [[base, ring(1, j), ring(1, j + 1)] for j in range(seg)]
+        fs += [[ring(k, j), ring(k + 1, j), ring(k + 1, j + 1), ring(k, j + 1)] for k in range(1, rings) for j in range(seg)]
+        faces += fs if back == 0.0 else [f[::-1] for f in fs]
+    off = len(verts) // 2
+    outer = [1 + (rings - 1) * seg + j for j in range(seg)]
+    faces += [[outer[j], outer[j] + off, outer[(j + 1) % seg] + off, outer[(j + 1) % seg]] for j in range(seg)]   # rim band (out)
+    ob = mesh(f"{nm} (shell)", verts, faces, c, shell_m)
+    for p in ob.data.polygons:
+        p.use_smooth = True
+    focus = C + n * float(it.get("focus", 0.45)) - v * (0.1 * b_)
+    beam(f"{nm} (LNB arm)", S(0.92, -math.pi / 2, th / 2), focus, 0.025, c, dark)
+    beam(f"{nm} (LNB)", focus + n * 0.05, focus - n * 0.07, 0.07, c, dark)
+    nh = Vector((n.x, n.y, 0.0))
+    nh = nh.normalized() if nh.length > 1e-6 else Vector((0.0, 1.0, 0.0))
+    mxy = C - nh * float(it.get("mast_offset", 0.25))
+    top = zc - 0.03
+    beam(f"{nm} (bracket)", C - n * (depth + th), Vector((mxy.x, mxy.y, top)), 0.04, c, dark)
+    r = float(it.get("mast", 0.05)) / 2
+    cylinder(f"{nm} (mast)", (mxy.x, mxy.y), r, G.z(mxy.x, mxy.y, zc - 1.0) - 0.1, top + 0.03, c, dark, seg=12)
+    for o in c.objects:
+        if o.name.startswith(nm + " (") and "label" not in o:
+            o["label"] = label
+
+
 EXTRA_KINDS = {"boulder": k_boulder, "retaining_wall": k_retaining_wall, "fence": k_fence, "surface": k_surface,
                "path": k_path, "hot_tub": k_hot_tub, "mailbox": k_mailbox, "light_post": k_light_post,
                "pier": k_pier, "steps": k_steps, "rock_scatter": k_rock_scatter, "path_light": k_path_light,
-               "grade_pad": k_grade_pad, "discs": k_discs}
+               "grade_pad": k_grade_pad, "discs": k_discs, "dish": k_dish}
 
 
 def main():
@@ -2125,6 +2374,27 @@ def main():
         land = [o for o in det.objects if "rail" not in o.name and any(p in o.name for p in
                 ("post", "stringer", "downspout", "brick pier", "garage stoop"))]
         n += snap_bottoms(land, G, below=0.02, tol=0.06)
+        # exterior chimney chases stand in the ground: their base never above terrain - 0.3 m (lowered only)
+        chs = [o for o in det.objects if is_chase(o)]
+        cb = Y.get("chase_base") or {}
+        if chs and cb.get("follow"):
+            # the base follows the ground: every base vertex at terrain - below (raised or lowered), no bottom edge
+            # within 1 cm of the ground between them
+            bl = float(cb.get("below", 0.05))
+            nl, ne = follow_bottoms(chs, G, below=bl)
+            print(f"chimney chases: {len(chs)}, {nl} base vertices set to the terrain - {bl:g} m (follow); "
+                  f"{ne} bottom edges lowered where the ground bulges between them")
+        elif chs:
+            nl = lower_bottoms(chs, G, below=0.3)
+            print(f"chimney chases: {len(chs)}, {nl} base vertices lowered to the terrain - 0.3 m")
+        if chs and cb.get("cut_terrain", True):
+            # no terrain inside the stone: cut out of the ground along the chase faces (G keeps the uncut surface)
+            ins = float(cb.get("cut_inset", 0.001))
+            rings = [plan_hull([tuple(o.matrix_world @ v.co)[:2] for v in o.data.vertices]) for o in chs
+                     if o.type == "MESH" and len(o.data.vertices) >= 3]
+            nd, ar = cut_terrain(terrain, rings, inset=ins)
+            print(f"chimney chases: terrain inside {len(rings)} footprint(s) cut out ({nd} face pieces, {ar:.3f} m2; "
+                  f"its edge {ins:g} m inside the stone faces)")
     print("snapped vertices:", n)
     bpy.ops.wm.save_as_mainfile(filepath=out)
     print("site added ->", out)

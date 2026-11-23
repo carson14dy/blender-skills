@@ -11,11 +11,17 @@ Wings are combined like solids: where two wings overlap, the higher surface
 wins (valleys, cross-gables, dormers-as-wings and L/T/U plans all fall out
 automatically), with one exception: a lower roof that runs *under* the
 overhang of a taller wing (lower roof meeting an upper-storey wall) is kept,
-because it is real roofing even though it is hidden from above. Likewise a
+because it is real roofing even though it is hidden from above. That holds inside
+the lower wing's walls and also outside them wherever the taller roof clears the
+lower one by at least ``OVERHUNG_CLEARANCE`` over the whole hidden piece (a porch
+roof's rake or a lower eave running in under an upper overhang to the upper wall;
+where the two roofs meet, e.g. beyond a valley, the lower one stops). Likewise a
 pocket of a roof plane hidden under another wing's roof and enclosed by the
 plane's own roof (a lower eave under the corner of an upper roof) is kept: being
 overhung never opens a roof. Openings of a wing's own outline (``outline_holes``)
-and other wings' walls rising through a roof stay open.
+and other wings' walls rising through a roof stay open, and every roof stops at
+the faces of solids standing through it (``penetrations``: a chimney, an
+exterior chimney chase); the cut edges are flashing (headwall / sidewall).
 
 Everything is computed analytically with polygon clipping, so areas and edge
 lengths are exact for the model (no tessellation error). The measurement
@@ -81,6 +87,11 @@ class Wing:
     outline: Optional[list] = None          # roof drip-edge polygon [[x,y],...] (prow ends, notches)
     outline_holes: Optional[list] = None    # openings in the roof (an open trellis bay): [[[x,y],...], ...]
     walls: Optional[list] = None            # wall polygon [[x,y],...] (cantilevers, recesses); sides are named w0, w1, ...
+    # solids standing through the roof (a masonry chimney, an exterior chimney chase): [{"polygon": [[x,y],...],
+    # "z": [z0, z1], "label": "..."}] (site frame; z0 / z1 null = unbounded). EVERY roof facet (any wing) stops at their
+    # faces where its plane runs between z0 and z1 inside the polygon: no roof area under the solid, the cut edges
+    # are flashing (headwall / sidewall). Roof heights for the fit (surface_z) are not changed.
+    penetrations: Optional[list] = None
 
     NUMERIC = ("cx", "cy", "azimuth", "length", "width", "eave_height", "pitch", "pitch_b", "end_pitch",
                "upper_pitch", "break_inset", "eave_overhang", "rake_overhang", "base_z",
@@ -336,6 +347,8 @@ class Edge:
     facets: List[str]
     p0: tuple               # 3-D endpoints
     p1: tuple
+    penetration: Optional[str] = None   # headwall / sidewall round a solid standing through the roof: "WING:index"
+                                        # of that wing's ``penetrations`` (chimney flashing); None otherwise
 
     @property
     def length(self):
@@ -502,6 +515,44 @@ def _wing_regions(w: Wing):
 
 
 MIN_FACET_AREA = 0.1   # m2: slivers smaller than this (numerical leftovers of hidden roofs) are not facets
+OVERHUNG_CLEARANCE = 0.3   # m: an upper roof at least this far above a hidden lower roof piece never meets it there
+
+
+def _overhung_clear(cand, plane, upper, clearance=OVERHUNG_CLEARANCE):
+    """The pieces of ``cand`` (roof of ``plane`` hidden under wing ``upper``'s roof, outside the walls of both wings)
+    that the upper roof clears by at least ``clearance`` everywhere: a lower roof running in under an upper overhang
+    (real roofing, hidden from above). A piece where the roofs meet (min clearance ~0, e.g. the far side of a valley)
+    stays hidden. The upper roof is the lower envelope of its planes (concave) and ``plane`` is linear, so the minimum
+    clearance over a piece is reached at one of its vertices."""
+    P = np.array(upper.planes())
+    keep = []
+    for piece in _polys(_clean(cand)):
+        xy = np.array([c[:2] for ring in [piece.exterior, *piece.interiors] for c in ring.coords])
+        zu = (xy[:, :1] * P[:, 0] + xy[:, 1:2] * P[:, 1] + P[:, 2]).min(axis=1)
+        if float(np.min(zu - plane_z(plane, xy[:, 0], xy[:, 1]))) >= clearance:
+            keep.append(piece)
+    return unary_union(keep) if keep else Polygon()
+
+
+def _penetration_cut(plane, poly, pens):
+    """``poly`` (a facet of ``plane``) minus every penetration's plan polygon where the plane lies within its [z0, z1]."""
+    a, b, c = plane
+    cuts = []
+    for pen in pens:
+        ring = pen.get("polygon") if isinstance(pen, dict) else None
+        if not ring or len(ring) < 3:
+            raise ValueError(f"penetration needs a 'polygon' of >= 3 [x, y] points: {pen!r}")
+        r = Polygon([p[:2] for p in ring]).buffer(0)
+        if r.is_empty or not r.intersects(poly):
+            continue
+        z0, z1 = (list(pen.get("z") or []) + [None, None])[:2]
+        if z1 is not None:
+            r = r.intersection(halfplane(a, b, c - float(z1), r.bounds))     # plane z <= z1
+        if z0 is not None and not r.is_empty:
+            r = r.intersection(halfplane(-a, -b, float(z0) - c, r.bounds))  # plane z >= z0
+        if not r.is_empty:
+            cuts.append(r)
+    return _clean(poly.difference(unary_union(cuts))) if cuts else poly
 
 
 def _enclosed_pockets(vis, reg, solids):
@@ -552,10 +603,15 @@ def build(wings: List[Wing], wall_step=0.02, ground=None, levels=None) -> Buildi
                 if not hide_parts:
                     continue
                 hide = unary_union(hide_parts)
-                # exception: lower roof under a taller wing's overhang is kept
+                # exception: lower roof under a taller wing's overhang is kept: inside its own walls, and outside them
+                # where the taller roof clears it everywhere (it runs in under the overhang, the roofs never meet)
                 keep = wall_polys[W.id].difference(wall_polys[V.id])
                 kept_under = hide.intersection(keep)
                 hide = hide.difference(keep)
+                clear = _overhung_clear(hide.intersection(reg).difference(wall_polys[V.id]), plane, V)
+                if not clear.is_empty:
+                    kept_under = unary_union([kept_under, clear])
+                    hide = hide.difference(clear)
                 vis = vis.difference(hide)
                 under = unary_union([under, kept_under.intersection(vis)])
             vis = _clean(vis)
@@ -582,6 +638,11 @@ def build(wings: List[Wing], wall_step=0.02, ground=None, levels=None) -> Buildi
                 break
         else:
             merged.append({"plane": plane, "poly": poly, "wings": [wid], "hid": hid})
+    # solids standing through the roof (chimneys, exterior chases): every facet stops at their faces
+    pens = [p for w in wings for p in (w.penetrations or [])]
+    if pens:
+        for m in merged:
+            m["poly"] = _penetration_cut(m["plane"], m["poly"], pens)
     merged = [m for m in merged if m["poly"].area * math.sqrt(1.0 + plane_slope(m["plane"]) ** 2) >= MIN_FACET_AREA]
     facets = [Facet(id=f"F{i + 1}", wings=m["wings"], plane=m["plane"], poly=m["poly"], hidden_from_above=m["hid"])
               for i, m in enumerate(merged)]
@@ -646,11 +707,12 @@ def _merge_collinear(edges):
     for e in edges:
         if out:
             p = out[-1]
-            if p.kind == e.kind and p.facets == e.facets and np.allclose(p.p1, e.p0, atol=1e-6):
+            if p.kind == e.kind and p.facets == e.facets and p.penetration == e.penetration \
+                    and np.allclose(p.p1, e.p0, atol=1e-6):
                 d0 = np.subtract(p.p1, p.p0)
                 d1 = np.subtract(e.p1, e.p0)
                 if np.linalg.norm(np.cross(d0, d1)) < 1e-9 * (np.linalg.norm(d0) * np.linalg.norm(d1) + 1e-12) + 1e-9:
-                    out[-1] = Edge(p.kind, p.facets, p.p0, e.p1)
+                    out[-1] = Edge(p.kind, p.facets, p.p0, e.p1, p.penetration)
                     continue
         out.append(e)
     return out
@@ -662,7 +724,8 @@ def _classify_edges(facets: List[Facet], wings: List[Wing]):
     Shared piece with another facet at the same height -> ridge / hip / valley /
     transition (by convexity and slope directions). Unshared piece on the facet's
     own roof outline -> eave (horizontal) / rake (sloped). Anything else is a
-    roof-to-wall junction -> headwall (horizontal) / sidewall (sloped, step flashing).
+    roof-to-wall junction -> headwall (horizontal) / sidewall (sloped, step flashing); a junction lying on
+    the face of a solid standing through the roof (``Wing.penetrations``) is tagged with it (chimney flashing).
     """
     edges: List[Edge] = []
     outline = {w.id: w.roof_outline() for w in wings}
@@ -670,6 +733,9 @@ def _classify_edges(facets: List[Facet], wings: List[Wing]):
     bnd = {f.id: f.poly.boundary for f in facets}
     obnd = {w: g.boundary for w, g in outline.items()}
     idx = {f.id: i for i, f in enumerate(facets)}
+    pen_rings = [(f"{w.id}:{k}", Polygon([q[:2] for q in pen["polygon"]]).buffer(0).boundary)
+                 for w in wings for k, pen in enumerate(w.penetrations or [])
+                 if isinstance(pen, dict) and len(pen.get("polygon") or []) >= 3]
 
     for F in facets:
         pieces = []
@@ -713,8 +779,11 @@ def _classify_edges(facets: List[Facet], wings: List[Wing]):
                 kind = "eave" if horiz else "rake"
             else:
                 kind = "headwall" if horiz else "sidewall"
+            pen = None
+            if not on_outline:
+                pen = next((key for key, ring in pen_rings if ring.distance(mid) <= EDGE_TOL), None)
             p0, p1 = _seg3d(F.plane, a, b)
-            edges.append(Edge(kind, [F.id], p0, p1))
+            edges.append(Edge(kind, [F.id], p0, p1, pen))
     return _merge_collinear(edges)
 
 
@@ -862,6 +931,7 @@ def to_mesh_json(model: BuildingModel):
               **({"area_buried_m2": w.area_buried, "area_foundation_m2": w.area_foundation, "area_siding_m2": w.area_siding,
                   "grade_range": list(w.grade_range) if w.grade_range else None} if w.area_siding is not None else {})}
              for w in model.walls]
-    edges = [{"kind": e.kind, "facets": e.facets, "p0": list(e.p0), "p1": list(e.p1), "length_m": e.length} for e in model.edges]
+    edges = [{"kind": e.kind, "facets": e.facets, "p0": list(e.p0), "p1": list(e.p1), "length_m": e.length,
+              **({"penetration": e.penetration} if e.penetration else {})} for e in model.edges]
     return {"facets": facets, "walls": walls, "edges": edges, "wings": [w.to_dict() for w in model.wings],
             "ground": list(model.ground) if model.ground is not None else None}

@@ -28,7 +28,16 @@ geometry, placed from photo measurements. details.json (metres, model frame):
   "window_frame_color": [80, 68, 52],                                  # window/slider frames (default: trim)
   "concrete_color": [215, 207, 192],                                   # material "concrete" (walls, boxes, ...)
   "fascia_height": 0.2, "gutters": true, "soffits": true,
-            # gutters: true / false, or {"position": "outside" | "inside", "depth": 0.13, "height": 0.12}.
+            # soffits: true / false, or {"enabled": true, "skip_facets": ["F3"], "label": "..."}: eaves of the facets
+            # listed get no horizontal (boxed) soffit at the fascia bottom; the roof sheet's underside (see
+            # roof.underside) is then the visible soffit, following the slope (an open / raked eave). Check it on a
+            # low street photo: under a boxed soffit the wall is hidden up to well below the fascia, under a raked
+            # one it shows right up to the fascia band (the underside is seen nearly edge-on)
+            # gutters: true / false, or {"position": "outside" | "inside", "depth": 0.13, "height": 0.12, "trough": null}.
+            # "trough": 0..1 - the gutter's top face is the open trough (the inside of the channel, in its own shade
+            # and debris), seen from above darker than the paint: that factor x the gutter colour (material "Gutter
+            # trough", matte); null keeps one painted box. Check it on an orthophoto: a painted box top reads as a
+            # bright line along every eave, brighter than the driveway, where real gutters read darker
             # "outside" (default): the eave line is the shingle drip edge and the gutter hangs outside it. "inside": the
             # eave line was fitted to a LiDAR / ortho outline, whose outermost surface IS the gutter lip (check: no
             # returns at gutter height within ~0.2 m outside the fitted eave), so the gutter's front face lies on the eave
@@ -37,7 +46,7 @@ geometry, placed from photo measurements. details.json (metres, model frame):
   "foundation": {"default_reveal": 0.25, "walls": {"M:-u": 0.54, "M:+v": 0.62}, "color": [r,g,b],   # siding-bottom z per wall
                  "skip": ["U", "M:+v"]},       # wings / walls with no foundation strip (an upper storey standing on a lower one)
   "openings": [ {"wall": "M:-u", "u": 9.98, "sill_z": 1.55, "width": 1.56, "height": 1.52,
-                 "kind": "window|slider|door|garage|egress", "label": "...",
+                 "kind": "window|slider|door|garage|egress|void", "label": "...",
                  "leaf_color": [r,g,b], "frame_color": [r,g,b], "mullions": [0.25, 0.75], "mullion_width": 0.04,
                  "panels": [rows, cols], "style": "raised|ribbed", "rib_spacing": 0.1} ],   # u = distance from wall start
                  # leaf_color: door colour; mullions: vertical bars at these width fractions (default: one at 0.5
@@ -49,12 +58,33 @@ geometry, placed from photo measurements. details.json (metres, model frame):
                  # true makes them the OUTER frame size - what a photo measures from sill to head and jamb to jamb -
                  # with the bars inside it (doors / garage doors: head and jambs only) and mullion fractions taken
                  # of that outer width
+                 # doors only: "sidelight": {"side": "start" | "end", "width": 0.36, "color": [r,g,b]} - a fixed panel
+                 # beside the leaf (toward the wall start / end) in the same frame (the leaf's jamb is the mullion; an
+                 # outer jamb and the head carry on over it); default colour the window glass.
+                 # "storm_door": {"color": [r,g,b], "stile": 0.12, "rail": 0.15, "kick": 0.25, "offset": 0.04,
+                 # "depth": 0.03} - an open storm-door frame (stiles, top rail, kick panel) standing `offset` m proud
+                 # of the wall over the leaf, so the leaf colour shows through its glazing
+                 # A corner board that an opening's frame overlaps (a door set hard against a wall corner) is cut
+                 # around the opening: the door casing takes over the corner there.
+                 # kind "void": a rectangle (u +- width / 2, sill_z .. sill_z + height) CUT OUT of the model wall's face
+                 # - an open porch recess or a passage where the wing outline keeps a wall the house does not have
+                 # there. No leaf, frame or trim; the wall object ("Wall <wing> <side>") is rebuilt as vertical strips
+                 # round the hole, the foundation strip and corner boards are cut exactly to it, and the report deducts
+                 # it from the siding like any opening (width x height). The parts of the wall left above / below it
+                 # stay (a header over the opening, the foundation under a porch floor). Close the recess with
+                 # "extra_walls" (its back / end walls) and a "ceilings" entry. Model walls only (not extra_walls)
   "decks": [ {"polygon": [[x,y],...], "top_z": 0.95, "rail_edges": [[i,j],...], "rail_gaps": [[x0,y0,x1,y1]],
               "rail_height": 0.9, "post_spacing": 2.0, "post_edges": [i,...],   # post_edges: edge i = vertex i -> i+1
-              "rail_style": "balusters|screen|none",     # screen = closely spaced vertical boards under a flat cap rail
+              "rail_style": "balusters|screen|panel|none",   # screen = closely spaced vertical boards under a flat cap rail
               "picket_width": 0.11, "picket_gap": 0.025, "rail_post_spacing": 0,
               "skirt": 0.0,                              # screen boards carried this far down over the rim / header
               # rail_edges items may also be {"edge": [i, j], "style": "screen", "skirt": 0.9} (per-edge overrides);
+              # "extend_to": [k, l] (another edge of this polygon) or [[x,y],[x,y]] carries the run on along its own
+              # line to where it meets that line (the nearer end moves, at most 1.5 m): a fence across an open slot
+              # that ends ON the outer fence, the two sharing one post at the junction (no gap, no stub end); its cap
+              # is mitred onto the other rail's near cap face and its boards stop at the post face (no overlapping
+              # caps: two caps flat on each other z-fight);
+              # rail_style "panel": a solid board panel under a flat cap (stair sides closed with boards);
               # a per-edge "label" (e.g. one guard measured +-0.1 m, a skirt whose extent is assumed) goes on that
               # run's rail / skirt / post objects (details key "decks[i].rail_edges[k]") instead of the deck's label,
               # and into the Details notes, flagged like any entry label when it carries a caveat word
@@ -67,7 +97,15 @@ geometry, placed from photo measurements. details.json (metres, model frame):
   "stairs": [ {"top": [x,y], "dir": [dx,dy], "width": 1.0, "top_z": 0.95, "bottom_z": 0.2, "risers": 4,
                "length": 2.1,                             # horizontal run top -> bottom (default run 0.27 per tread)
                "rails": ["left", "right"],                # sloped handrails (left/right looking down the stairs)
-               "rail_style": "balusters" | {"left": "screen", "right": "balusters"},
+               "rail_style": "balusters" | {"left": "screen", "right": "panel"},   # as for decks
+               "skirt": 0.0,                              # screen boards / panels carried this far below the sloped
+                                                          # rail line (a stair side closed down to the ground); with
+                                                          # skirt > 0 a screen / panel side hangs outside the stringer
+                                                          # (board inner face 0.01 m out from it), cap centred over it
+               "foot_on_deck": null,                      # true / false; null: true when the foot lands on a deck
+                                                          # (polygon within 0.15 m, top_z = bottom_z +-0.03): the
+                                                          # stringers are then "stair i carriage", which the site
+                                                          # grounding step does not snap down to the terrain
                "rail_color": [r,g,b], "tread_color": [r,g,b], "stringer_color": [r,g,b]} ],
   "ceilings": [ {"polygon": [[x,y],...], "z": 3.19, "color": [r,g,b]} ],   # porch ceilings, soffits under cantilevers
               # Wall points: wherever a point lies ON a wall line - ceiling / deck polygon vertices, beam p0 / p1,
@@ -124,13 +162,35 @@ geometry, placed from photo measurements. details.json (metres, model frame):
   "chimneys": [ {"center": [x,y], "size": [a,b], "azimuth": deg_of_a, "top_z": 7.9, "material": "siding|brick|stone",
                  "color": [r,g,b], "label": "...",
                  "shoulder": {"z": 7.25, "size": [a,b]},      # wider lower chase up to z, the stack above it
-                 "cap": {"color": [r,g,b], "material": "trim", "overhang": 0.05, "thickness": 0.08}} ],
-                 # chase from below the roof to top_z (cap included); default cap: metal
+                 "cap": {"color": [r,g,b], "material": "trim", "overhang": 0.05, "thickness": 0.08},
+                 "chase": {"wall": "M:-u", "bottom_z": -1.9 | "grade", "grade_below": 0.3, "projection": null,
+                           "u": [u0, u1], "top_z": null, "material": null, "label": "..."}} ],
+                 # chimney from below the roof to top_z (cap included); default cap: metal.
+                 # chase: an EXTERIOR chase on the outside of a wall (an outside fireplace chimney) from bottom_z up to
+                 # 0.02 m under the shoulder top (inside it: no coplanar top faces; no shoulder: the cap's underside),
+                 # so the masonry runs from the ground through the eave to the chimney: plan = the wall face (0.05 m
+                 # into the wall, no slit) out to `projection` m outside it (default: the shoulder's / stack's
+                 # outermost corner + 3 mm), along the wall over u0..u1 (default: the shoulder's / stack's extent
+                 # along it, 3 mm in at each end so the end faces are not coplanar with the shoulder's). "wall"
+                 # defaults to the model wall nearest the centre.
+                 # bottom_z "grade": the lowest ground under the chase footprint (+0.3 m out) from "ground_surface"
+                 # (details key, or the chase's own; default <model.json dir>/data/ground_surface.npz) minus
+                 # grade_below, so the base is buried, never floating; the site step's terrain covers the rest.
+                 # The opaque chase is what the roof overhang wraps around (the roof stops at its faces); openings
+                 # on that wall behind the chase are reported (WARNING) - move them off it
+  "flashing": true | false | {"color": [r,g,b], "width": 0.1, "height": 0.12, "label": "..."},
+            # metal flashing (apron on the roof + upstand on the solid's face) along every model.json roof edge the
+            # roof fit tagged "penetration" (a chimney through the roof); default on when such edges exist, metal grey
+  "stone": {"colors": [[r,g,b], [r,g,b]], "course": 0.17, "length": 0.55, "joint": 0.01, "joint_color": [r,g,b],
+            "label": "..."},
+            # procedural coursed stone for material "stone" (chimneys, chases, boxes): each stone a random tone
+            # between the two colours, joints recessed (see stone_material); without it "stone" is a flat cast stone
   "extra_walls": [ {"name": "GAR:-v", "bottom": [[x,y,z],[x,y,z]], "top_z": -0.55, "bearing": 214,
                     "material": "concrete", "color": [r,g,b], "thickness": 0.2} ],
                  # presentation-only walls (e.g. a garage under a deck) that openings can name like model walls;
                  # thickness > 0 builds a solid wall extruded inward (away from the bearing)
-  "corner_boards": true,
+  "corner_boards": true,     # or {"enabled": true, "skip": ["M:-u:end", "G:+v:start"]}: no board at those wall ends
+                             # (a wall carried on flush by an extra wall, so the model wall's end is no real corner)
   "lights": [ {"wall": "M:-v", "u": 5.4, "z": 2.9, "style": "shade|lantern", "color": [r,g,b], "label": "..."} ],
              # "shade" (default): back plate, arm and a flat square shade under it, z = plate centre, colour default
              #   black ("Light fixture (black)"); "lantern": a coach lantern - back plate, short arm and a box body
@@ -363,6 +423,149 @@ def brick_material(rgb=(0.20, 0.055, 0.04), mortar=(0.55, 0.52, 0.47)):
     return m
 
 
+STONE_DEFAULT = {"colors": [[196, 176, 140], [228, 210, 172]], "course": 0.17, "length": 0.55, "joint": 0.01}
+
+
+def stone_material(colors=STONE_DEFAULT["colors"], course=0.17, length=0.55, joint=0.01, joint_color=None,
+                   rough=0.9, warp=0.012, mottle=0.12, name="Stone (coursed)"):
+    """Coursed stone (sandstone ashlar / ledgestone) for chimneys, chases and piers, with no UVs.
+
+    Stones about `length` m long in courses about `course` m high; each stone takes a random tone between colors[0]
+    and colors[1] (8-bit sRGB or linear); mortar joints `joint` m wide in joint_color (default 0.72 x the darker
+    stone, 40 % greyed) are recessed by a bump. So the bond does not read as brick: course heights swell and shrink
+    by +-25 % (a smooth monotonic warp of the height), and every course gets its own random stone length
+    (0.75-1.25 x) and joint offset; joints wobble by up to `warp` m (low-frequency noise) and a fine noise mottles
+    each stone by +-mottle.
+    Mapping: vertical faces use (distance along the face's own tangent N x Z, z), so a chase at any bearing gets
+    level courses; faces within 60 deg of horizontal (caps, washes, shoulders) use (x, y)."""
+    c0, c1 = col(colors[0]), col(colors[1])
+    if joint_color is not None:
+        jc = col(joint_color)
+    else:                       # sandstone mortar: a little darker and greyer than the stone, not a dark brick joint
+        dk = [0.72 * min(a, b) for a, b in zip(c0, c1)]
+        g = sum(dk) / 3
+        jc = tuple(0.6 * v + 0.4 * g for v in dk)
+    mid = tuple((a + b) / 2 for a, b in zip(c0, c1))
+    m = mat(name, mid, rough)
+    nt = m.node_tree
+    b = nt.nodes.get("Principled BSDF")
+
+    def node(kind, op=None, **inputs):
+        n_ = nt.nodes.new(kind)
+        if op:
+            n_.operation = op
+        for k, v in inputs.items():
+            n_.inputs[k].default_value = v
+        return n_
+    geo = nt.nodes.new("ShaderNodeNewGeometry")
+    sp, sn = nt.nodes.new("ShaderNodeSeparateXYZ"), nt.nodes.new("ShaderNodeSeparateXYZ")
+    nt.links.new(geo.outputs["Position"], sp.inputs[0])
+    nt.links.new(geo.outputs["Normal"], sn.inputs[0])
+    cr = node("ShaderNodeVectorMath", "CROSS_PRODUCT")
+    cr.inputs[1].default_value = (0.0, 0.0, 1.0)
+    nz = node("ShaderNodeVectorMath", "NORMALIZE")
+    dot = node("ShaderNodeVectorMath", "DOT_PRODUCT")
+    nt.links.new(geo.outputs["Normal"], cr.inputs[0])
+    nt.links.new(cr.outputs["Vector"], nz.inputs[0])
+    nt.links.new(nz.outputs["Vector"], dot.inputs[0])
+    nt.links.new(geo.outputs["Position"], dot.inputs[1])
+    vert, flat = nt.nodes.new("ShaderNodeCombineXYZ"), nt.nodes.new("ShaderNodeCombineXYZ")
+    nt.links.new(dot.outputs["Value"], vert.inputs["X"])
+    nt.links.new(sp.outputs["Z"], vert.inputs["Y"])
+    nt.links.new(sp.outputs["X"], flat.inputs["X"])
+    nt.links.new(sp.outputs["Y"], flat.inputs["Y"])
+    ab = node("ShaderNodeMath", "ABSOLUTE")
+    nt.links.new(sn.outputs["Z"], ab.inputs[0])
+    fl = node("ShaderNodeMath", "GREATER_THAN")
+    fl.inputs[1].default_value = 0.5                                  # |N.z| > 0.5: within 60 deg of horizontal
+    nt.links.new(ab.outputs[0], fl.inputs[0])
+    inv = node("ShaderNodeMath", "SUBTRACT")
+    inv.inputs[0].default_value = 1.0
+    nt.links.new(fl.outputs[0], inv.inputs[1])
+    s_v, s_f = node("ShaderNodeVectorMath", "SCALE"), node("ShaderNodeVectorMath", "SCALE")
+    nt.links.new(vert.outputs[0], s_v.inputs[0]); nt.links.new(inv.outputs[0], s_v.inputs["Scale"])
+    nt.links.new(flat.outputs[0], s_f.inputs[0]); nt.links.new(fl.outputs[0], s_f.inputs["Scale"])
+    uv = node("ShaderNodeVectorMath", "ADD")
+    nt.links.new(s_v.outputs["Vector"], uv.inputs[0]); nt.links.new(s_f.outputs["Vector"], uv.inputs[1])
+    # joint wobble: low-frequency noise (centred) x warp
+    wn = node("ShaderNodeTexNoise", Scale=1.5, Detail=2.0)
+    nt.links.new(geo.outputs["Position"], wn.inputs["Vector"])
+    wc = node("ShaderNodeVectorMath", "SUBTRACT")
+    wc.inputs[1].default_value = (0.5, 0.5, 0.5)
+    nt.links.new(wn.outputs["Color"], wc.inputs[0])
+    ws = node("ShaderNodeVectorMath", "SCALE")
+    ws.inputs["Scale"].default_value = 2.0 * warp
+    nt.links.new(wc.outputs["Vector"], ws.inputs[0])
+    uvw = node("ShaderNodeVectorMath", "ADD")
+    nt.links.new(uv.outputs["Vector"], uvw.inputs[0]); nt.links.new(ws.outputs["Vector"], uvw.inputs[1])
+    sw_ = nt.nodes.new("ShaderNodeSeparateXYZ")
+    nt.links.new(uvw.outputs["Vector"], sw_.inputs[0])
+    # course heights: t' = t + a sin(2 pi t / P), a 2 pi / P = 0.25 (monotonic: courses 0.75-1.25 x `course`)
+    period = 6.0 * course
+    ph = node("ShaderNodeMath", "MULTIPLY")
+    ph.inputs[1].default_value = 2 * math.pi / period
+    nt.links.new(sw_.outputs["Y"], ph.inputs[0])
+    sn_ = node("ShaderNodeMath", "SINE")
+    nt.links.new(ph.outputs[0], sn_.inputs[0])
+    am = node("ShaderNodeMath", "MULTIPLY")
+    am.inputs[1].default_value = 0.25 * period / (2 * math.pi)
+    nt.links.new(sn_.outputs[0], am.inputs[0])
+    tw = node("ShaderNodeMath", "ADD")
+    nt.links.new(sw_.outputs["Y"], tw.inputs[0]); nt.links.new(am.outputs[0], tw.inputs[1])
+    # per-course random joint offset and stone length (white noise of the course index)
+    rq = node("ShaderNodeMath", "DIVIDE")
+    rq.inputs[1].default_value = course
+    nt.links.new(tw.outputs[0], rq.inputs[0])
+    row = node("ShaderNodeMath", "FLOOR")
+    nt.links.new(rq.outputs[0], row.inputs[0])
+    r1, r2 = nt.nodes.new("ShaderNodeTexWhiteNoise"), nt.nodes.new("ShaderNodeTexWhiteNoise")
+    r1.noise_dimensions = r2.noise_dimensions = "1D"
+    r2o = node("ShaderNodeMath", "ADD")
+    r2o.inputs[1].default_value = 17.31
+    nt.links.new(row.outputs[0], r1.inputs["W"])
+    nt.links.new(row.outputs[0], r2o.inputs[0]); nt.links.new(r2o.outputs[0], r2.inputs["W"])
+    lf = node("ShaderNodeMapRange")
+    lf.inputs["To Min"].default_value, lf.inputs["To Max"].default_value = 0.75, 1.25
+    nt.links.new(r2.outputs["Value"], lf.inputs["Value"])
+    sl_ = node("ShaderNodeMath", "MULTIPLY")
+    nt.links.new(sw_.outputs["X"], sl_.inputs[0]); nt.links.new(lf.outputs["Result"], sl_.inputs[1])
+    so = node("ShaderNodeMath", "MULTIPLY_ADD")
+    so.inputs[1].default_value = length
+    nt.links.new(r1.outputs["Value"], so.inputs[0]); nt.links.new(sl_.outputs[0], so.inputs[2])
+    st_ = nt.nodes.new("ShaderNodeCombineXYZ")
+    nt.links.new(so.outputs[0], st_.inputs["X"]); nt.links.new(tw.outputs[0], st_.inputs["Y"])
+    br = nt.nodes.new("ShaderNodeTexBrick")
+    br.offset, br.offset_frequency, br.squash, br.squash_frequency = 0.0, 2, 1.0, 2
+    br.inputs["Color1"].default_value = (*c0, 1)
+    br.inputs["Color2"].default_value = (*c1, 1)
+    br.inputs["Mortar"].default_value = (*jc, 1)
+    br.inputs["Scale"].default_value = 1.0
+    br.inputs["Mortar Size"].default_value = joint
+    br.inputs["Mortar Smooth"].default_value = 0.15
+    br.inputs["Bias"].default_value = 0.0
+    br.inputs["Brick Width"].default_value = length
+    br.inputs["Row Height"].default_value = course
+    nt.links.new(st_.outputs["Vector"], br.inputs["Vector"])
+    # mottling inside each stone: fine noise mapped to 1 +- mottle, multiplied into the colour
+    mn = node("ShaderNodeTexNoise", Scale=9.0, Detail=6.0)
+    nt.links.new(geo.outputs["Position"], mn.inputs["Vector"])
+    mr = nt.nodes.new("ShaderNodeMapRange")
+    mr.inputs["To Min"].default_value = 1.0 - mottle
+    mr.inputs["To Max"].default_value = 1.0 + mottle
+    nt.links.new(mn.outputs["Fac"], mr.inputs["Value"])
+    mo = node("ShaderNodeVectorMath", "SCALE")
+    nt.links.new(br.outputs["Color"], mo.inputs[0]); nt.links.new(mr.outputs["Result"], mo.inputs["Scale"])
+    nt.links.new(mo.outputs["Vector"], b.inputs["Base Color"])
+    jinv = node("ShaderNodeMath", "SUBTRACT")                          # mortar (Fac 1) recessed
+    jinv.inputs[0].default_value = 1.0
+    nt.links.new(br.outputs["Fac"], jinv.inputs[1])
+    bump = node("ShaderNodeBump", Strength=0.6)
+    nt.links.new(jinv.outputs[0], bump.inputs["Height"])
+    nt.links.new(bump.outputs["Normal"], b.inputs["Normal"])
+    m["stone_colors"] = [list(c0), list(c1)]                           # linear range, for checks and exports
+    return m
+
+
 def raised_panels(name, base, d, n, w, h, rows, cols, c, m, margin=0.06, gap=0.05, proud=0.012):
     """rows x cols raised rectangles on a door leaf (base = lower-left corner on the wall, d along, n outward)."""
     pw = (w - 2 * margin - (cols - 1) * gap) / cols
@@ -419,6 +622,8 @@ def details_notes(D):
                 for j, re_ in enumerate(e.get("rail_edges", []) or []):
                     if isinstance(re_, dict) and re_.get("label"):
                         rows.append((f"decks[{i}].rail_edges[{j}]", str(re_["label"])))
+            if k == "chimneys" and isinstance(e, dict) and isinstance(e.get("chase"), dict) and e["chase"].get("label"):
+                rows.append((f"chimneys[{i}].chase", str(e["chase"]["label"])))
     for key, lab in rows:
         if any(w in lab.lower() for w in CAVEAT_WORDS):
             flagged.append(f"- {key}: {lab}")
@@ -507,11 +712,13 @@ def wall_points(pts, frames):
 
 
 def add_opening(o, frames, c, mats):
+    kind = o.get("kind", "window")
+    if kind == "void":           # cut out of the wall's face by cut_wall_voids: nothing to add
+        return
     a, d, n, L, _ = frames[o["wall"]]
     w, h = o["width"], o["height"]
     u0 = o["u"] - w / 2
     sill = o["sill_z"]
-    kind = o.get("kind", "window")
     T, D = o.get("frame", 0.07), 0.04          # frame width, frame projection
     W_out = w                                  # outer width the mullion fractions refer to (frame_inside)
     if o.get("frame_inside"):
@@ -570,6 +777,52 @@ def add_opening(o, frames, c, mats):
         # lever handle on the side given by "handle" (0 = start side, 1 = end side of the wall direction)
         hs = o.get("handle", 1)
         oriented_box(f"{name} handle", base + d * (w * (0.92 if hs else 0.08) - 0.03) + n * 0.015 + Vector((0, 0, 0.95)), d * 0.06, n * 0.05, Vector((0, 0, 0.06)), c, mats["metal"])
+        sl = o.get("sidelight")
+        if sl:    # fixed panel beside the leaf in the same frame: the leaf's jamb is the mullion
+            sw = float(sl.get("width", 0.36))
+            s0 = -T - sw if sl.get("side", "end") == "start" else w + T        # u of the panel from the leaf start
+            pm = mat(f"Sidelight ({name})", sl["color"], 0.3) if sl.get("color") else mats["glass"]
+            oriented_box(f"{name} sidelight", base + d * s0 + n * 0.005, d * sw, n * 0.01, Vector((0, 0, h)), c, pm)
+            jo = s0 - T if s0 < 0 else s0 + sw                                  # outer jamb beyond the panel
+            oriented_box(f"{name} sidelight jamb", base + d * jo, d * T, n * D, Vector((0, 0, h)), c, fm)
+            hd0 = min(jo, s0)
+            oriented_box(f"{name} sidelight head", base + d * hd0 + Vector((0, 0, h)), d * (sw + T), n * D,
+                         Vector((0, 0, T)), c, fm)
+        sd = o.get("storm_door")
+        if sd:    # open storm-door frame standing proud over the leaf (its glazing left open: the leaf shows through)
+            sm = mat(f"Storm door ({name})", sd.get("color", (235, 235, 230)), 0.45)
+            st, rl, kk = float(sd.get("stile", 0.12)), float(sd.get("rail", 0.15)), float(sd.get("kick", 0.25))
+            off, dp = float(sd.get("offset", 0.04)), float(sd.get("depth", 0.03))
+            q = base + n * off
+            parts = [(q, d * st, n * dp, Vector((0, 0, h))),                                   # stiles
+                     (q + d * (w - st), d * st, n * dp, Vector((0, 0, h))),
+                     (q + d * st + Vector((0, 0, h - rl)), d * (w - 2 * st), n * dp, Vector((0, 0, rl))),   # top rail
+                     (q + d * st, d * (w - 2 * st), n * dp, Vector((0, 0, kk)))]                # kick panel
+            boxes_mesh(f"{name} storm door", parts, c, sm)
+            oriented_box(f"{name} storm handle", q + d * (w * (0.9 if hs else 0.1) - 0.02) + n * dp + Vector((0, 0, 0.95)),
+                         d * 0.04, n * 0.04, Vector((0, 0, 0.12)), c, mats["metal"])
+
+
+def opening_extent(o):
+    """(u_lo, u_hi, z_lo, z_hi) of an opening's visible unit on its wall: glazing / leaf plus frame bars (outside it by
+    default, inside with frame_inside; doors and garage doors have no sill bar) plus a door's sidelight and its jamb."""
+    T, w, h, sill = o.get("frame", 0.07), o["width"], o["height"], o["sill_z"]
+    door = o.get("kind", "window") in ("door", "garage")
+    if o.get("kind") == "void":                       # a hole in the wall: exactly its rectangle, no frame
+        return o["u"] - w / 2, o["u"] + w / 2, sill, sill + h
+    if o.get("frame_inside"):
+        u_lo, u_hi, z_lo, z_hi = o["u"] - w / 2, o["u"] + w / 2, sill, sill + h
+    else:
+        u_lo, u_hi = o["u"] - w / 2 - T, o["u"] + w / 2 + T
+        z_lo, z_hi = sill - (0 if door else T), sill + h + T
+    sl = o.get("sidelight") if o.get("kind") == "door" else None
+    if sl:
+        extra = float(sl.get("width", 0.36)) + T
+        if sl.get("side", "end") == "start":
+            u_lo -= extra
+        else:
+            u_hi += extra
+    return u_lo, u_hi, z_lo, z_hi
 
 
 def in_ring(ring, x, y):
@@ -661,8 +914,21 @@ def gutter_inside_mesh(p0, p1, nrm, plane, depth, height, lift=0.008):
     return rows, faces
 
 
+def soffit_options(soffits):
+    """(enabled, skip_facets) from details.json "soffits" (bool, or {"enabled", "skip_facets"}; see the docstring)."""
+    if isinstance(soffits, dict):
+        return bool(soffits.get("enabled", True)), {str(f) for f in soffits.get("skip_facets", []) or []}
+    return bool(soffits), set()
+
+
 def add_trim(model, frames, c, mats, fascia_h, gutters, soffits):
     g_on, g_in, g_depth, g_h = gutter_options(gutters)
+    s_on, s_skip = soffit_options(soffits)
+    trough = gutters.get("trough") if isinstance(gutters, dict) else None
+    trough_m = None
+    if trough is not None and g_on:
+        base = mats["gutter"].diffuse_color
+        trough_m = mat("Gutter trough", tuple(float(trough) * v for v in base[:3]), 0.8)
     for i, e in enumerate(model["edges"]):
         if e["kind"] not in ("eave", "rake") or e["length_m"] < 0.15:
             continue
@@ -685,11 +951,16 @@ def add_trim(model, frames, c, mats, fascia_h, gutters, soffits):
         if gut:
             if g_in:
                 gv, gf = gutter_inside_mesh(p0, p1, nrm, f["plane"], g_depth, g_h)
-                mesh(f"gutter {i}", gv, gf, c, mats["gutter"])
+                gob = mesh(f"gutter {i}", gv, gf, c, mats["gutter"])
             else:
                 g0 = p0 + nrm * 0.005 + Vector((0, 0, -0.03))
-                oriented_box(f"gutter {i}", g0, d, nrm * g_depth, Vector((0, 0, -g_h)), c, mats["gutter"])
-        if eave and soffits:
+                gob = oriented_box(f"gutter {i}", g0, d, nrm * g_depth, Vector((0, 0, -g_h)), c, mats["gutter"])
+            if trough_m is not None:              # the open trough: the upward face takes the trough material
+                gob.data.materials.append(trough_m)
+                flat = [p_ for p_ in gob.data.polygons if abs(p_.normal.z) > 0.5]     # top and bottom (either winding)
+                if flat:
+                    max(flat, key=lambda p_: p_.center.z).material_index = 1
+        if eave and s_on and f["id"] not in s_skip:
             # horizontal soffit from the fascia back to the nearest parallel wall face (<= 2.5 m)
             best = None
             for k, (a, wd, wn, L, _) in frames.items():
@@ -709,6 +980,90 @@ def skipped(key, skip):
     return key in skip or key.split(":")[0] in skip
 
 
+def void_strips(w, rects):
+    """Face of model wall `w` (model.json: bottom line + top profile) with the rectangles `rects` [(u0, u1, z0, z1)]
+    (u along the wall from bottom[0]) cut out, as vertical strips: (verts, quads, area before, area after). Strips
+    break at the profile vertices, the hole sides and wherever the top / bottom line crosses a hole's top or bottom,
+    so every quad is exact; the parts of the wall above and below each hole stay."""
+    (ax, ay, za), (bx, by, zb) = w["bottom"][0][:3], w["bottom"][1][:3]
+    L = math.hypot(bx - ax, by - ay)
+    ux, uy = (bx - ax) / L, (by - ay) / L
+    prof = sorted(((p[0] - ax) * ux + (p[1] - ay) * uy, p[2]) for p in w["profile"])
+
+    def bot(u):
+        return za + (zb - za) * u / L
+
+    def top(u):
+        if u <= prof[0][0]:
+            return prof[0][1]
+        for (u0, z0), (u1, z1) in zip(prof[:-1], prof[1:]):
+            if u <= u1:
+                return z0 if u1 - u0 < 1e-12 else z0 + (z1 - z0) * (u - u0) / (u1 - u0)
+        return prof[-1][1]
+    cuts = {0.0, L, *[min(max(pu, 0.0), L) for pu, _ in prof], *[min(max(v, 0.0), L) for r in rects for v in r[:2]]}
+    lines = [(0.0, za, L, zb)] + [(u0, z0, u1, z1) for (u0, z0), (u1, z1) in zip(prof[:-1], prof[1:])]
+    for r in rects:                          # where a top / bottom line crosses a hole's bottom or top
+        for zz in r[2:4]:
+            for u0, z0, u1, z1 in lines:
+                if (z0 - zz) * (z1 - zz) < 0:
+                    cuts.add(u0 + (u1 - u0) * (zz - z0) / (z1 - z0))
+    cuts = sorted(c_ for c_ in cuts if 0.0 <= c_ <= L)
+    verts, quads, area0, area1 = [], [], 0.0, 0.0
+
+    def P(u, z):
+        return (ax + ux * u, ay + uy * u, z)
+    for ua, ub in zip(cuts[:-1], cuts[1:]):
+        if ub - ua < 1e-6:
+            continue
+        um = 0.5 * (ua + ub)
+        area0 += 0.5 * (ub - ua) * (max(top(ua) - bot(ua), 0) + max(top(ub) - bot(ub), 0))
+        holes = sorted((r[2], r[3]) for r in rects if r[0] - 1e-9 <= um <= r[1] + 1e-9)
+        for lo, hi in zip([None] + [h[1] for h in holes], [h[0] for h in holes] + [None]):
+            zl = [bot(u) if lo is None else max(lo, bot(u)) for u in (ua, ub)]
+            zh = [top(u) if hi is None else min(hi, top(u)) for u in (ua, ub)]
+            if zh[0] - zl[0] < 1e-6 and zh[1] - zl[1] < 1e-6:
+                continue
+            zh = [max(h_, l_) for h_, l_ in zip(zh, zl)]
+            k = len(verts)
+            verts += [P(ua, zl[0]), P(ub, zl[1]), P(ub, zh[1]), P(ua, zh[0])]
+            quads.append([k, k + 1, k + 2, k + 3])
+            area1 += 0.5 * (ub - ua) * ((zh[0] - zl[0]) + (zh[1] - zl[1]))
+    return verts, quads, area0, area1
+
+
+def cut_wall_voids(model, openings):
+    """Cut every kind "void" opening out of its model wall's face (object "Wall <wing> <side>" from build_model.py),
+    keeping the wall's materials; the object gets custom property "voids" (the openings' details keys). Returns
+    {wall key: m2 removed}. A void on a wall with no such object (an extra wall) is reported and skipped."""
+    by = {}
+    for k, o in enumerate(openings or []):
+        if o.get("kind") == "void":
+            by.setdefault(o["wall"], []).append((k, o))
+    walls = {f'{w["wing"]}:{w["side"]}': w for w in model["walls"]}
+    out = {}
+    for key, items in by.items():
+        w = walls.get(key)
+        ob = bpy.data.objects.get(f'Wall {w["wing"]} {w["side"]}') if w else None
+        if w is None or ob is None or not w.get("bottom"):
+            print(f"WARNING: void opening(s) {[f'openings[{k}]' for k, _ in items]} on {key}: no model wall object "
+                  f"to cut (voids cut model walls only)")
+            continue
+        rects = [(o["u"] - o["width"] / 2, o["u"] + o["width"] / 2, o["sill_z"], o["sill_z"] + o["height"])
+                 for _, o in items]
+        verts, quads, a0, a1 = void_strips(w, rects)
+        inv = ob.matrix_world.inverted()
+        me = bpy.data.meshes.new(f"{ob.data.name} (voids)")
+        me.from_pydata([tuple(inv @ Vector(v)) for v in verts], [], quads)
+        me.update()
+        for m in ob.data.materials:
+            me.materials.append(m)
+        ob.data = me
+        ob["voids"] = ", ".join(f"openings[{k}]" for k, _ in items)
+        out[key] = a0 - a1
+        print(f"wall {key}: {len(items)} void(s) cut, {a0 - a1:.2f} m2 of {a0:.2f} removed")
+    return out
+
+
 def add_foundation(frames, fnd, c, mats, openings=()):
     """Foundation reveal strips per wall. Doors cut the strip down to their sill and windows set in the
     foundation (egress) leave a hole, so nothing is coplanar with a door leaf or glass. A per-wall top
@@ -726,9 +1081,16 @@ def add_foundation(frames, fnd, c, mats, openings=()):
         for o in openings:
             if o.get("wall") != k:
                 continue
+            if o.get("kind") == "void":               # the hole itself: no frame round it
+                lo, hi, zlo, zhi = opening_extent(o)
+                cuts.append((lo, hi, zlo, zhi))
+                continue
             T = o.get("frame", 0.07)
-            cuts.append((o["u"] - o["width"] / 2 - T, o["u"] + o["width"] / 2 + T, o["sill_z"] - (0 if o.get("kind") in ("door", "garage") else T),
-                         o["sill_z"] + o["height"] + T))
+            sw = (float(o["sidelight"].get("width", 0.36)) + T) if (o.get("kind") == "door" and o.get("sidelight")) else 0.0
+            s_start = o.get("sidelight", {}).get("side", "end") == "start" if sw else False
+            cuts.append((o["u"] - o["width"] / 2 - T - (sw if s_start else 0.0),
+                         o["u"] + o["width"] / 2 + T + (0.0 if s_start else sw),
+                         o["sill_z"] - (0 if o.get("kind") in ("door", "garage") else T), o["sill_z"] + o["height"] + T))
         us = sorted({0.0, L, *[L * s_ / 12 for s_ in range(13)], *[min(max(u, 0.0), L) for cu in cuts for u in cu[:2]]})
         verts, faces = [], []
 
@@ -755,12 +1117,41 @@ def add_foundation(frames, fnd, c, mats, openings=()):
             mesh(f"foundation {k}", verts, faces, c, mats["foundation"])
 
 
-def rail_run(name, pa, pb, H, style, c, m, opts, slope_floor=False):
+def rail_bar(name, pa, pb, half, z_lo, h, c, m, cut_a=None, cut_b=None):
+    """A rail member (cap, top / bottom rail) of half-width `half` centred on the plan line pa -> pb, from z_lo to
+    z_lo + h above that line (sloped with it on stairs). An end with a cut line (P, D) (plan point, plan direction) is
+    mitred onto that line: its two corners lie ON it, so a cap that ends against another rail's cap side face touches
+    it over the whole width (no gap, no overlap, no coplanar top faces). Without cuts it is the plain oriented box."""
+    run = pb - pa
+    L = Vector((run.x, run.y, 0)).length
+    u = Vector((run.x, run.y, 0)) / L
+    side = u.cross(Vector((0, 0, 1))).normalized()
+
+    def corner(end, s, cut):
+        q = Vector(((pa if end == 0 else pb).x, (pa if end == 0 else pb).y, 0)) + side * (s * half)
+        if cut is not None:
+            hit = line_hit(q, q + u, Vector((cut[0].x, cut[0].y, 0)), Vector((cut[0].x + cut[1].x, cut[0].y + cut[1].y, 0)))
+            if hit is not None:
+                q = hit
+        t = (q - Vector((pa.x, pa.y, 0))).dot(u) / L
+        return Vector((q.x, q.y, pa.z + run.z * t + z_lo))
+    bottom = [corner(0, -1, cut_a), corner(1, -1, cut_b), corner(1, 1, cut_b), corner(0, 1, cut_a)]
+    verts = bottom + [v + Vector((0, 0, h)) for v in bottom]
+    return mesh(name, verts, BOX_FACES, c, m)
+
+
+def rail_run(name, pa, pb, H, style, c, m, opts, slope_floor=False, cuts=None):
     """Railing infill between two points at walking-surface level (pa.z, pb.z; sloped on stairs).
 
     style "balusters": 0.07 top rail, bottom rail, 40 mm balusters at 0.13 m.
     style "screen":   closely spaced vertical boards (picket_width / picket_gap) under a flat cap rail,
-                      reaching down to the walking surface (a privacy-screen railing)."""
+                      reaching down to the walking surface (a privacy-screen railing).
+    style "panel":    a solid board panel (panel_thickness, default 0.03 m) under the same flat cap, from the walking
+                      surface (on stairs 0.12 m lower, over the stringer; minus any skirt) up to the cap: a stair side
+                      closed with boards.
+    cuts: {"a" | "b": {"cap_line": (P, D), "board": d}} for a run that ends ON another rail (a T-join): at that end the
+    cap / top rail is mitred onto cap_line (the other rail's near cap face) and the boards, panel, bottom rail and
+    balusters stop d m short of the end point (the shared post's face), so nothing overlaps the other rail."""
     run = pb - pa
     L = Vector((run.x, run.y, 0)).length
     if L < 0.05:
@@ -768,31 +1159,63 @@ def rail_run(name, pa, pb, H, style, c, m, opts, slope_floor=False):
     u = Vector((run.x, run.y, 0)).normalized()
     side = u.cross(Vector((0, 0, 1))).normalized()
     up = Vector((0, 0, 1))
+    cuts = cuts or {}
+    ca, cb = (cuts.get(k, {}).get("cap_line") for k in ("a", "b"))
+    ba, bb = (min(float(cuts.get(k, {}).get("board", 0.0)), 0.45 * L) for k in ("a", "b"))
+    qa, qb = pa + run * (ba / L), pb - run * (bb / L)          # board span (the whole run unless cut)
+    brun, BL = qb - qa, L - ba - bb
     if style == "screen":
         cap_w = opts.get("cap_width", 0.14)
-        oriented_box(f"{name} rail cap", pa + up * (H - 0.04) - side * (cap_w / 2), run, side * cap_w, up * 0.04, c, m)
+        rail_bar(f"{name} rail cap", pa, pb, cap_w / 2, H - 0.04, 0.04, c, m, ca, cb)
         pw, gap = opts.get("picket_width", 0.11), opts.get("picket_gap", 0.025)
-        k_n = max(int((L - 0.05) / (pw + gap)), 1)
-        pitch = (L - pw) / max(k_n, 1)
+        k_n = max(int((BL - 0.05) / (pw + gap)), 1)
+        pitch = (BL - pw) / max(k_n, 1)
         pickets = []
         skirt = opts.get("skirt", 0.0)                     # boards carried down over the rim / header
         for k in range(k_n + 1):
-            t = (k * pitch + pw / 2) / L
-            q = pa + run * t
+            t = (k * pitch + pw / 2) / BL
+            q = qa + brun * t
             z0 = q.z - (0.12 if slope_floor else 0.0) - skirt   # on stairs the boards run down over the stringer
             pickets.append((Vector((q.x, q.y, z0)) - u * (pw / 2) - side * 0.0125, u * pw, side * 0.025, up * (q.z + H - 0.04 - z0)))
         boxes_mesh(f"{name} rail pickets", pickets, c, m)
+    elif style == "panel":
+        cap_w, t = opts.get("cap_width", 0.14), opts.get("panel_thickness", 0.03)
+        rail_bar(f"{name} rail cap", pa, pb, cap_w / 2, H - 0.04, 0.04, c, m, ca, cb)
+        drop = (0.12 if slope_floor else 0.0) + opts.get("skirt", 0.0)
+        oriented_box(f"{name} rail panel", qa - up * drop - side * (t / 2), brun, side * t, up * (H - 0.04 + drop), c, m)
     elif style != "none":
         w2 = side * 0.07
-        oriented_box(f"{name} rail top", pa + up * (H - 0.07) - w2 / 2, run, w2, up * 0.07, c, m)
+        rail_bar(f"{name} rail top", pa, pb, 0.035, H - 0.07, 0.07, c, m, ca, cb)
         lo = 0.12 if slope_floor else 0.08
-        oriented_box(f"{name} rail bottom", pa + up * lo - w2 * 0.3, run, w2 * 0.6, up * 0.05, c, m)
-        nb = max(int(L / 0.13), 1)
+        oriented_box(f"{name} rail bottom", qa + up * lo - w2 * 0.3, brun, w2 * 0.6, up * 0.05, c, m)
+        nb = max(int(BL / 0.13), 1)
         bal = []
         for k in range(1, nb):
-            q = pa + run * (k / nb)
+            q = qa + brun * (k / nb)
             bal.append((q + Vector((-0.02, -0.02, lo)), Vector((0.04, 0, 0)), Vector((0, 0.04, 0)), up * (H - 0.07 - lo)))
         boxes_mesh(f"{name} rail balusters", bal, c, m)
+
+
+def top_member_half(style, opts):
+    """Half-width of a rail's top member: the flat cap of a screen / panel rail, the 0.07 m top rail of balusters."""
+    if style in ("screen", "panel"):
+        return opts.get("cap_width", 0.14) / 2
+    return 0.035 if style != "none" else 0.0
+
+
+def board_half(style, opts):
+    """Half-thickness of a rail's infill across its line (screen boards 0.025, panel, 40 mm balusters)."""
+    return {"screen": 0.0125, "panel": opts.get("panel_thickness", 0.03) / 2, "none": 0.0}.get(style, 0.02)
+
+
+def line_hit(a, b, p, q):
+    """Plan intersection of the infinite lines a-b and p-q (Vectors, z ignored); None when (nearly) parallel."""
+    r, s_ = Vector((b.x - a.x, b.y - a.y, 0)), Vector((q.x - p.x, q.y - p.y, 0))
+    den = r.x * s_.y - r.y * s_.x
+    if abs(den) < 1e-9 * max(r.length * s_.length, 1e-12):
+        return None
+    t = ((p.x - a.x) * s_.y - (p.y - a.y) * s_.x) / den
+    return Vector((a.x + r.x * t, a.y + r.y * t, 0))
 
 
 def add_deck(dk, c, mats, idx):
@@ -855,6 +1278,40 @@ def add_deck(dk, c, mats, idx):
         else:
             (i, j), estyle, eopts = re_, style, dk
         a, b = poly[i], poly[j]
+        ext = re_.get("extend_to") if isinstance(re_, dict) else None
+        join = None
+        if ext is not None:            # carry the run on along its line until it meets another rail line (shared post)
+            p_, q_ = ((poly[ext[0]], poly[ext[1]]) if isinstance(ext[0], int)
+                      else (Vector((ext[0][0], ext[0][1], 0)), Vector((ext[1][0], ext[1][1], 0))))
+            hit = line_hit(a, b, p_, q_)
+            moved = None
+            if hit is not None:
+                if (hit - b).length <= (hit - a).length:
+                    moved, b, end, other = (hit - b).length, hit, "b", a
+                else:
+                    moved, a, end, other = (hit - a).length, hit, "a", b
+            if moved is None or moved > 1.5:
+                raise ValueError(f"decks[{idx}].rail_edges[{k_re}]: extend_to {ext} does not meet the run's line within "
+                                 f"1.5 m of an end (parallel, or a wrong edge)")
+            # T-join: the post stands at the junction; the cap stops ON the target rail's near cap face (mitred to it,
+            # no overlap: two caps lying flat on each other at the same height z-fight, black in renders) and the
+            # boards stop at the post face
+            tstyle, topts = style, dk
+            if isinstance(ext[0], int):
+                for r2 in dk.get("rail_edges", []):
+                    e2 = r2["edge"] if isinstance(r2, dict) else r2
+                    if sorted(e2) == sorted(ext):
+                        tstyle = r2.get("style", style) if isinstance(r2, dict) else style
+            td = (q_ - p_).normalized()
+            nt = Vector((-td.y, td.x, 0))
+            if (other - hit).dot(nt) < 0:
+                nt = -nt
+            ui = (other - hit).normalized()                      # from the junction back along the run
+            sin_t, cos_t = abs(ui.x * td.y - ui.y * td.x), abs(ui.dot(td))
+            ps_ = 0.045                                          # rail post half size (axis-aligned box below)
+            board = max(ps_ / max(abs(ui.x), abs(ui.y)),
+                        (board_half(tstyle, topts) + board_half(estyle, eopts) * cos_t) / max(sin_t, 1e-6))
+            join = (end, {"cap_line": (hit + nt * top_member_half(tstyle, topts), td), "board": board})
         L = (b - a).length
         u = (b - a) / max(L, 1e-9)
         segs = [(0.0, L)]
@@ -866,7 +1323,10 @@ def add_deck(dk, c, mats, idx):
         for s0, s1 in segs:
             pa = a + u * s0 + Vector((0, 0, z))
             pb = a + u * s1 + Vector((0, 0, z))
-            rail_run(f"deck {idx}", pa, pb, H, estyle, c, rail_m, eopts)
+            cuts = {}
+            if join and ((join[0] == "a" and s0 < 1e-6) or (join[0] == "b" and s1 > L - 1e-6)):
+                cuts[join[0]] = join[1]
+            rail_run(f"deck {idx}", pa, pb, H, estyle, c, rail_m, eopts, cuts=cuts)
             rs = dk.get("rail_post_spacing", 0)
             ends = [pa, pb]
             if rs and (s1 - s0) > rs * 1.3:
@@ -882,7 +1342,30 @@ def add_deck(dk, c, mats, idx):
     _TAG.update(deck_tag)
 
 
-def add_stairs(st, c, mats, idx):
+def foot_deck(st, decks, tol=0.15, dz=0.03):
+    """Index of the deck the stair's foot stands on (its foot centre inside, or within `tol` m of, a deck polygon whose
+    top_z is within `dz` of the stair's bottom_z: a flight down onto a raised landing), else None. decks: details
+    "decks" with plan polygons resolved."""
+    top = Vector((*st["top"], 0))
+    dvec = Vector((*st["dir"], 0)).normalized()
+    r = st["risers"]
+    run = st["length"] / max(r - 1, 1) if st.get("length") else st.get("run", 0.27)
+    q = top + dvec * (run * (r - 1))
+    for k, dk in enumerate(decks or []):
+        if abs(float(dk["top_z"]) - float(st["bottom_z"])) > dz:
+            continue
+        ring = [Vector((p[0], p[1], 0)) for p in dk["polygon"]]
+        if in_ring([(p.x, p.y) for p in ring], q.x, q.y):
+            return k
+        for i in range(len(ring)):
+            a, b = ring[i], ring[(i + 1) % len(ring)]
+            t = max(0.0, min(1.0, (q - a).dot(b - a) / max((b - a).length_squared, 1e-12)))
+            if (a + (b - a) * t - q).length <= tol:
+                return k
+    return None
+
+
+def add_stairs(st, c, mats, idx, decks=None):
     top = Vector((*st["top"], 0))
     dvec = Vector((*st["dir"], 0)).normalized()
     side = dvec.cross(Vector((0, 0, 1))).normalized()
@@ -897,14 +1380,22 @@ def add_stairs(st, c, mats, idx):
         p0 = top + dvec * (run * (k - 1)) - side * (W / 2) + Vector((0, 0, z - 0.04))
         oriented_box(f"stair {idx} tread {k}", p0, dvec * run, side * W, Vector((0, 0, 0.04)), c, tread_m)
     length = run * (r - 1)
-    for sgn in (-1, 1):   # sloped stringers under the tread ends, toe on the ground
+    # a flight whose foot stands on a raised landing / deck ("foot_on_deck", default: found from the decks) gets
+    # "carriage" stringers: the site grounding step snaps every "stringer" toe to the terrain (it would drag this one
+    # down to the ground under the landing), as it leaves a "roof drop" where a "downspout" would be grounded
+    on = st.get("foot_on_deck")
+    on = foot_deck(st, decks) is not None if on is None else bool(on)
+    sname = f"stair {idx} carriage" if on else f"stair {idx} stringer"
+    if on:
+        print(f"stair {idx}: foot on a deck at {st['bottom_z']:.2f} - stringers named '{sname}' (not grounded)")
+    for sgn in (-1, 1):   # sloped stringers under the tread ends, toe on the ground (or on the landing)
         o = top - side * (sgn * W / 2)
         tz, bz = st["top_z"], st["bottom_z"]
         quad = [o + Vector((0, 0, tz - 0.04)), o + dvec * length + Vector((0, 0, bz + rise - 0.04)),
                 o + dvec * length + Vector((0, 0, bz)), o + Vector((0, 0, tz - 0.04 - 0.3))]
         th = side * 0.05 * sgn
         verts = quad + [p + th for p in quad]
-        mesh(f"stair {idx} stringer", verts, [[0, 1, 2, 3], [7, 6, 5, 4], [0, 4, 5, 1], [1, 5, 6, 2], [2, 6, 7, 3], [3, 7, 4, 0]], c, str_m)
+        mesh(sname, verts, [[0, 1, 2, 3], [7, 6, 5, 4], [0, 4, 5, 1], [1, 5, 6, 2], [2, 6, 7, 3], [3, 7, 4, 0]], c, str_m)
     # sloped handrails: "left"/"right" looking down the stairs
     H = st.get("rail_height", 0.9)
     drop = rise * (r - 1)
@@ -917,6 +1408,11 @@ def add_stairs(st, c, mats, idx):
         t1 = top + off + dvec * length + Vector((0, 0, st["top_z"] - drop))
         for q, zb, hw in ((t0, st["top_z"], 0.04), (t1, st["bottom_z"], 0.045)):   # top post slimmer: it meets the deck rail post
             box(f"stair {idx} rail post", (q.x - hw, q.y - hw, zb), (q.x + hw, q.y + hw, q.z + H + 0.05), c, rail_m)
+        if style in ("screen", "panel") and st.get("skirt", 0.0) > 0:
+            # boards / panel carried down below the rail line: hung on the OUTSIDE of the stringer (inner face 0.01 m
+            # out from its outer face at W / 2), with the cap centred over them, so the stringer cannot cover them
+            ob_ = -side * (sgn * (W / 2 + 0.01 + board_half(style, st)))
+            t0, t1 = t0 - off + ob_, t1 - off + ob_
         rail_run(f"stair {idx}", t0, t1, H, style, c, rail_m, st, slope_floor=True)
 
 
@@ -1004,6 +1500,70 @@ def add_roof_extras(model, D, c, mats):
             box(nm, (x - w / 2, y - w / 2, z - 0.05), (x + w / 2, y + w / 2, z + h), c, m)
 
 
+def add_flashing(model, D, c, mats):
+    """Metal flashing round every solid that passes through the roof (a chimney): built along the model.json roof edges
+    that the roof fit tags with "penetration" (headwall / sidewall edges on the solid's faces, grouped by that tag): an
+    apron `width` m out over the roof (0.004..0.010 m above the facet plane) and an upstand `height` m up the solid's
+    face (0.004..0.007 m proud of it). Neighbouring edges of one solid are mitred (offset lines intersected), so the
+    pieces meet at the corners without overlapping (no coplanar faces). D["flashing"]: true (default) | false |
+    {"color": [r,g,b], "width": 0.1, "height": 0.12, "label": "..."}."""
+    fl = D.get("flashing", True)
+    if fl is False or (isinstance(fl, dict) and not fl.get("enabled", True)):
+        return
+    fl = fl if isinstance(fl, dict) else {}
+    groups = {}
+    for e in model["edges"]:
+        if e.get("penetration") and e["kind"] in ("headwall", "sidewall"):
+            groups.setdefault(str(e["penetration"]), []).append(e)
+    if not groups:
+        return
+    tag("flashing", fl)
+    w, h = float(fl.get("width", 0.10)), float(fl.get("height", 0.12))
+    m = pick(fl, mats, "metal", "Flashing", 0.45) if fl.get("color") else mats["metal"]
+    planes = {f["id"]: f["plane"] for f in model["facets"]}
+    up = Vector((0, 0, 1))
+    for key, es in groups.items():
+        pts = [Vector((p[0], p[1], 0)) for e in es for p in (e["p0"], e["p1"])]
+        ctr = sum(pts, Vector()) / len(pts)
+        lines = []
+        for e in es:
+            p0, p1 = Vector((e["p0"][0], e["p0"][1], 0)), Vector((e["p1"][0], e["p1"][1], 0))
+            t = (p1 - p0).normalized()
+            o = Vector((-t.y, t.x, 0))
+            if ((p0 + p1) / 2 - ctr).dot(o) < 0:              # o: away from the solid
+                o = -o
+            lines.append((p0, p1, t, o, planes[e["facets"][0]]))
+
+        def corner(k, end, d):
+            """plan corner of edge k's offset line (d m out) at its end 0 / 1, mitred onto a neighbour sharing it"""
+            p0, p1, t, o, _ = lines[k]
+            q = p0 if end == 0 else p1
+            for j, (r0, r1, tj, oj, _) in enumerate(lines):
+                if j != k and min((q - r0).length, (q - r1).length) < 1e-3:
+                    hit = line_hit(p0 + o * d, p1 + o * d, r0 + oj * d, r1 + oj * d)
+                    if hit is not None and (hit - q).length < 5 * d + 0.05:
+                        return hit
+            return q + o * d
+
+        def zp(pl, q, dz):
+            return Vector((q.x, q.y, pl[0] * q.x + pl[1] * q.y + pl[2] + dz))
+        aprons, ups = [], []
+        for k, (p0, p1, t, o, pl) in enumerate(lines):
+            ring = [p0, p1, corner(k, 1, w), corner(k, 0, w)]
+            aprons.append(([zp(pl, q, 0.004) for q in ring], up * 0.006))
+            ring = [corner(k, 0, 0.004), corner(k, 1, 0.004), corner(k, 1, 0.007), corner(k, 0, 0.007)]
+            ups.append(([zp(pl, q, 0.007) for q in ring], up * h))
+        for nm, pieces in (("apron", aprons), ("upstand", ups)):
+            verts, faces = [], []
+            for bot, dz in pieces:
+                k0 = len(verts)
+                verts += bot + [v + dz for v in bot]
+                faces += [[k0 + i for i in f] for f in BOX_FACES]
+            mesh(f"flashing {key} {nm}", verts, faces, c, m)
+        print(f"flashing {key}: {len(es)} edges, {sum((l[1] - l[0]).length for l in lines):.2f} m")
+    tag()
+
+
 def facet_plane(model, x, y):
     """(a, b, c) of the top facet at (x, y), or None."""
     best, top = None, None
@@ -1027,7 +1587,7 @@ def facet_z_one(f, x, y):
     return False
 
 
-def add_skylights_chimneys(model, D, c, mats):
+def add_skylights_chimneys(model, D, c, mats, frames=None):
     for i, s in enumerate(D.get("skylights", [])):
         tag(f"skylights[{i}]", s)
         x, y = s["xy"]
@@ -1100,6 +1660,107 @@ def add_skylights_chimneys(model, D, c, mats):
         oriented_box(nm, o, ea * A, eb * B, Vector((0, 0, ch["top_z"] - ct - zs_)), c, m)
         oriented_box(f"{nm} cap", ctr + Vector((0, 0, ch["top_z"] - ct)) - ea * (A / 2 + co) - eb * (B / 2 + co),
                      ea * (A + 2 * co), eb * (B + 2 * co), Vector((0, 0, ct)), c, cap_m)
+        if ch.get("chase"):
+            body = [Vector((x, y, 0)) + ea * (sa * SA / 2) + eb * (sb * SB / 2) for sa in (-1, 1) for sb in (-1, 1)]
+            # with a shoulder the chase ends 0.02 m inside it (as the stack does): a chase top flush with the shoulder
+            # top is a coplanar face pair over the overlap, rendered as a black slot in the stone; without one it runs
+            # to the cap's underside, which covers the stack top
+            add_chase(i, ch, body, sh["z"] - 0.02 if sh else ch["top_z"] - ct, D, frames or {}, c, mats, m, nm)
+
+
+def chase_wall(ch, frames):
+    """Key of the wall a chimney's exterior chase stands against: ch["chase"]["wall"], else the wall line nearest the
+    chimney centre among walls whose span covers it."""
+    key = ch["chase"].get("wall")
+    if key:
+        if key not in frames:
+            raise KeyError(f"chimney chase names an unknown wall {key!r} (known: {sorted(frames)})")
+        return key
+    q = Vector((ch["center"][0], ch["center"][1], 0))
+    best = None
+    for k, (a, d, n, L, _) in frames.items():
+        u, v = (q - a).dot(d), (q - a).dot(n)
+        if -0.5 <= u <= L + 0.5 and (best is None or abs(v) < best[0]):
+            best = (abs(v), k)
+    if best is None:
+        raise ValueError("chimney chase: no wall near the chimney; give chase.wall")
+    return best[1]
+
+
+def grade_under(D, pts, margin=0.3, path=None):
+    """Lowest ground z (model datum) under a plan footprint `pts` grown by `margin`, from a ground_surface.npz grid
+    (Z[j, i] at x0 + (i + 0.5) cell, y0 + (j + 0.5) cell; pm.py lidar --ground-mode surface): path, else
+    D["ground_surface"], else <model.json dir>/data/ground_surface.npz. None when no grid is found or none of its
+    cells lies under the footprint."""
+    import os
+    import numpy as np
+    path = path or D.get("ground_surface") or os.path.join(os.path.dirname(os.path.abspath(D["model_json"])), "data",
+                                                           "ground_surface.npz")
+    if not os.path.exists(path):
+        return None
+    g = np.load(path)
+    Z, x0, y0, cell = g["Z"], float(g["x0"]), float(g["y0"]), float(g["cell"])
+    xs, ys = [p.x for p in pts], [p.y for p in pts]
+    i0 = max(int(math.floor((min(xs) - margin - x0) / cell - 0.5)), 0)
+    i1 = min(int(math.ceil((max(xs) + margin - x0) / cell - 0.5)), Z.shape[1] - 1)
+    j0 = max(int(math.floor((min(ys) - margin - y0) / cell - 0.5)), 0)
+    j1 = min(int(math.ceil((max(ys) + margin - y0) / cell - 0.5)), Z.shape[0] - 1)
+    if i1 < i0 or j1 < j0:
+        return None
+    sub = Z[j0:j1 + 1, i0:i1 + 1]
+    sub = sub[np.isfinite(sub)]
+    return float(sub.min()) if sub.size else None
+
+
+def add_chase(i, ch, body, top, D, frames, c, mats, m, nm):
+    """Exterior chimney chase (see the "chimneys" docstring): from bottom_z (or the grade) up to `top` (0.02 m under
+    the shoulder top; no shoulder: the cap's underside), on the outside of its wall from 0.05 m inside the face out to
+    `projection`, along the wall over the chimney body's extent (`body`: plan corners of the shoulder / stack) inset
+    3 mm at each end, so its end faces never lie in the shoulder's / stack's end planes, unless "u" is given."""
+    chs = ch["chase"]
+    key = chase_wall(ch, frames)
+    a, d, n, L, _ = frames[key]
+    us = [(p - a).dot(d) for p in body]
+    outs = [(p - a).dot(n) for p in body]
+    proj = float(chs["projection"]) if chs.get("projection") is not None else max(outs) + 0.003
+    if chs.get("u") is not None:
+        u0, u1 = (float(v) for v in chs["u"])
+    else:   # 3 mm inside the body's end faces where the chase meets them (a body a hair off the wall's square too)
+        pu = sorted(zip(us, outs))
+
+        def end_u(p, q, pick):
+            if abs(q[1] - p[1]) < 1e-6:
+                return pick(p[0], q[0])
+            return pick(p[0] + (v - p[1]) * (q[0] - p[0]) / (q[1] - p[1]) for v in (-0.05, proj))
+        u0, u1 = end_u(pu[0], pu[1], max) + 0.003, end_u(pu[2], pu[3], min) - 0.003
+    if proj <= 0.0:
+        raise ValueError(f"chimney {i} chase: projection {proj:.3f} m - the chimney lies inside wall {key}; "
+                         f"give chase.projection")
+    foot = [a + d * u + n * v for u in (u0, u1) for v in (-0.05, proj)]
+    zb = chs.get("bottom_z", "grade")
+    if zb == "grade":
+        g = grade_under(D, foot, path=chs.get("ground_surface"))
+        if g is None:
+            raise ValueError(f"chimney {i} chase: bottom_z 'grade' but no ground_surface grid covers it; give bottom_z")
+        zb = g - float(chs.get("grade_below", 0.3))
+    zb, zt = float(zb), float(chs["top_z"] if chs.get("top_z") is not None else top)
+    cm = pick(chs, mats, "siding", f"chimney {i} chase", 0.85) if (chs.get("color") or chs.get("material")) else m
+    if chs.get("label"):
+        tag(f"chimneys[{i}].chase", chs)
+    oriented_box(f"{nm} chase", a + d * u0 - n * 0.05 + Vector((0, 0, zb)), d * (u1 - u0), n * (proj + 0.05),
+                 Vector((0, 0, zt - zb)), c, cm)
+    tag(f"chimneys[{i}]", ch)
+    print(f"chimney {i} chase on {key}: u {u0:.2f}..{u1:.2f}, {proj:.2f} m out, z {zb:.2f}..{zt:.2f}")
+    for k_, o in enumerate(D.get("openings", []) or []):      # openings on this wall line (any storey) behind it
+        fo = frames.get(o.get("wall"))
+        if fo is None or abs(fo[1].dot(d)) < 0.999 or abs((fo[0] - a).dot(n)) > 0.02:
+            continue
+        lo, hi, zlo, zhi = opening_extent(o)
+        shift = (fo[0] - a).dot(d)                                # the opening's u in this wall's frame
+        lo, hi = sorted((shift + lo * fo[1].dot(d), shift + hi * fo[1].dot(d)))
+        if hi > u0 and lo < u1 and zlo < zt and zhi > zb:
+            print(f"WARNING: openings[{k_}] ({o.get('label', o.get('kind', ''))[:40]}) on {o['wall']} lies behind "
+                  f"chimney {i}'s chase (u {lo:.2f}..{hi:.2f} against {u0:.2f}..{u1:.2f}): move it off the chase")
 
 
 def add_beams(model, D, c, mats, frames=None):
@@ -1232,17 +1893,36 @@ def add_extra_walls(D, frames, c, mats):
         frames[w["name"]] = (Vector((x0, y0, 0)), d, n, L, lambda u, za=z0, zb=z1, L=L: za + (zb - za) * u / max(L, 1e-9))
 
 
-def add_corner_boards(model, frames, fnd, c, mats, width=0.1):
+def board_spans(z0, z1, u_lo, u_hi, cuts):
+    """z intervals of a vertical board over u_lo..u_hi from z0 to z1 left after removing every opening extent
+    (u_lo, u_hi, z_lo, z_hi) that overlaps it in u (a door frame set against the wall corner takes over the board)."""
+    spans = [(z0, z1)]
+    for cu0, cu1, cz0, cz1 in cuts:
+        if cu1 <= u_lo + 1e-6 or cu0 >= u_hi - 1e-6:
+            continue
+        spans = [p for s0, s1 in spans for p in ((s0, min(s1, cz0)), (max(s0, cz1), s1)) if p[1] - p[0] > 0.02]
+    return spans
+
+
+def add_corner_boards(model, frames, fnd, c, mats, width=0.1, openings=(), skip_ends=()):
+    """Boards at both ends of every model wall, from the foundation line to the top, cut round openings; skip_ends
+    lists "<wall>:start" / "<wall>:end" ends that get none."""
     skip = set(fnd.get("skip", []))
+    skip_ends = set(skip_ends)
     for w in model["walls"]:
         key = f'{w["wing"]}:{w["side"]}'
         a, d, n, L, zb = frames[key]
         top0, top1 = w["profile"][0][2], w["profile"][-1][2]
         sb = fnd.get("walls", {}).get(key)
-        for u, zt, sgn in ((0.0, top0, 1), (L, top1, -1)):
+        cuts = [opening_extent(o) for o in openings if o.get("wall") == key]
+        for u, zt, sgn, end in ((0.0, top0, 1, "start"), (L, top1, -1, "end")):
+            if f"{key}:{end}" in skip_ends:
+                continue
             z0 = zb(u) if skipped(key, skip) else (sb if sb is not None else zb(u) + fnd.get("default_reveal", 0.25))
-            p = a + d * u + n * 0.012 + Vector((0, 0, z0))
-            oriented_box(f"corner board {key}", p, d * (width * sgn), n * 0.02, Vector((0, 0, zt - z0 - 0.05)), c, mats["corner"])
+            for s0, s1 in board_spans(z0, zt - 0.05, min(u, u + width * sgn), max(u, u + width * sgn), cuts):
+                p = a + d * u + n * 0.012 + Vector((0, 0, s0))
+                oriented_box(f"corner board {key}", p, d * (width * sgn), n * 0.02, Vector((0, 0, s1 - s0)), c,
+                             mats["corner"])
 
 
 def add_wall_boxes(D, frames, c, mats):
@@ -1410,7 +2090,7 @@ def main():
     sid = D.get("siding", {})
     trim = D.get("trim_color", (0.85, 0.85, 0.82))
     mats = {
-        "trim": mat("Trim (white)", trim, 0.5),
+        "trim": mat("Trim", trim, 0.5),
         "frame": mat("Window frames", D.get("window_frame_color", trim), 0.5),
         "soffit": mat("Soffit", D.get("soffit_color", (0.8, 0.8, 0.77)), 0.6),
         "fascia": mat("Fascia", D.get("fascia_color", trim), 0.5),
@@ -1425,7 +2105,9 @@ def main():
         "foundation": mat("Foundation", D.get("foundation", {}).get("color", (0.55, 0.55, 0.53)), 0.95),
         "brick": brick_material(D.get("brick_color", (0.20, 0.055, 0.04))),
         "wood": mat("Weathered wood", (0.28, 0.21, 0.15), 0.9),
-        "stone": mat("Cast stone", (0.62, 0.60, 0.55), 0.8),
+        "stone": (stone_material(**{k: v for k, v in D["stone"].items() if k in ("colors", "course", "length", "joint",
+                                                                                 "joint_color", "warp", "mottle")})
+                  if D.get("stone") else mat("Cast stone", (0.62, 0.60, 0.55), 0.8)),
         "vinyl": mat("Vinyl (white)", (0.80, 0.80, 0.78), 0.5),
         "metal": mat("Hardware (nickel)", (0.55, 0.55, 0.55), 0.35, 0.8),
         "cap": mat("Ridge cap", D.get("ridge_cap_color", (0.12, 0.12, 0.13)), 0.9),
@@ -1452,6 +2134,7 @@ def main():
                   if s.material and s.material.node_tree is not None}:
             underside_soffit(m, und)
     tag()
+    cut_wall_voids(model, D.get("openings", []) or [])          # kind "void" openings: holes in the model walls
     add_foundation(frames, D.get("foundation", {}), c, mats, D.get("openings", []))
     add_trim(model, frames, c, mats, D.get("fascia_height", 0.2), D.get("gutters", True), D.get("soffits", True))
     add_extra_walls(D, frames, c, mats)
@@ -1459,13 +2142,16 @@ def main():
         tag(f"openings[{i}]", o)
         add_opening(o, frames, c, mats)
     add_roof_extras(model, D, c, mats)
-    add_skylights_chimneys(model, D, c, mats)
+    add_skylights_chimneys(model, D, c, mats, frames)
+    add_flashing(model, D, c, mats)
     add_beams(model, D, c, mats, frames)
     add_beam_ends(model, D, c, mats)
     add_roof_wells(model, D, c, mats)
     tag()
-    if D.get("corner_boards", True):
-        add_corner_boards(model, frames, D.get("foundation", {}), c, mats)
+    cb = D.get("corner_boards", True)
+    if (cb.get("enabled", True) if isinstance(cb, dict) else cb):
+        add_corner_boards(model, frames, D.get("foundation", {}), c, mats, openings=D.get("openings", []) or [],
+                          skip_ends=cb.get("skip", []) if isinstance(cb, dict) else ())
     add_wall_boxes(D, frames, c, mats)
     add_lights_and_text(D, frames, c, mats)
     for i, dk in enumerate(D.get("decks", [])):
@@ -1473,7 +2159,8 @@ def main():
         add_deck({**dk, "polygon": [p[:2] for p in wall_points(dk["polygon"], frames)]}, c, mats, i)
     for i, st in enumerate(D.get("stairs", [])):
         tag(f"stairs[{i}]", st)
-        add_stairs(st, c, mats, i)
+        add_stairs(st, c, mats, i, [{**dk, "polygon": [p[:2] for p in wall_points(dk["polygon"], frames)]}
+                                    for dk in D.get("decks", [])])
     for i, ce in enumerate(D.get("ceilings", [])):
         tag(f"ceilings[{i}]", ce)
         pts = [(p[0], p[1], ce["z"]) for p in wall_points(ce["polygon"], frames)]

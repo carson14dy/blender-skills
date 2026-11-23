@@ -1037,3 +1037,41 @@ def test_split_diagonals_never_turns_a_snapped_cell_over():
     assert tri(P["01"], P["10"], P["00"]) < 0 < min(tri(P["00"], P["01"], P["11"]), tri(P["00"], P["11"], P["10"]))
     xs = np.arange(0, 1.01, 0.25); X, Y = np.meshgrid(xs, xs); Zr = np.random.default_rng(1).normal(0, 0.2, X.shape)
     assert np.array_equal(build_site.split_diagonals(Zr, X, Y), build_site.split_diagonals(Zr))   # regular grid: unchanged
+
+
+def test_lidar_plane_pad_takes_the_measured_ground_at_a_wall_foot_under_the_eave():
+    """A grade pad with "z": "lidar" gets the plane through the last returns round it (fit_pad_plane): returns inside the
+    building, eave / wall returns far off the current terrain and a few stragglers are not used; the bridged mound at a
+    re-entrant corner goes, nodes outside the pad + blend are untouched. Too few returns: the pad is dropped, reported."""
+    rng = np.random.default_rng(7)
+    ground = lambda x, y: -1.0 - 0.3 * x + 0.02 * y                       # true ground: slopes 0.3 m/m to +x
+    house = Polygon([(-5, 0), (5, 0), (5, 5), (-5, 5)])                     # building north of y 0
+    x = rng.uniform(-1, 4, 900); y = rng.uniform(-2.5, 2.0, 900)
+    z = ground(x, y) + rng.normal(0, 0.015, x.size)
+    eave = (y > -0.6) & (y < 0) & (rng.uniform(size=x.size) < 0.5)         # half the pulses under the eave: roof
+    z[eave] = 3.0 + rng.normal(0, 0.05, eave.sum())
+    inside = shapely.contains_xy(house, x, y)
+    z[inside] = 2.5                                                         # roof returns inside the building
+    z[:6] += 0.4                                                            # stragglers (low plants)
+    xs = np.arange(-3, 6.01, 0.25); ys = np.arange(-4, 2.01, 0.25)
+    X, Y = np.meshgrid(xs, ys)
+    Zb = ground(X, Y) + np.where(Y > -1.0, 0.25 * np.clip(1.0 + Y, 0, 1), 0.0)   # bridged: a mound toward the wall
+    pad = {"kind": "grade_pad", "name": "chase foot", "z": "lidar", "blend": 0.3,
+           "polygon": [[0.0, -0.8], [3.0, -0.8], [3.0, 0.3], [0.0, 0.3]], "fit": {"min_n": 20, "max_rms": 0.05}}
+    pads, rep = build_site.resolve_lidar_pads(build_site.grade_pads({"items": [pad]}), np.c_[x, y], z,
+                                              zfun=build_site._bilinear(xs, ys, Zb), exclude=house)
+    (lab, pl, st), = rep
+    assert pl is not None and lab == "chase foot" and st["n"] >= 20 and st["rms"] < 0.03
+    cx, cy, z0, gx, gy = pl
+    assert abs(gx + 0.3) < 0.03 and abs(gy - 0.02) < 0.05 and abs(z0 - ground(cx, cy)) < 0.02
+    Zp, mask, _ = build_site.pad_blend(Zb, X, Y, pads)
+    ins = shapely.contains_xy(Polygon(pad["polygon"]), X, Y)
+    assert np.abs(Zp[ins] - ground(X[ins], Y[ins])).max() < 0.05           # the mound is gone inside the pad
+    assert np.abs(Zb[ins] - ground(X[ins], Y[ins])).max() > 0.15
+    far = ~mask
+    assert np.array_equal(Zp[far], Zb[far])                                 # outside pad + blend: untouched
+    ceil_ = build_site.pad_ceiling(pads, X, Y)
+    assert np.allclose(ceil_[ins], build_site.pad_z(pads[0], X[ins], Y[ins]))
+    few = dict(pad, fit={"min_n": 20, "polygon": [[3.9, -0.6], [4.0, -0.6], [4.0, -0.5], [3.9, -0.5]]})
+    pads2, rep2 = build_site.resolve_lidar_pads([few, {"polygon": [[0, 0], [1, 0], [1, 1]], "z": 1.0}], np.c_[x, y], z)
+    assert len(pads2) == 1 and pads2[0]["z"] == 1.0 and rep2[0][1] is None and "returns" in rep2[0][2]["why"]

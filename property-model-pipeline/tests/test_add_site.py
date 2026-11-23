@@ -892,3 +892,248 @@ def test_hot_tub_cover_roughness_and_specular(tmp_path):
     d = _tub_materials(tmp_path, base, "b")
     assert abs(d["Hot tub cover"]["rough"] - 0.6) < 1e-6 and abs(d["Hot tub cabinet"]["rough"] - 0.7) < 1e-6
     assert abs(d["Hot tub cover"]["spec"] - 0.5) < 1e-6 and abs(d["Hot tub cabinet"]["spec"] - 0.5) < 1e-6   # Principled default
+
+
+CHASE_BLEND = r"""
+import bpy, bmesh, sys
+bpy.ops.wm.read_factory_settings(use_empty=True)
+det = bpy.data.collections.new("Details"); bpy.context.scene.collection.children.link(det)
+def box(name, lo, hi, details=None):
+    me = bpy.data.meshes.new(name); bm = bmesh.new()
+    bmesh.ops.create_cube(bm, size=1.0)
+    for v in bm.verts:
+        v.co = [lo[i] if v.co[i] < 0 else hi[i] for i in range(3)]
+    bm.to_mesh(me); bm.free()
+    o = bpy.data.objects.new(name, me); det.objects.link(o)
+    if details: o["details"] = details
+box("chimney x chase", (-0.4, -1.0, -0.5), (0.4, 1.0, 6.0), "chimneys[0].chase")
+box("chimney x shoulder", (2.0, -1.0, -0.5), (2.8, 1.0, 6.0), "chimneys[0]")
+bpy.ops.wm.save_as_mainfile(filepath=sys.argv[1])
+"""
+
+CHASE_LOOK = r"""
+import bpy, json, sys
+bpy.ops.wm.open_mainfile(filepath=sys.argv[1])
+out = {}
+for n in ("chimney x chase", "chimney x shoulder"):
+    o = bpy.data.objects[n]
+    out[n] = sorted(round((o.matrix_world @ p.co).z, 4) for p in o.data.vertices if (o.matrix_world @ p.co).z < 1.0)
+    out[n + " xy"] = [[round(c, 3) for c in (o.matrix_world @ p.co)] for p in o.data.vertices if (o.matrix_world @ p.co).z < 1.0]
+json.dump(out, open(sys.argv[2], "w"))
+"""
+
+
+def test_chimney_chase_base_is_lowered_under_a_lower_terrain_never_raised(tmp_path):
+    """An exterior chimney chase (add_details details "chimneys[i].chase") has its base 0.3 m under the terrain where the
+    site terrain is lower than the house-side grade it was built from (lowered: south half), and keeps a base that is
+    already deeper (never raised: north half); other chimney parts are not touched."""
+    blend = str(tmp_path / "chase.blend")
+    (tmp_path / "mk.py").write_text(CHASE_BLEND)
+    _run([str(tmp_path / "mk.py"), blend])
+    verts = [[-5, -5, -1], [5, -5, -1], [5, 0, -1], [-5, 0, -1], [-5, 0, 0], [5, 0, 0], [5, 5, 0], [-5, 5, 0]]
+    scene = {"verts": verts, "faces": [[0, 1, 2, 3], [4, 5, 6, 7]], "face_class": [0, 0], "classes": ["ground"],
+             "overlays": {}, "curbs": [], "edging": [], "parcel": None, "points": []}
+    sp, yp, out, js = tmp_path / "scene.json", tmp_path / "yard.json", str(tmp_path / "out.blend"), str(tmp_path / "r.json")
+    sp.write_text(json.dumps(scene)); yp.write_text(json.dumps({"items": []}))
+    log = _run([ADD_SITE, blend, str(sp), str(yp), out])
+    assert "chimney chases: 1, 2 base vertices lowered" in log
+    (tmp_path / "look.py").write_text(CHASE_LOOK)
+    _run([str(tmp_path / "look.py"), out, js])
+    r = json.load(open(js))
+    base = {(x, y): z for x, y, z in r["chimney x chase xy"]}
+    assert all(abs(z - -1.3) < 1e-4 for (x, y), z in base.items() if y < 0)     # south: terrain -1 -> -1.3
+    assert all(abs(z - -0.5) < 1e-4 for (x, y), z in base.items() if y > 0)     # north: -0.5 is deeper than 0 - 0.3
+    assert all(abs(z - -0.5) < 1e-4 for z in r["chimney x shoulder"])           # not a chase: untouched
+
+
+def _chase_follow(tmp_path, tag, verts, faces):
+    blend = str(tmp_path / f"chase_{tag}.blend")
+    (tmp_path / "mk.py").write_text(CHASE_BLEND)
+    _run([str(tmp_path / "mk.py"), blend])
+    scene = {"verts": verts, "faces": faces, "face_class": [0] * len(faces), "classes": ["ground"],
+             "overlays": {}, "curbs": [], "edging": [], "parcel": None, "points": []}
+    sp, yp = tmp_path / f"scene_{tag}.json", tmp_path / f"yard_{tag}.json"
+    out, js = str(tmp_path / f"out_{tag}.blend"), str(tmp_path / f"r_{tag}.json")
+    sp.write_text(json.dumps(scene))
+    yp.write_text(json.dumps({"items": [], "chase_base": {"follow": True, "below": 0.05}}))
+    log = _run([ADD_SITE, blend, str(sp), str(yp), out])
+    (tmp_path / "look.py").write_text(CHASE_LOOK)
+    _run([str(tmp_path / "look.py"), out, js])
+    r = json.load(open(js))
+    return log, {(x, y): z for x, y, z in r["chimney x chase xy"]}, r
+
+
+def test_chimney_chase_base_follows_the_terrain_when_asked(tmp_path):
+    """yard.json "chase_base": {"follow": true, "below": 0.05}: every base vertex of the chase sits at terrain - 0.05
+    (raised where the flat footing was deeper, lowered where it was shallower), so no terrain stands more than 0.05 m
+    over the base; where the ground dips between two base vertices the bottom edge is lowered until it stays >= 1 cm in
+    the ground all along (never a gap). Other chimney parts are untouched."""
+    # slope z = 0.6 y - 0.6: base at y = -1 lowered -0.5 -> -1.25, at y = +1 raised -0.5 -> -0.05
+    log, base, r = _chase_follow(tmp_path, "slope", [[-5, -5, -3.6], [5, -5, -3.6], [5, 5, 2.4], [-5, 5, 2.4]],
+                                 [[0, 1, 2, 3]])
+    assert "chimney chases: 1, 4 base vertices set to the terrain - 0.05 m (follow); 0 bottom edges lowered" in log
+    assert len(base) == 4
+    assert all(abs(z - (0.6 * y - 0.65)) < 1e-4 for (x, y), z in base.items())
+    assert all(abs(z - -0.5) < 1e-4 for z in r["chimney x shoulder"])
+    # V-shaped valley under the chase (0 at y = +-1, -0.3 at y = 0): the long bottom edges would float over the valley
+    # floor, so their ends go down to -0.31 and the whole edge stays >= 1 cm under the ground
+    ys = [-5, -1, 0, 1, 5]
+    zs = {-5: 0.0, -1: 0.0, 0: -0.3, 1: 0.0, 5: 0.0}
+    verts = [[x, y, zs[y]] for y in ys for x in (-5, 5)]
+    faces = [[2 * k, 2 * k + 1, 2 * k + 3, 2 * k + 2] for k in range(len(ys) - 1)]
+    log, base, _ = _chase_follow(tmp_path, "valley", verts, faces)
+    assert "2 bottom edges lowered" in log
+    assert all(abs(z - -0.31) < 1e-3 for z in base.values())
+    ground = lambda y: -0.3 * (1 - abs(y)) if abs(y) <= 1 else 0.0
+    for t in [k / 40 for k in range(41)]:
+        y = -1 + 2 * t
+        assert -0.31 <= ground(y) - 0.0099
+
+
+ROT_CHASE_BLEND = r"""
+import bpy, bmesh, math, sys
+bpy.ops.wm.read_factory_settings(use_empty=True)
+det = bpy.data.collections.new("Details"); bpy.context.scene.collection.children.link(det)
+def box(name, lo, hi, rot, details=None):
+    me = bpy.data.meshes.new(name); bm = bmesh.new()
+    bmesh.ops.create_cube(bm, size=1.0)
+    c, s = math.cos(math.radians(rot)), math.sin(math.radians(rot))
+    for v in bm.verts:
+        x, y, z = [lo[i] if v.co[i] < 0 else hi[i] for i in range(3)]
+        v.co = (c * x - s * y, s * x + c * y, z)
+    bm.to_mesh(me); bm.free()
+    o = bpy.data.objects.new(name, me); det.objects.link(o)
+    if details: o["details"] = details
+box("chimney x chase", (-0.09, -1.2, -3.0), (0.09, 1.2, 6.0), 20.0, "chimneys[0].chase")   # thin, rotated 20 deg
+box("chimney x shoulder", (1.6, -0.5, -3.0), (2.2, 0.5, 6.0), 0.0, "chimneys[0]")           # not a chase
+bpy.ops.wm.save_as_mainfile(filepath=sys.argv[1])
+"""
+
+CUT_LOOK = r"""
+import bpy, bmesh, json, math, sys
+from mathutils import Vector
+from mathutils.bvhtree import BVHTree
+bpy.ops.wm.open_mainfile(filepath=sys.argv[1])
+t = bpy.data.objects["Terrain (LiDAR ground)"]
+bm = bmesh.new(); bm.from_mesh(t.data); bm.transform(t.matrix_world)
+bvh = BVHTree.FromBMesh(bm)
+ch = bpy.data.objects["chimney x chase"]
+W = [ch.matrix_world @ v.co for v in ch.data.vertices]
+def tz(x, y):
+    h = bvh.ray_cast(Vector((x, y, 50.0)), Vector((0, 0, -1)))
+    return None if h[0] is None else h[0].z
+c, s = math.cos(math.radians(20)), math.sin(math.radians(20))
+def P(u, v):                    # chase frame: u across (x before rotation), v along (y)
+    return (c * u - s * v, s * u + c * v)
+out = {"area": sum(f.calc_area() * abs(f.normal.z) for f in bm.faces),
+       "inside_faces": sum(1 for f in bm.faces if abs(((f.calc_center_median().x * c + f.calc_center_median().y * s))) < 0.09 - 0.001
+                           and abs(-f.calc_center_median().x * s + f.calc_center_median().y * c) < 1.2 - 0.001),
+       "out_ok": [], "in_hit": [], "dz": 0.0, "shoulder": tz(1.9, 0.0), "base_minus_terrain": []}
+for v in [k / 10 - 1.1 for k in range(23)]:
+    for u in (-0.09 - 0.01, 0.09 + 0.01):
+        out["out_ok"].append(tz(*P(u, v)) is not None)
+    out["in_hit"].append(tz(*P(0.0, v)) is not None)
+    out["in_hit"].append(tz(*P(0.09 - 0.01, v)) is not None)
+for u in (-1.2 - 0.01, 1.2 + 0.01):
+    pass
+for k in range(200):                 # surface unchanged outside: z = 0.2 x - 0.1 y
+    x, y = -2.9 + 5.8 * ((k * 0.618) % 1), -2.9 + 5.8 * ((k * 0.377) % 1)
+    z = tz(x, y)
+    if z is not None:
+        out["dz"] = max(out["dz"], abs(z - (0.2 * x - 0.1 * y)))
+for w in W:
+    if w.z < 0:
+        out["base_minus_terrain"].append(w.z - (0.2 * w.x - 0.1 * w.y))
+json.dump(out, open(sys.argv[2], "w"))
+"""
+
+
+def _cut_run(tmp_path, tag, cut):
+    blend = str(tmp_path / f"rot_{tag}.blend")
+    (tmp_path / "mkr.py").write_text(ROT_CHASE_BLEND)
+    _run([str(tmp_path / "mkr.py"), blend])
+    n, h = 24, 0.25                    # 0.25 m cells over -3..3, plane z = 0.2 x - 0.1 y
+    verts = [[-3 + i * h, -3 + j * h, 0.2 * (-3 + i * h) - 0.1 * (-3 + j * h)] for j in range(n + 1) for i in range(n + 1)]
+    faces = [[j * (n + 1) + i, j * (n + 1) + i + 1, (j + 1) * (n + 1) + i + 1, (j + 1) * (n + 1) + i]
+             for j in range(n) for i in range(n)]
+    scene = {"verts": verts, "faces": faces, "face_class": [0] * len(faces), "classes": ["ground"],
+             "overlays": {}, "curbs": [], "edging": [], "parcel": None, "points": []}
+    sp, yp = tmp_path / f"scene_{tag}.json", tmp_path / f"yard_{tag}.json"
+    out, js = str(tmp_path / f"out_{tag}.blend"), str(tmp_path / f"r_{tag}.json")
+    sp.write_text(json.dumps(scene))
+    cb = {"follow": True, "below": 0.04}
+    if not cut:
+        cb["cut_terrain"] = False
+    yp.write_text(json.dumps({"items": [], "chase_base": cb}))
+    log = _run([ADD_SITE, blend, str(sp), str(yp), out])
+    (tmp_path / "cutlook.py").write_text(CUT_LOOK)
+    _run([str(tmp_path / "cutlook.py"), out, js])
+    return log, json.load(open(js))
+
+
+def test_terrain_inside_a_chimney_chase_footprint_is_cut_out_along_its_faces(tmp_path):
+    """The terrain inside an exterior chimney chase's plan footprint (a thin box rotated 20 deg across a 0.25 m grid on a
+    slope) is cut out along its faces 1 mm inside the stone: no terrain face is left inside, the plan area drops by the
+    footprint shrunk by 1 mm, the ground still runs to 1 cm outside every face (no gap at the base, which sits 0.04 m
+    under it), the surface elsewhere does not move, and a chimney part that is not a chase keeps the ground under it.
+    "cut_terrain": false keeps the terrain inside."""
+    log, r = _cut_run(tmp_path, "cut", True)
+    assert "chimney chases: terrain inside 1 footprint(s) cut out" in log
+    assert r["inside_faces"] == 0
+    assert abs(r["area"] - (36.0 - (0.18 - 0.002) * (2.4 - 0.002))) < 2e-4
+    assert all(r["out_ok"])                          # terrain 1 cm outside both long faces, all along
+    assert not any(r["in_hit"])                      # none inside the stone
+    assert r["dz"] < 1e-5                            # cut pieces lie on the original planes
+    assert r["shoulder"] is not None and abs(r["shoulder"] - 0.38) < 1e-4
+    assert all(abs(d - -0.04) < 1e-4 for d in r["base_minus_terrain"])
+    log, r = _cut_run(tmp_path, "keep", False)
+    assert "cut out" not in log
+    assert abs(r["area"] - 36.0) < 1e-6 and all(r["in_hit"])
+
+
+DISH_LOOK = r"""
+import bpy, bmesh, json, sys
+bpy.ops.wm.open_mainfile(filepath=sys.argv[1])
+out = {}
+for o in bpy.data.collections["Site"].objects:
+    if not o.name.startswith("dish"):
+        continue
+    vs = [o.matrix_world @ v.co for v in o.data.vertices]
+    bm = bmesh.new(); bm.from_mesh(o.data)
+    out[o.name] = {"min": [min(v[i] for v in vs) for i in range(3)], "max": [max(v[i] for v in vs) for i in range(3)],
+                   "manifold": all(len(e.link_faces) == 2 for e in bm.edges), "volume": bm.calc_volume(signed=True),
+                   "kind": o.get("site_kind"), "mat": o.data.materials[0].name if o.data.materials else None}
+    bm.free()
+json.dump(out, open(sys.argv[2], "w"))
+"""
+
+
+def test_satellite_dish_faces_its_azimuth_on_a_grounded_mast(tmp_path):
+    """kind "dish": a closed oval shell (outward normals) of the given size facing the given azimuth (here south, so the
+    rim runs along x and the face sags north of the rim plane), LNB arm and LNB in front of it, and a mast
+    `mast_offset` m behind the rim centre from 0.1 m under the terrain at its foot (the lower step) to the dish."""
+    blend = str(tmp_path / "empty.blend")
+    (tmp_path / "empty.py").write_text(EMPTY)
+    _run([str(tmp_path / "empty.py"), blend])
+    verts = [[-5, -5, -1], [5, -5, -1], [5, 0, -1], [-5, 0, -1], [-5, 0, 0], [5, 0, 0], [5, 5, 0], [-5, 5, 0]]
+    scene = {"verts": verts, "faces": [[0, 1, 2, 3], [4, 5, 6, 7]], "face_class": [0, 0], "classes": ["ground"],
+             "overlays": {}, "curbs": [], "edging": [], "parcel": None, "points": []}
+    dish = {"kind": "dish", "name": "dish", "xy": [1.0, -1.0], "z": 0.5, "size": [0.8, 0.55], "azimuth": 180,
+            "elevation": 15, "mast_offset": 0.25, "color": [0.55, 0.6, 0.6]}
+    sp, yp, out, js = tmp_path / "scene.json", tmp_path / "yard.json", str(tmp_path / "out.blend"), str(tmp_path / "r.json")
+    sp.write_text(json.dumps(scene)); yp.write_text(json.dumps({"items": [dish]}))
+    _run([ADD_SITE, blend, str(sp), str(yp), out])
+    (tmp_path / "look.py").write_text(DISH_LOOK)
+    _run([str(tmp_path / "look.py"), out, js])
+    r = json.load(open(js))
+    assert set(r) == {"dish (shell)", "dish (LNB arm)", "dish (LNB)", "dish (bracket)", "dish (mast)"}
+    sh = r["dish (shell)"]
+    assert sh["manifold"] and sh["volume"] > 0                       # closed, normals out
+    assert abs((sh["max"][0] - sh["min"][0]) - 0.8) < 0.01           # rim width across the face (along x when facing S)
+    assert 0.5 < sh["max"][2] - sh["min"][2] < 0.56                  # rim height x cos(15 deg) + sag
+    assert sh["min"][1] < -1.0 - 0.06 and sh["max"][1] > -1.0         # face tilted up: rim spans y around the centre
+    assert r["dish (LNB)"]["max"][1] < -1.3                           # LNB in front (south) of the face
+    m = r["dish (mast)"]
+    assert abs((m["min"][1] + m["max"][1]) / 2 - -0.75) < 1e-3       # 0.25 m behind (north of) the rim centre
+    assert abs(m["min"][2] - (-1.0 - 0.1)) < 1e-4 and abs(m["max"][2] - 0.5) < 1e-4   # from the lower step to the dish
+    assert all(v["kind"] == "dish" for v in r.values())

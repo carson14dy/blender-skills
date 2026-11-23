@@ -279,7 +279,7 @@ def test_skylight_colours_curb_and_dome(scene, tmp_path):
     assert max(above(p) for p in dome["verts"]) == pytest.approx(0.5, abs=0.005)     # curb 0.2 + dome 0.3
     assert min(above(p) for p in dome["verts"]) == pytest.approx(0.2, abs=0.005)
     assert mats[o["dome unit curb"]["mat"]] != mats[flat_c["mat"]]                     # per-unit curb colour
-    assert o["plain unit curb"]["mat"] == "Trim (white)" and o["plain unit glass"]["mat"] == "Glass"   # defaults
+    assert o["plain unit curb"]["mat"] == "Trim" and o["plain unit glass"]["mat"] == "Glass"   # defaults
 
 
 def test_ridge_cap_follows_both_roof_planes(scene):

@@ -32,7 +32,9 @@ window fails on every boulder edge, lidar.merge_solid). Inside traced rock outli
 with --boulders yard.json, boulder items) the terrain also takes the --rock-q quantile of the single returns per
 cell (capped at the outline's top_z), and raised nodes are despiked (lidar.despike). Faces the merge raises
 (or inside rock outlines) get class "rock". --grade yard.json levels grade_pad items (areaways, patios cut
-into the slope; never over rock raised > 0.5 m) and --breaklines yard.json makes the terrain step inside
+into the slope; never over rock raised > 0.5 m); a pad with "z": "lidar" takes the plane fitted to the last returns
+round it instead (fit_pad_plane: the ground at a wall foot under the eave, which the 1 m building exclusion of the
+ground filter bridges across the house -- a re-entrant corner then lifts it) and --breaklines yard.json makes the terrain step inside
 every retaining_wall item instead of ramping through it. A wall item with "line_is": "face" gives its
 exposed (downhill) face; it is extruded to the uphill side ("uphill": "left"|"right" of the line direction,
 or found from the terrain). Draped overlays are cut out of every wall footprint and lie exactly on the terrain
@@ -774,10 +776,106 @@ def roof_plan(model, overhang=0.5):
 
 
 def grade_pads(data):
-    """Flat pads: a list of {polygon, z[, blend]} or a yard.json dict (items of kind grade_pad)."""
+    """Flat pads: a list of {polygon, z[, blend]} or a yard.json dict (items of kind grade_pad). "z": "lidar" makes a
+    plane pad whose surface is fitted to the LiDAR last returns (fit_pad_plane; resolved in main, pad_z)."""
     items = data.get("items", []) if isinstance(data, dict) else data
     return [it for it in items if isinstance(it, dict) and it.get("polygon") and "z" in it
             and it.get("kind", "grade_pad") == "grade_pad"]
+
+
+def pad_z(pad, X, Y):
+    """Height of a grade pad at (X, Y): its plane (pad["plane"] = (cx, cy, z0, gx, gy), z0 + gx (X - cx) + gy (Y - cy))
+    or its flat z."""
+    if pad.get("plane") is not None:
+        cx, cy, z0, gx, gy = (float(v) for v in pad["plane"])
+        return z0 + gx * (np.asarray(X, float) - cx) + gy * (np.asarray(Y, float) - cy)
+    return float(pad["z"])
+
+
+def fit_pad_plane(pad, pxy, pz, zfun=None, exclude=None):
+    """Plane through the LiDAR ground at a grade pad whose "z" is "lidar": the ground at a house wall's foot under the
+    eave, where the ground filter's building exclusion (the wings + 1 m) bridges the grade across the house and a
+    re-entrant corner lifts it toward the higher grade on the far side (an exterior chimney chase or a stoop standing in
+    that band then stands in a mound). Options in pad["fit"] (all optional):
+      polygon  where the returns are taken (default: the pad polygon grown by `margin`)
+      margin   0.5 m;  dz  0.5 m: only returns within dz of the current terrain zfun(x, y) (eave, wall and canopy
+               returns are metres off it);  min_n  8;  max_rms  0.06 m;  trim  3.0 (x 1.4826 MAD, never under 0.03 m)
+    pxy / pz: last returns (model datum); `exclude`: polygon(s) never sampled (the building). A trimmed least-squares fit
+    drops residuals over the trim until none is dropped. Returns ((cx, cy, z0, gx, gy), stats) - cx, cy the centroid
+    of the returns used, z0 the plane there - or (None, stats) with stats["why"] when fewer than min_n returns are left
+    or the residual rms exceeds max_rms. stats: n, rms, max_res, slope (m/m)."""
+    f = pad.get("fit") or {}
+    margin, dz = float(f.get("margin", 0.5)), float(f.get("dz", 0.5))
+    min_n, max_rms, trim = int(f.get("min_n", 8)), float(f.get("max_rms", 0.06)), float(f.get("trim", 3.0))
+    area = Polygon(f["polygon"]).buffer(0) if f.get("polygon") else Polygon(pad["polygon"]).buffer(0).buffer(margin)
+    if exclude is not None and not exclude.is_empty:
+        area = area.difference(exclude)
+    pxy = np.asarray(pxy, float).reshape(-1, 2); pz = np.asarray(pz, float).ravel()
+    stats = {"n": 0}
+    if len(pz) == 0 or area.is_empty:
+        stats["why"] = "no returns"
+        return None, stats
+    m = shapely.contains_xy(area, pxy[:, 0], pxy[:, 1])
+    if zfun is not None and m.any():
+        zt = np.asarray(zfun(pxy[m, 0], pxy[m, 1]), float)
+        ok = np.abs(pz[m] - zt) <= dz
+        m[np.nonzero(m)[0][~ok]] = False
+    x, y, z = pxy[m, 0], pxy[m, 1], pz[m]
+    keep = np.ones(len(z), bool)
+    coef, cx, cy = None, 0.0, 0.0
+    for _ in range(10):
+        if keep.sum() < max(min_n, 3):
+            break
+        cx, cy = float(x[keep].mean()), float(y[keep].mean())
+        A = np.column_stack([np.ones(keep.sum()), x[keep] - cx, y[keep] - cy])
+        coef = np.linalg.lstsq(A, z[keep], rcond=None)[0]
+        res = z - (coef[0] + coef[1] * (x - cx) + coef[2] * (y - cy))
+        r_ = res[keep]
+        lim = max(trim * 1.4826 * float(np.median(np.abs(r_ - np.median(r_)))), 0.03)
+        nk = keep & (np.abs(res) <= lim)
+        if nk.sum() == keep.sum():
+            break
+        keep = nk
+    stats["n"] = int(keep.sum())
+    if coef is None or keep.sum() < min_n:
+        stats["why"] = f"{int(keep.sum())} returns (< {min_n})"
+        return None, stats
+    res = z[keep] - (coef[0] + coef[1] * (x[keep] - cx) + coef[2] * (y[keep] - cy))
+    stats.update(rms=float(np.sqrt(np.mean(res ** 2))), max_res=float(np.abs(res).max()),
+                 slope=float(np.hypot(coef[1], coef[2])))
+    if stats["rms"] > max_rms:
+        stats["why"] = f"rms {stats['rms']:.3f} m (> {max_rms})"
+        return None, stats
+    return (cx, cy, float(coef[0]), float(coef[1]), float(coef[2])), stats
+
+
+def resolve_lidar_pads(pads, pxy, pz, zfun=None, exclude=None):
+    """The grade pads with their LiDAR planes (fit_pad_plane) for those whose "z" is "lidar"; a pad whose fit fails is
+    dropped (and reported). Returns (pads, [(label, plane or None, stats)])."""
+    out, rep = [], []
+    for pad in pads:
+        if pad.get("z") != "lidar":
+            out.append(pad)
+            continue
+        pl, st = fit_pad_plane(pad, pxy, pz, zfun=zfun, exclude=exclude)
+        rep.append((str(pad.get("name") or pad.get("label") or "grade pad")[:48], pl, st))
+        if pl is not None:
+            out.append(dict(pad, plane=pl))
+    return out, rep
+
+
+def _bilinear(xs, ys, Z):
+    """Vectorised bilinear interpolation of the grid Z (rows ys, columns xs) at arrays (x, y), clamped to the grid."""
+    xs = np.asarray(xs, float); ys = np.asarray(ys, float)
+
+    def f(x, y):
+        fi = np.clip((np.asarray(x, float) - xs[0]) / (xs[1] - xs[0]), 0, len(xs) - 1.001)
+        fj = np.clip((np.asarray(y, float) - ys[0]) / (ys[1] - ys[0]), 0, len(ys) - 1.001)
+        i_, j_ = fi.astype(int), fj.astype(int)
+        tx, ty = fi - i_, fj - j_
+        return (Z[j_, i_] * (1 - tx) * (1 - ty) + Z[j_, i_ + 1] * tx * (1 - ty)
+                + Z[j_ + 1, i_] * (1 - tx) * ty + Z[j_ + 1, i_ + 1] * tx * ty)
+    return f
 
 
 def pad_blend(Z, X, Y, pads, faces=None, rock_rise=None, along=0.05):
@@ -821,7 +919,7 @@ def pad_blend(Z, X, Y, pads, faces=None, rock_rise=None, along=0.05):
                     blk |= (shapely.distance(sg, npts) <= along) & (t > 0)
                 w[jj[blk], ii[blk]] = 0.0
                 nblock += int(blk.sum())
-        Z = w * float(pad["z"]) + (1 - w) * Z
+        Z = w * pad_z(pad, X, Y) + (1 - w) * Z
         padmask |= w > 0
     return Z, padmask, nblock
 
@@ -835,7 +933,7 @@ def pad_ceiling(pads, NX, NY, tol=0.0):
         pp = Polygon(pad["polygon"]).buffer(0)
         m = shapely.contains_xy(pp, NX, NY) | (shapely.distance(pp, shapely.points(np.ravel(NX), np.ravel(NY)))
                                                .reshape(np.shape(NX)) <= 1e-6)
-        ceil_ = np.where(m, np.fmax(ceil_, float(pad["z"]) + tol), ceil_)
+        ceil_ = np.where(m, np.fmax(ceil_, pad_z(pad, NX, NY) + tol), ceil_)
     return ceil_
 
 
@@ -1795,7 +1893,8 @@ def main():
                                      "from keep_wall_bottoms in the --grade / --breaklines / --boulders yard.json): "
                                      "ground under their overhangs is kept")
     ap.add_argument("--grade", help="json list of flat pads {polygon, z[, blend]}: terrain inside set to z (areaways, patios "
-                                    "cut into a slope), blended back to the surface over `blend` m outside")
+                                    "cut into a slope), blended back to the surface over `blend` m outside; z \"lidar\": "
+                                    "the plane fitted to the last returns round it (fit_pad_plane: a wall foot under the eave)")
     ap.add_argument("--curb-cut", type=float, default=0.6,
                     help="no curb within this distance of a driveway polygon (curb cut at the driveway mouth); 0 = off")
     ap.add_argument("--curb-cut-uses", default="Driveway", help="comma list of SurfaceUse values that cut the curb")
@@ -2125,9 +2224,20 @@ def main():
             return (_Zp[j_, i_] * (1 - tx) * (1 - ty) + _Zp[j_, i_ + 1] * tx * (1 - ty)
                     + _Zp[j_ + 1, i_] * (1 - tx) * ty + _Zp[j_ + 1, i_ + 1] * tx * ty)
         pfaces = wall_faces(json.load(open(a.breaklines)), zfun=_zp) if (a.breaklines and a.pad_face_stop) else []
+        if any(p.get("z") == "lidar" for p in pads):
+            _lm = pts[:, 4] >= pts[:, 5]
+            pads, prep = resolve_lidar_pads(pads, pts[_lm, :2], pts[_lm, 2] - datum, zfun=_bilinear(xs, ys, _Zp),
+                                            exclude=_wing_union(model))
+            for lab, pl, st in prep:
+                if pl is None:
+                    print(f"terrain: WARNING: LiDAR plane pad '{lab}' not applied: {st.get('why')}")
+                else:
+                    print(f"terrain: LiDAR plane pad '{lab}': {st['n']} last returns, rms {st['rms']:.3f} m (max "
+                          f"{st['max_res']:.3f}), z {pl[2]:.2f} at ({pl[0]:.2f},{pl[1]:.2f}), slope {st['slope']:.3f}")
         Z, padmask, nblk = pad_blend(Z, X, Y, pads, pfaces, rock_rise)
         for pad in pads:
-            print(f"terrain: grade pad z={pad['z']} over {Polygon(pad['polygon']).buffer(0).area:.1f} m2")
+            zs_ = "LiDAR plane" if pad.get("plane") is not None else pad["z"]
+            print(f"terrain: grade pad z={zs_} over {Polygon(pad['polygon']).buffer(0).area:.1f} m2")
         if nblk:
             print(f"terrain: grade-pad blends stop at the retaining-wall faces along the pad edges: {nblk} nodes on the "
                   f"lower level kept out of the blend")

@@ -81,12 +81,121 @@ def test_two_storey_lower_roof_meets_wall():
               eave_overhang=0.4, rake_overhang=0.3)
     m = build([hi, lo])
     e = by_kind(m)
-    # porch shed roof dies into the taller wall: headwall flashing ~ shed length + rake overhangs
-    assert e["headwall"] == pytest.approx(10.6, abs=0.05)
-    # shed roof area includes the strip under the upper overhang (between the walls)
+    # porch shed roof dies into the taller wall: headwall flashing along the wall it meets (10 m), no wall-less
+    # "headwall" in mid-air at the upper drip line; its 0.3 m rake-overhang corners run on under the upper rake
+    # overhang (>= 1.6 m above them) beside the gable walls up to the shed's own high eave: step flashing there
+    assert e["headwall"] == pytest.approx(10.0, abs=1e-6)
+    assert e["sidewall"] == pytest.approx(2 * 0.4 * math.sqrt(1 + 0.25 ** 2), rel=1e-6)
+    # shed roof area includes the strip under the upper overhang (between the walls) and the overhung corners
     shed = [f for f in m.facets if "L" in f.wings][0]
-    assert shed.area_plan == pytest.approx(10.6 * 4.0 + 10 * 0.4, rel=1e-6)
+    assert shed.area_plan == pytest.approx(10.6 * 4.0 + 10 * 0.4 + 2 * 0.3 * 0.8, rel=1e-6)
     assert shed.hidden_from_above
+
+
+def test_lower_roof_runs_in_under_upper_overhang_to_the_wall():
+    # two-storey block H (walls y -4..4) with a deep 1.5 m south eave; a porch shed P whose walls stand 2 m off the
+    # wall (y -8..-6) and whose outline runs in under the H eave into H (the roof meets the H wall at y = -4)
+    hi = Wing("H", "gable", cx=0, cy=0, azimuth=90, length=10, width=8, eave_height=5.5, pitch=0.5,
+              eave_overhang=1.5, rake_overhang=0.3)
+    po = Wing("P", "shed", cx=0, cy=-7, azimuth=270, length=6, width=2, eave_height=2.6, pitch=0.25,
+              outline=[[-3.3, -8.4], [3.3, -8.4], [3.3, -3.0], [-3.3, -3.0]])
+    m = build([hi, po])
+    p = [f for f in m.facets if f.wings == ["P"]][0]
+    # kept to the wall (not stopped at the H drip line y -5.5, which left an open slot over the porch): 6.6 x 4.4
+    assert p.area_plan == pytest.approx(6.6 * 4.4, rel=1e-9)
+    assert p.hidden_from_above
+    e = by_kind(m)
+    assert e["headwall"] == pytest.approx(6.6, rel=1e-9)                       # where it meets the H wall
+    assert e["rake"] == pytest.approx(2 * 4.4 * math.sqrt(1 + 0.25 ** 2) + 4 * 5.5 * SF, rel=1e-6)
+    # the top view (what LiDAR sees) is unchanged: the H eave is on top over the porch roof's upper end
+    z = m.surface_z([(0.0, -5.0)])[0]
+    assert z == pytest.approx(5.5 - 1.0 * 0.5, abs=1e-9)
+
+
+def test_cross_gable_overhangs_still_stop_at_the_valleys():
+    # same pitch and plates, 0.6 m eaves / 0.4 m rakes: beyond each valley the wing's eave runs under the main eave
+    # with no clearance (the roofs meet), so it is NOT kept: the facets tile the outline union exactly
+    main = Wing("M", "gable", cx=0, cy=0, azimuth=90, length=12, width=8, pitch=0.5, eave_overhang=0.6, rake_overhang=0.4)
+    wing = Wing("W", "gable", cx=0, cy=-5, azimuth=0, length=10, width=6, pitch=0.5, eave_overhang=0.6, rake_overhang=0.4)
+    m = build([main, wing])
+    from shapely.ops import unary_union
+    assert sum(f.area_plan for f in m.facets) == pytest.approx(m.roof_outline().area, rel=1e-9)
+    assert unary_union([f.poly for f in m.facets]).area == pytest.approx(m.roof_outline().area, rel=1e-9)
+    assert not any(f.hidden_from_above for f in m.facets)
+    e = by_kind(m)
+    assert e["headwall"] == e["sidewall"] == 0
+    assert e["valley"] > 0
+
+
+def _gable_with_chimney(pens):
+    # gable, ridge E-W at y = 0, plates 3.0 at y = +-4, pitch 6/12, 0.7 m rakes (outline x -6.7..6.7) and 0.5 m eaves
+    w = Wing("A", "gable", cx=0, cy=0, azimuth=90, length=12, width=8, eave_height=3.0, pitch=0.5,
+             eave_overhang=0.5, rake_overhang=0.7, penetrations=pens)
+    return build([w])
+
+
+def test_penetrations_cut_the_roof_at_a_chimney_and_its_exterior_chase():
+    # an outside fireplace on the west gable wall (x = -6): shoulder x -7.2..-6.0 (a chase 0.13 m out of the wall
+    # wrapped in the 0.7 m rake overhang) x y -2.5..-1.0 on the south slope, standing through the roof to z 5.5
+    plain = _gable_with_chimney(None)
+    stone = [[-6.13, -2.5], [-4.9, -2.5], [-4.9, -1.0], [-6.13, -1.0]]
+    m = _gable_with_chimney([{"polygon": stone, "z": [-2.0, 5.5], "label": "stone chimney"}])
+    hole_plan = 1.23 * 1.5
+    assert m.roof_area() == pytest.approx(plain.roof_area() - hole_plan * SF, rel=1e-9)
+    south = [f for f in m.facets if f.plane[1] > 0][0]                # z rises toward the ridge (+y)
+    rings = [r for p in (south.poly.geoms if hasattr(south.poly, "geoms") else [south.poly]) for r in p.interiors]
+    assert len(rings) == 1 and Polygon(rings[0]).area == pytest.approx(hole_plan, rel=1e-9)
+    # the rake overhang outside the chase is still roof: no notch in the drip edge, eaves/rakes unchanged
+    e, e0 = by_kind(m), by_kind(plain)
+    for k in ("ridge", "eave", "rake", "valley", "hip"):
+        assert e[k] == pytest.approx(e0[k], rel=1e-9)
+    # the edges round the stone are chimney flashing: 2 horizontal (headwall) + 2 sloped (sidewall)
+    assert e["headwall"] == pytest.approx(2 * 1.23, rel=1e-9)
+    assert e["sidewall"] == pytest.approx(2 * 1.5 * SF, rel=1e-9)
+    # nothing of the roof is left inside the stone footprint; roof heights for the fit are unchanged
+    assert south.poly.intersection(Polygon(stone)).area == pytest.approx(0, abs=1e-9)
+    assert m.surface_z([(-5.5, -1.7)])[0] == pytest.approx(plain.surface_z([(-5.5, -1.7)])[0])
+    # serialised for Blender as a hole ring of the facet polygon
+    from propmodel.roofgeom import to_mesh_json
+    mj = to_mesh_json(m)
+    assert sum(len(p["holes"]) for f in mj["facets"] for p in f["polygons"]) == 1
+    assert mj["wings"][0]["penetrations"][0]["label"] == "stone chimney"
+
+
+def test_penetration_flashing_edges_are_tagged_with_their_solid():
+    # the headwall / sidewall pieces round the stone carry "WING:index" of the penetration (so the Blender side can
+    # dress exactly those edges as chimney flashing); roof-to-wall junctions elsewhere stay untagged
+    stone = [[-6.13, -2.5], [-4.9, -2.5], [-4.9, -1.0], [-6.13, -1.0]]
+    m = _gable_with_chimney([{"polygon": stone, "z": [-2.0, 5.5], "label": "stone chimney"}])
+    tagged = [e for e in m.edges if e.penetration]
+    assert {e.penetration for e in tagged} == {"A:0"}
+    assert {e.kind for e in tagged} == {"headwall", "sidewall"}
+    assert sum(e.length for e in tagged) == pytest.approx(2 * 1.23 + 2 * 1.5 * SF, rel=1e-9)
+    assert all(e.penetration is None for e in m.edges if e.kind not in ("headwall", "sidewall"))
+    from propmodel.roofgeom import to_mesh_json
+    mj = to_mesh_json(m)
+    assert sum(1 for e in mj["edges"] if e.get("penetration") == "A:0") == len(tagged) == 4
+    assert all("penetration" not in e for e in mj["edges"] if e["kind"] in ("eave", "rake", "ridge"))
+    # a lower roof meeting an upper wall (no penetration) gives untagged sidewall / headwall edges
+    hi = Wing("H", "gable", cx=0, cy=0, azimuth=90, length=10, width=8, eave_height=5.5, pitch=0.5,
+              eave_overhang=0.4, rake_overhang=0.3)
+    lo = Wing("L", "shed", cx=0, cy=-6, azimuth=270, length=10, width=4, eave_height=2.6, pitch=0.25,
+              eave_overhang=0.4, rake_overhang=0.3)
+    walls = [e for e in build([hi, lo]).edges if e.kind in ("headwall", "sidewall")]
+    assert sum(e.length for e in walls) > 10 and all(e.penetration is None for e in walls)
+
+
+def test_penetration_z_range_limits_the_cut():
+    stone = [[-6.13, -2.5], [-4.9, -2.5], [-4.9, -1.0], [-6.13, -1.0]]
+    plain = _gable_with_chimney(None)
+    # a solid entirely above the roof there (z 5.5..6.0 > roof 3.75-4.5) cuts nothing
+    above = _gable_with_chimney([{"polygon": stone, "z": [5.5, 6.0]}])
+    assert above.roof_area() == pytest.approx(plain.roof_area(), rel=1e-12)
+    # a solid topping out at z 4.0 cuts only where the roof is below 4.0 (y < -2 on the south slope)
+    low = _gable_with_chimney([{"polygon": stone, "z": [None, 4.0]}])
+    assert low.roof_area() == pytest.approx(plain.roof_area() - 1.23 * 0.5 * SF, rel=1e-9)
+    with pytest.raises(ValueError):
+        _gable_with_chimney([{"polygon": [[0, 0], [1, 0]]}])
 
 
 def test_collinear_wings_merge_into_single_facets():
