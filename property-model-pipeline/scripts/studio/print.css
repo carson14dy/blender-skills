@@ -1,0 +1,44 @@
+/* Print layout for the studio measurement report (report.html -> report.pdf, US letter).
+   package_house.py embeds this file in report.html as <style media="print">; report_pdf.js prints with it.
+   Page order follows report.html: cover (label, date, thumbnail, card numbers), one roof diagram per page,
+   the measurement report, then every drop-in section (records, hazards, confidence ...) on a new page. */
+@page { size: letter; margin: 0.55in 0.55in 0.65in; }
+:root, :root[data-theme="dark"] {
+  --bg: #ffffff; --panel: #ffffff; --panel-2: #f4f6f8; --line: #c9d0d8; --fg: #10151d; --fg-dim: #4d5866;
+  --accent: #1d5fbf; --caution: #9a5408; --ok: #1a6e47; color-scheme: light;
+}
+html, body { background: #fff !important; color: var(--fg); }
+body { font-size: 10.5pt; line-height: 1.4; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+main.wrap { max-width: none; padding: 0; display: block; }
+a { color: inherit; text-decoration: none; }
+.noprint, .screen-only { display: none !important; }
+
+.cover { break-after: page; display: block; min-height: 9.2in; border: 0; padding: 0; border-radius: 0; background: none; }
+.cover h1 { font-size: 26pt; margin: 0.1in 0 0.05in; }
+.cover .eyebrow { font-size: 9pt; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-dim); margin: 0; }
+.cover .meta { margin: 0.04in 0 0.18in; color: var(--fg-dim); }
+.cover-img { display: block; width: 100%; max-height: 4.4in; object-fit: cover; border: 1px solid var(--line);
+             border-radius: 6px; margin: 0 0 0.2in; }
+.cover table.kpi { width: 100%; font-size: 11pt; }
+.cover table.kpi td:first-child { width: 38%; color: var(--fg-dim); }
+.cover .note { margin-top: 0.15in; }
+
+section.part { break-before: page; background: none; border: 0; padding: 0; display: block; }
+section.part h2 { font-size: 15pt; letter-spacing: 0; text-transform: none; color: var(--fg); margin: 0 0 0.12in; }
+section.part h3 { font-size: 12pt; margin: 0.18in 0 0.06in; }
+section.part p, section.part ul, section.part ol { margin: 0 0 0.08in; }
+h1, h2, h3, h4 { break-after: avoid; }
+
+figure.diagram { break-inside: avoid; margin: 0; display: block; text-align: center; }
+figure.diagram + figure.diagram { break-before: page; }          /* one diagram per page */
+figure.diagram img { width: 100%; max-height: 8.6in; object-fit: contain; border: 0; background: #fff; }
+figure.diagram figcaption { font-size: 10pt; margin-top: 0.06in; color: var(--fg-dim); }
+
+.tw { overflow: visible !important; }
+table { border-collapse: collapse; width: 100%; font-size: 9.5pt; break-inside: auto; }
+thead { display: table-header-group; }
+tr, img, pre, blockquote { break-inside: avoid; }
+th, td { padding: 3pt 5pt; border-bottom: 0.5pt solid var(--line); vertical-align: top; }
+th { font-size: 8.5pt; }
+pre, code { white-space: pre-wrap; word-break: break-word; font-size: 9pt; }
+.caveat, .warn { border-left: 2pt solid var(--caution); padding: 4pt 8pt; background: var(--panel-2); }

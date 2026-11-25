@@ -17,6 +17,14 @@
     pm.py camera-match PROJECT --image IMG --pairs pairs.json   resect camera, save to cameras.json
     pm.py align --pairs pairs.json      similarity transform (scale+rot+trans) for photogrammetry / AI meshes
     pm.py blender PROJECT [--blender /path/to/blender] [--glb] [--render]
+    pm.py obs PROJECT import-multipatch [FILE.json] [--profile NAME | --layer URL --fields F1,F2]   city LOD2 roof
+    pm.py resid PROJECT                 per-plane LiDAR residuals of the fitted model -> data/resid.json, resid.png
+    pm.py edges PROJECT [--write-obs]   measured drip edges (outermost on-plane returns) -> data/edges.json
+    pm.py fit PROJECT --accept --sigma-free pitches,eave_heights [--use-edges]
+    pm.py features PROJECT --profile NAME   city paving / sidewalks / parcels / hydrants -> features.json
+
+Every ArcGIS query names its fields (``outFields=*`` is refused). PROPMODEL_OFFLINE=1 = cache-only run:
+nothing goes to the network and a cache miss fails fast.
 
 All internal values are metres in a local East-North-Up frame (see propmodel/geo.py).
 """
@@ -109,6 +117,10 @@ def cmd_init(a):
     site.update({"address": a.address or geo.get("matched", ""), "geocode": geo,
                  "origin": {"lat": geo["lat"], "lon": geo["lon"], "h": 0.0},
                  "parcel_url": a.parcel_url or site.get("parcel_url")})
+    if a.parcel_fields:
+        site["parcel_fields"] = _field_list(a.parcel_fields)
+    if site.get("parcel_url") and not site.get("parcel_fields"):
+        sys.exit("--parcel-url needs --parcel-fields F1,F2,... (explicit fields; outFields=* is never sent)")
     save(a.project, "site.json", site)
     print(json.dumps(site, indent=2))
 
@@ -126,6 +138,52 @@ def cmd_gather(a):
     print(json.dumps({"photos": len(m["photos"]), "pages": [(p["site"], p.get("images_found"), p.get("facts")) for p in m["pages"]]}, indent=1))
 
 
+def _field_list(v):
+    from propmodel.features import check_fields
+    f = [x.strip() for x in v.split(",") if x.strip()] if isinstance(v, str) else list(v or [])
+    return check_fields(f)
+
+
+def _geojson_candidates(fc, name):
+    """GeoJSON FeatureCollection (lon/lat polygons) -> footprint candidates like sources.arcgis_footprints."""
+    out = []
+    for i, f in enumerate(fc.get("features", [])):
+        g = f.get("geometry") or {}
+        rings = [g["coordinates"][0]] if g.get("type") == "Polygon" else \
+            [p[0] for p in g.get("coordinates", [])] if g.get("type") == "MultiPolygon" else []
+        for ring in rings:
+            out.append({"source": name, "id": f"{name}/{f.get('id', i)}", "tags": f.get("properties") or {},
+                        "ring_lonlat": [list(p[:2]) for p in ring]})
+    return out
+
+
+def _city_footprints(a, lat, lon):
+    """Footprint candidates from the city layer (explicit fields; never outFields=*) or a local GeoJSON."""
+    from propmodel import sources
+    if a.footprint_geojson:
+        with open(a.footprint_geojson) as f:
+            return _geojson_candidates(json.load(f), a.footprint_name)
+    fields = _field_list(a.footprint_fields or "OBJECTID")
+    try:
+        got = sources.arcgis_footprints(a.footprint_layer, lat, lon, a.radius, CACHE, out_fields=fields,
+                                        where=a.footprint_where or "1=1")
+    except TypeError:
+        # sources.py without the out_fields contract: query here with the explicit list instead
+        from propmodel import features as FT
+        from propmodel.geo import LocalFrame as _LF
+        env = FT.envelope_lonlat(_LF(lat, lon), a.radius)
+        got = _geojson_candidates(FT.arcgis_query(a.footprint_layer, fields, CACHE, envelope=env,
+                                                  where=a.footprint_where or "1=1"), a.footprint_name)
+    out = []
+    for i, c in enumerate(got):
+        c = dict(c)
+        c["source"] = a.footprint_name
+        c["id"] = f"{a.footprint_name}/{str(c.get('id', i)).split('/')[-1]}"
+        c["tags"] = {k: v for k, v in (c.get("tags") or {}).items() if k in fields}
+        out.append(c)
+    return out
+
+
 def cmd_fetch(a):
     from shapely.geometry import Polygon
     from propmodel import sources
@@ -133,25 +191,29 @@ def cmd_fetch(a):
     lat, lon = site["geocode"]["lat"], site["geocode"]["lon"]
     f0 = LocalFrame(lat, lon)
     cands = []
-    try:
-        cands += sources.osm_buildings(lat, lon, a.radius, CACHE)
-    except Exception as e:
-        print("OSM footprints failed:", e)
+    if not a.no_osm:
+        try:
+            cands += sources.osm_buildings(lat, lon, a.radius, CACHE)
+        except Exception as e:  # noqa: BLE001
+            print("OSM footprints failed:", e)
     if not a.no_ms:
         try:
             cands += sources.ms_buildings(lat, lon, a.radius, CACHE)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             print("Microsoft footprints failed:", e)
-    if a.footprint_layer:
+    city = bool(a.footprint_layer or a.footprint_geojson)
+    if city:
         try:
-            cands += sources.arcgis_footprints(a.footprint_layer, lat, lon, a.radius, CACHE, a.footprint_name)
-        except Exception as e:
+            cands += _city_footprints(a, lat, lon)
+        except ValueError:
+            raise
+        except Exception as e:  # noqa: BLE001
             print(f"{a.footprint_name} footprints failed:", e)
     seed = (0.0, 0.0)
     if a.seed:
         seed = tuple(map(float, a.seed.split(",")))
     chosen = {}
-    srcs = ([a.footprint_name] if a.footprint_layer else []) + ["osm", "ms"]
+    srcs = ([a.footprint_name] if city else []) + ["osm", "ms"]
     for src in srcs:
         got = sources.pick_building([c for c in cands if c["source"] == src], f0, seed)
         if got and got[1].distance(__import__("shapely").geometry.Point(seed)) < a.max_dist:
@@ -161,7 +223,11 @@ def cmd_fetch(a):
         ref = next(chosen[k] for k in srcs if k in chosen)[1].centroid
         clat, clon, _ = f0.to_geodetic(ref.x, ref.y, 0)
         site["origin"] = {"lat": float(clat), "lon": float(clon), "h": 0.0}
-    elev = sources.dem_elevation(site["origin"]["lat"], site["origin"]["lon"], CACHE)
+    try:
+        elev = sources.dem_elevation(site["origin"]["lat"], site["origin"]["lon"], CACHE)
+    except Exception as e:  # noqa: BLE001
+        print("DEM elevation failed:", e)
+        elev = None
     if elev is not None:
         site["origin"]["h"] = elev
         site["ground_elevation_dem"] = elev
@@ -178,41 +244,62 @@ def cmd_fetch(a):
             ring = ring[:-1]
         poly = Polygon(ring)
         fps["chosen"][src] = {"id": c["id"], "tags": c["tags"], "ring": ring, "area_m2": poly.area,
-                              "perimeter_m": poly.length}
-        authoritative = a.footprint_layer and src == a.footprint_name
+                              "perimeter_m": poly.length,
+                              "which": a.footprint_which if (city and src == a.footprint_name) else "roof_outline"}
+        authoritative = city and src == a.footprint_name
         obs.append({"target": "outline", "which": a.footprint_which if authoritative else "roof_outline", "polygon": ring,
                     "sigma": a.footprint_sigma if authoritative else SIGMA[f"{src}_outline"], "shift": src,
                     "source": f"auto:{src} footprint",
-                    "kind": "footprint", "note": "imagery-traced footprints follow the roof edge (incl. overhang)"})
+                    "kind": "footprint", "note": ("city layer, traces the " + ("drip edge" if a.footprint_which == "roof_outline"
+                                                                               else "walls")) if authoritative else
+                    "imagery-traced footprints follow the roof edge (incl. overhang)"})
         print(f"{src}: {c['id']} area {poly.area:.1f} m2 ({U.sqft(poly.area):.0f} ft2) perimeter {poly.length:.1f} m")
     save(a.project, "data/footprints.json", fps)
-    if a.footprint_layer:
+    if city:
         set_auto_obs(a.project, f"auto:{a.footprint_name}", [o for o in obs if o["source"] == f"auto:{a.footprint_name} footprint"])
     set_auto_obs(a.project, "auto:osm", [o for o in obs if "osm" in o["source"]])
     set_auto_obs(a.project, "auto:ms", [o for o in obs if "ms" in o["source"]])
-    try:
-        meta, errs = None, []
-        for prov in [a.imagery] + [p for p in sources.IMAGERY if p != a.imagery]:   # fall back when a service is down
-            try:
-                meta = sources.ortho_image(frame, a.half, P(a.project, "data/ortho.png"), CACHE, prov)
-                break
-            except Exception as e:  # noqa: BLE001
-                errs.append(f"{prov}: {e}")
-        if meta is None:
-            raise RuntimeError("; ".join(errs))
-        print("ortho:", meta["provider"], f"{meta['m_per_px']:.3f} m/px", *(f"(after {e.split(':')[0]} failed)" for e in errs))
-    except Exception as e:
-        print("orthophoto failed:", e)
-    if site.get("parcel_url"):
+    if not a.no_ortho:
         try:
-            feats = sources.arcgis_parcel(site["parcel_url"], site["origin"]["lat"], site["origin"]["lon"], CACHE)
+            meta, errs = None, []
+            provs = [a.imagery] + [p for p in sources.IMAGERY if p != a.imagery]
+            if a.ortho_url:
+                u = a.ortho_url.rstrip("/")
+                kind = "imageserver" if "/ImageServer" in u else "mapserver"
+                if not u.endswith(("/export", "/exportImage")):
+                    u += "/exportImage" if kind == "imageserver" else "/export"
+                sources.IMAGERY["custom"] = {"url": u, "kind": kind, "attribution": a.ortho_attribution or "orthophoto service"}
+                provs = ["custom"] + provs
+            for prov in provs:   # fall back when a service is down
+                try:
+                    meta = sources.ortho_image(frame, a.half, P(a.project, "data/ortho.png"), CACHE, prov)
+                    break
+                except Exception as e:  # noqa: BLE001
+                    errs.append(f"{prov}: {e}")
+            if meta is None:
+                raise RuntimeError("; ".join(errs))
+            print("ortho:", meta["provider"], f"{meta['m_per_px']:.3f} m/px", *(f"(after {e.split(':')[0]} failed)" for e in errs))
+        except Exception as e:  # noqa: BLE001
+            print("orthophoto failed:", e)
+    if site.get("parcel_url"):
+        fields = _field_list(a.parcel_fields) if a.parcel_fields else site.get("parcel_fields")
+        if not fields:
+            sys.exit("parcel query needs --parcel-fields F1,F2,... (explicit fields; outFields=* is never sent)")
+        try:
+            import inspect
+            par = inspect.signature(sources.arcgis_parcel).parameters.get("out_fields")
+            arg = ",".join(fields) if (par is not None and par.default == "*") else fields   # pre-contract sources.py
+            feats = sources.arcgis_parcel(site["parcel_url"], site["origin"]["lat"], site["origin"]["lon"], CACHE, arg)
             for ft in feats:
+                ft["properties"] = {k: v for k, v in (ft.get("properties") or {}).items() if k in fields}
                 g = ft.get("geometry") or {}
                 if g.get("type") == "Polygon":
                     ft["ring_local"] = frame.ring_from_lonlat(g["coordinates"][0])
             save(a.project, "data/parcel.json", feats)
             print(f"parcel: {len(feats)} feature(s); attributes saved to data/parcel.json")
-        except Exception as e:
+        except ValueError:
+            raise
+        except Exception as e:  # noqa: BLE001
             print("parcel query failed:", e)
     print("origin:", site["origin"])
 
@@ -229,11 +316,20 @@ def cmd_lidar(a):
     if not res:
         sys.exit("no USGS 3DEP EPT coverage here; use photogrammetry / imagery instead")
     print("3DEP datasets:", ", ".join(f"{r['name']}" for r in res))
-    pick = next((r for r in res if r["name"] == a.dataset), res[0])
+    pick = next((r for r in res if r["name"] == a.dataset), None)
+    if pick is None:
+        if a.dataset:
+            print(f"WARNING: dataset {a.dataset!r} does not cover this point; using {res[0]['name']}")
+        pick = res[0]
     e = ept.EPT(pick["url"], os.path.join(CACHE, "ept"))
     x, y = lonlat_to_mercator(frame.lon0, frame.lat0)
     s = a.half * mercator_scale(frame.lat0)
-    raw = e.read((x - s, y - s, x + s, y + s), progress=lambda i, n, k: print(f"  node {i + 1}/{n} {k}", end="\r"))
+    extra_names = [v.strip() for v in a.extra_dims.split(",") if v.strip()] if a.extra_dims else []
+    prog = lambda i, n, k: print(f"  node {i + 1}/{n} {k}", end="\r")  # noqa: E731
+    if extra_names:
+        raw, extra = e.read((x - s, y - s, x + s, y + s), progress=prog, extra=extra_names)
+    else:
+        raw, extra = e.read((x - s, y - s, x + s, y + s), progress=prog), None
     print(f"\n{len(raw)} points from {pick['name']}")
     loc = lidar.to_local(raw, frame)
     ground, ng = lidar.fit_ground(loc)
@@ -241,6 +337,12 @@ def cmd_lidar(a):
     fps = load(a.project, "data/footprints.json", {}).get("chosen", {})
     fp = unary_union([Polygon(v["ring"]) for v in fps.values()]) if fps else None
     walls = fp
+    # the mask is the footprint + 1.2 m (building_points): enough for a drip-edge outline ~1 m off the LiDAR, not for
+    # a WALL-LINE outline under deep eaves -> grow it by --mask-grow (auto: 1.3 m when a chosen outline traces walls)
+    grow = a.mask_grow if a.mask_grow is not None else (1.3 if any(v.get("which") == "footprint" for v in fps.values()) else 0.0)
+    if fp is not None and grow > 0:
+        fp = fp.buffer(grow, join_style="mitre")
+        print(f"footprint mask grown by {grow:.2f} m (wall-line outline)")
     if a.footprint_file:
         # an outside planimetric outline (e.g. city Ecopia) in the site frame, moved by its registration shift
         F = json.load(open(a.footprint_file))
@@ -327,7 +429,18 @@ def cmd_lidar(a):
         for f in flats:
             c = np.mean(np.array(f["outline"]), axis=0)
             print(f"  flat surface z {f['z']:.2f} m, {f['area_m2']:.1f} m2 ({f['area_m2'] / 0.0929:.0f} ft2), n={f['n']} at ({c[0]:.1f}, {c[1]:.1f})")
+    flight = {}
+    if extra is not None:
+        np.save(P(a.project, "data/lidar_extra.npy"), extra)        # same row order as data/lidar_points.npy
+        gcol = next((i for i, nm in enumerate(extra_names) if nm.lower().replace("_", "") == "gpstime"), None)
+        if gcol is not None:
+            tt = extra[:, gcol]
+            on_roof = shapely.contains_xy(roof_outline, loc[:, 0], loc[:, 1])
+            flight = lidar.flight_dates(tt[on_roof] if on_roof.sum() >= 20 else tt, getattr(e, "gps_time_type", None))
+            print(f"flight date {flight.get('flight_date') or 'unknown'} ({flight.get('gps_time')})"
+                  + (" LEAF-ON: trees may hide eaves" if flight.get("leaf_on") else ""))
     out = {"dataset": pick["name"], "year": a.year or pick.get("year"), "points": int(len(raw)),
+           "extra_dims": extra_names, **flight,
            "density_pts_m2": dens, "spacing_m": spacing, "ground_plane": ground, "ground_points": ng,
            "ground_z_at_origin": ground[2], "datum_m": datum,
            "ground_local": [ground[0], ground[1], 0.0], "building_points": int(len(xyz)),
@@ -445,6 +558,8 @@ def cmd_obs(a):
         obs.extend(new)
         save(a.project, "observations.json", obs)
         print(f"imported {len(new)} geo observations (datum {datum:.3f} m)")
+    elif a.action == "import-multipatch":
+        _import_multipatch(a)
     elif a.action == "remove":
         keep = [o for o in obs if not (a.source and str(o.get("source", "")).startswith(a.source))]
         save(a.project, "observations.json", keep)
@@ -602,6 +717,10 @@ def _finish(project, model, fit=None):
         f.write(md)
     rj = report.report_json(model, fit, site)
     rj["wings"] = [{"id": w.id, "type": w.type, "label": w.label} for w in model.wings]
+    rj["waste_pct_suggested"] = report.suggested_waste(model)[0]
+    if fit and fit.get("sigma_free"):
+        rj["sigma_note"] = (f"sigma = max of the main fit ({len(fit.get('free', []))} free parameters) and a reduced set "
+                            f"({', '.join(fit['sigma_free'])})")
     if spec.get("caveats"):
         rj["caveats"] = list(spec["caveats"])
     save(project, "report.json", rj)
@@ -633,13 +752,89 @@ def _plot(project, model=None):
     print("wrote", P(project, "overview.png"))
 
 
+SIGMA_GROUPS = {"pitches": ("pitch", "pitch_b", "end_pitch", "upper_pitch"),
+                "eave_heights": ("eave_height", "eave_height_b"),
+                "overhangs": ("eave_overhang", "eave_overhang_b", "rake_overhang", "shed_high_overhang"),
+                "sizes": ("length", "width"), "positions": ("cx", "cy", "azimuth")}
+ALWAYS = {"pitch", "eave_height", "eave_overhang", "rake_overhang", "length", "width", "cx", "cy", "azimuth"}
+
+
+def expand_free(spec, tokens):
+    """--sigma-free tokens -> wing parameter names: group words (pitches, eave_heights, overhangs, sizes, positions),
+    bare fields (pitch) for every wing, or explicit names (M.pitch). Optional fields (pitch_b, eave_height_b, ...)
+    only where the wing sets them; flat roofs get no pitch."""
+    names = []
+    for tok in [t.strip() for t in tokens if t.strip()]:
+        if "." in tok:
+            names.append(tok)
+            continue
+        flds = SIGMA_GROUPS.get(tok, (tok,))
+        for w in spec.get("wings", []):
+            for f in flds:
+                if f in ("pitch", "pitch_b", "end_pitch", "upper_pitch") and w.get("type") == "flat":
+                    continue
+                if f in ("end_pitch",) and w.get("type") not in ("hip", "pyramid", "mansard"):
+                    continue
+                if f == "rake_overhang" and w.get("type") in ("hip", "pyramid", "mansard", "flat"):
+                    continue
+                if f in ALWAYS or w.get(f) is not None:
+                    names.append(f"{w['id']}.{f}")
+    return list(dict.fromkeys(names))
+
+
+def apply_edges(spec, edges_json):
+    """Measured overhangs (pm.py edges) -> free parameters with a weak prior centred on the measurement (it replaces
+    the author's overhang prior: where the wall line is known, the overhang is measured, not assumed)."""
+    spec = dict(spec)
+    free, priors, notes = list(spec.get("free", [])), dict(spec.get("priors") or {}), []
+    for name, mo in (edges_json.get("overhangs") or {}).items():
+        wid = name.split(".", 1)[0]
+        w = next((x for x in spec["wings"] if x["id"] == wid), None)
+        if w is None or w.get("outline"):
+            continue
+        if name not in free:
+            free.append(name)
+        old = priors.get(name)
+        priors[name] = {"value": mo["value"], "sigma": round(max(0.25, 2 * float(mo["sigma"])), 3)}
+        notes.append(f"{name}: measured {mo['value']:.2f} m ({', '.join(mo.get('from', []))})"
+                     + (f", replaces the prior {old['value']} +/- {old['sigma']}" if old else ""))
+    spec["free"], spec["priors"] = free, priors
+    return spec, notes
+
+
 def cmd_fit(a):
-    from propmodel import fusion, roofgeom
+    from propmodel import fusion
     spec = load(a.project, "spec.json")
     obs = load(a.project, "observations.json", [])
     if a.exclude:
         obs = [o for o in obs if not any(str(o.get("source", "")).startswith(x) for x in a.exclude)]
-    res = fusion.fit(spec, obs, robust=not a.no_robust, verbose=True)
+    fit_spec, notes = dict(spec), []
+    if a.use_edges:
+        ed = load(a.project, "data/edges.json")
+        if ed is None:
+            sys.exit("--use-edges: run `pm.py edges PROJECT --write-obs` first")
+        fit_spec, notes = apply_edges(spec, ed)
+        for n_ in notes:
+            print("measured overhang:", n_)
+    res = fusion.fit(fit_spec, obs, robust=not a.no_robust, verbose=True)
+    res["free"] = list(fit_spec.get("free", []))
+    if notes:
+        res["edges_notes"] = notes
+    if a.sigma_free:
+        # sigma from a reduced free set (the geometry stays this fit's): never zero when spec.free is empty,
+        # and the larger of the two where both exist (a reduced set alone would ignore the outline uncertainty)
+        names = expand_free(fit_spec, a.sigma_free.split(","))
+        excl = res.get("excluded", [])
+        use = [o for o in obs if not any(o is x for x in excl)]
+        sspec = dict(fit_spec, wings=res["wings"], free=names)
+        rs = fusion.fit(sspec, use, robust=not a.no_robust, verbose=False, snoop=False)
+        main = res.get("measurement_sigma", {})
+        red = rs.get("measurement_sigma", {})
+        res["measurement_sigma_main"], res["measurement_sigma_reduced"] = main, red
+        res["measurement_sigma"] = {k: max(main.get(k, 0.0), red.get(k, 0.0)) for k in set(main) | set(red)}
+        res["sigma_free"] = names
+        res["params_sigma_free"] = rs.get("params", {})
+        print(f"sigma: max of the main fit ({len(res['free'])} free) and the reduced set ({len(names)} free: {', '.join(names)})")
     save(a.project, "fit.json", res)
     fitted = dict(spec)
     fitted["wings"] = res["wings"]
@@ -648,6 +843,166 @@ def cmd_fit(a):
     _finish(a.project, model, res)
     if a.accept:
         save(a.project, "spec.json", fitted)
+
+
+def cmd_resid(a):
+    from propmodel import confidence, roofgeom
+    spec = load(a.project, a.spec) if a.spec else (load(a.project, "spec_fitted.json") or load(a.project, "spec.json"))
+    if not spec:
+        sys.exit("resid: no spec_fitted.json / spec.json")
+    model = roofgeom.build([roofgeom.Wing.from_dict(w) for w in spec["wings"]])
+    roof = np.load(P(a.project, "data/lidar_roof.npy"))
+    li = load(a.project, "data/lidar.json", {}) or {}
+    out = confidence.plane_residuals(model, roof, li.get("planes", []))
+    save(a.project, "data/resid.json", out)
+    print(f"  {'plane':8s} {'n':>5s} {'out':>5s} {'median':>7s} {'rms':>6s} {'p95|d|':>7s} {'area':>6s} assigned")
+    for r in out["planes"]:
+        print(f"  {r['plane']:8s} {r['n']:5d} {r['outside']:5d} {r['median_m'] if r['median_m'] is not None else float('nan'):+7.3f} "
+              f"{r['rms_m'] if r['rms_m'] is not None else float('nan'):6.3f} {r['p95_abs_m'] if r['p95_abs_m'] is not None else float('nan'):7.2f} "
+              f"{r['area_m2'] or 0:6.1f} {r.get('assigned', '')}")
+    print(f"covered RMS {out['covered_rms_m']} m; {100 * (out['outside_frac'] or 0):.1f} % of plane returns outside the model;"
+          f" unassigned planes >= 8 m2: {out['unassigned_big_planes'] or 'none'}")
+    if not a.no_png and confidence.resid_png(model, roof, P(a.project, "resid.png")):
+        print("wrote", P(a.project, "resid.png"))
+
+
+def cmd_edges(a):
+    from shapely.geometry import Polygon  # noqa: F401
+    from propmodel import edges as E
+    mj = load(a.project, "model.json")
+    if not mj:
+        sys.exit("edges: no model.json (run fit first)")
+    pts = np.load(P(a.project, "data/lidar_points.npy"))
+    datum = model_datum(a.project)
+    xyz = np.column_stack([pts[:, 0], pts[:, 1], pts[:, 2] - datum])
+    allx = np.array([c[0] for f in mj["facets"] for q in f["polygons"] for c in q["outer"]])
+    ally = np.array([c[1] for f in mj["facets"] for q in f["polygons"] for c in q["outer"]])
+    near = (xyz[:, 0] > allx.min() - 6) & (xyz[:, 0] < allx.max() + 6) & (xyz[:, 1] > ally.min() - 6) & (xyz[:, 1] < ally.max() + 6)
+    res = E.drip_edges(mj, xyz[near], step=a.step, strip=a.strip, plane_tol=a.plane_tol)
+    obs = load(a.project, "observations.json", []) or []
+    fit = load(a.project, "fit.json", {}) or {}
+    nu = fit.get("nuisance") or {}
+    for o in obs:   # a city outline that traces the WALLS: drip edge - wall line = measured overhang
+        if o.get("target") == "outline" and o.get("which") == "footprint" and o.get("polygon") and not o.get("disabled"):
+            sh = o.get("shift")
+            dx, dy = (nu.get(f"shift.{sh}.dx", 0.0), nu.get(f"shift.{sh}.dy", 0.0)) if sh else (0.0, 0.0)
+            E.city_wall_overhangs(res, [[x + dx, y + dy] for x, y in o["polygon"]])
+            res["wall_line_source"] = o.get("source")
+            break
+    res["overhangs"] = E.overhang_parameters(res)
+    res["datum_m"] = datum
+    save(a.project, "data/edges.json", res)
+    print(E.table(res))
+    for k, v in res["overhangs"].items():
+        print(f"measured overhang {k}: {v['value']:.2f} +/- {v['sigma']:.2f} m over {v['n_edges']} edge(s) ({', '.join(v['from'])})")
+    if a.write_obs:
+        new = E.edge_observations(res)
+        set_auto_obs(a.project, "auto:edges", new)
+        obs = load(a.project, "observations.json", []) or []
+        n_off = 0
+        for o in obs:   # the LiDAR hull outline is superseded by the measured drip edges
+            if o.get("target") == "outline" and o.get("kind") == "lidar" and str(o.get("source", "")).startswith("auto:lidar"):
+                o["disabled"], o["disabled_by"] = bool(new), "pm.py edges (measured drip edges)"
+                n_off += bool(new)
+        save(a.project, "observations.json", obs)
+        print(f"wrote {len(new)} drip-edge observations (auto:edges); LiDAR hull outline {'disabled' if n_off else 'kept'}")
+
+
+def cmd_features(a):
+    from propmodel import features as FT
+    prof = FT.load_profile(a.profile) if a.profile else {}
+    frame = frame_of(a.project)
+    fit = load(a.project, "fit.json", {}) or {}
+    shift = FT.city_shift(fit, a.shift_name)
+    env = FT.envelope_lonlat(frame, a.half + 10)
+    cols, used = {}, {}
+    for kind in ("impervious", "sidewalk", "parcels", "hydrants", "curbs"):
+        lay = FT.profile_layer(prof, kind)
+        if not lay:
+            continue
+        try:
+            if lay.get("geojson"):
+                with open(FT.resolve_path(prof, lay["geojson"])) as f:
+                    cols[kind] = json.load(f)
+            elif FT.layer_url(lay):
+                cols[kind] = FT.arcgis_query(FT.layer_url(lay), FT.layer_fields(lay), CACHE, envelope=env,
+                                             where=lay.get("where") or "1=1")
+            used[kind] = FT.layer_url(lay) or lay.get("geojson")
+        except ValueError:
+            raise
+        except Exception as e:  # noqa: BLE001
+            print(f"{kind} layer failed: {e}")
+    imp = FT.profile_layer(prof, "impervious") or {}
+    side = FT.profile_layer(prof, "sidewalk") or {}
+    keep = {"impervious": [imp.get("use_field", "SurfaceUse"), imp.get("type_field", "SurfaceType")],
+            "sidewalk": [side["width_field"]] if side.get("width_field") else []}
+    feats = FT.features_from_geojson(cols, frame, shift, half=a.half, keep_props=keep,
+                                     use_field=imp.get("use_field", "SurfaceUse"),
+                                     drop_uses=tuple(imp.get("drop_uses", FT.DROP_USES)))
+    feats["_meta"] = {"shift_applied": list(shift), "shift_source": f"fit.json shift.{a.shift_name}",
+                      "layers": used, "half_m": a.half}
+    out = a.out or P(a.project, "features.json")
+    with open(out, "w") as f:
+        json.dump(feats, f)
+    print(f"features: " + ", ".join(f"{k} {len(v)}" for k, v in feats.items() if k != "_meta")
+          + f"; city shift ({shift[0]:+.2f}, {shift[1]:+.2f}) m applied -> {out}")
+
+
+def _import_multipatch(a):
+    from propmodel import features as FT, multipatch as MP
+    frame = frame_of(a.project)
+    datum = model_datum(a.project)
+    prof = FT.load_profile(a.profile) if a.profile else {}
+    lay = FT.profile_layer(prof, "lod2") or {}
+    url = a.layer or FT.layer_url(lay)
+    z_unit = MP.Z_UNITS[(a.z_unit or lay.get("z_unit") or "m").lower()]
+    if a.file:
+        with open(a.file) as f:
+            d = json.load(f)
+        source = a.source or f"city LOD2 file {os.path.basename(a.file)}"
+    elif url:
+        fields = _field_list(a.fields) if a.fields else FT.layer_fields(lay)
+        d = FT.arcgis_query(url, fields, CACHE, envelope=FT.envelope_lonlat(frame, a.radius), f="json",
+                            where=lay.get("where") or "1=1", extra={"returnZ": "true"})
+        source = a.source or f"city LOD2 {lay.get('name') or url.rstrip('/').split('/services/')[-1]}"
+    else:
+        sys.exit("import-multipatch: give FILE.json, --layer URL or a --profile with a lod2 layer")
+    feats = d.get("features", [])
+    sr = (d.get("spatialReference") or {}).get("wkid", 4326)
+    lonlat = sr in (4326, 4269, None)
+    if not lonlat:
+        sys.exit(f"import-multipatch: geometry in wkid {sr}; query with outSR=4326 (the default here)")
+    allfaces = []
+    for ft in feats:
+        parts = MP.geometry_parts(ft.get("geometry"))
+        faces = MP.faces_from_parts(parts, atol=1e-9 if lonlat else 1e-3)
+        faces = MP.classify(MP.to_local(faces, frame, z_unit=z_unit, datum=datum, lonlat=lonlat))
+        allfaces.append(faces)
+    k, dist = MP.pick_building(allfaces)
+    if k is None or dist > 10:
+        sys.exit(f"import-multipatch: no LOD2 building at the site ({len(feats)} feature(s))")
+    faces = allfaces[k]
+    roof = np.load(P(a.project, "data/lidar_roof.npy"))
+    reg = MP.register(faces, roof[roof[:, 3] >= 0, :3])
+    li = load(a.project, "data/lidar.json", {}) or {}
+    summ = MP.summary(faces, li.get("planes"), shift=(reg["dx"], reg["dy"]))
+    pts = MP.sample_roof(faces, max_points=a.max_points)
+    pts[:, 0] += reg["dx"]; pts[:, 1] += reg["dy"]
+    attrs = {kk: v for kk, v in ((feats[k].get("attributes") or feats[k].get("properties") or {}).items())}
+    out = {"source": source, "feature": attrs, "registration": reg, "summary": summ, "z_unit": z_unit, "datum_m": datum,
+           "faces": MP.local_faces_json(faces)}
+    save(a.project, "data/lod2.json", out)
+    ob = {"target": "roof_z", "points": np.round(pts, 3).tolist(), "sigma": float(a.sigma) if a.sigma else 0.20,
+          "outside_sigma": 0.5,
+          "dz_param": f"shift.{a.shift_source}.dz", "source": f"auto:{a.shift_source} {source}", "kind": "lod2",
+          "note": f"{len(pts)} samples inside the roof faces (0.35 m inset), horizontally registered to the LiDAR by "
+                  f"({reg['dx']:+.2f}, {reg['dy']:+.2f}) m; low weight: a check on form and pitch"}
+    set_auto_obs(a.project, f"auto:{a.shift_source}", [ob] if len(pts) else [])
+    print(f"LOD2: {len(MP.roof_faces(faces))} roof faces, {summ['roof_area_m2']:.1f} m2 sloped; registration "
+          f"({reg['dx']:+.2f}, {reg['dy']:+.2f}, {reg['dz']:+.2f}) m, robust SD {reg['robust_sd_m']} m; {len(pts)} roof_z samples")
+    for fr in summ["faces"]:
+        if fr.get("pitch_diff") is not None:
+            print(f"  face {fr['face']}: {fr['pitch']:.2f}/12 vs LiDAR {fr['lidar_plane']} {fr['pitch_lidar']:.2f}/12 ({fr['pitch_diff']:+.2f})")
 
 
 def cmd_build(a):
@@ -780,7 +1135,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sp = ap.add_subparsers(dest="cmd", required=True)
     s = sp.add_parser("init"); s.add_argument("project"); s.add_argument("--address"); s.add_argument("--latlon")
-    s.add_argument("--parcel-url", help="ArcGIS REST parcel layer URL (…/FeatureServer/0)"); s.set_defaults(fn=cmd_init)
+    s.add_argument("--parcel-url", help="ArcGIS REST parcel layer URL (…/FeatureServer/0)")
+    s.add_argument("--parcel-fields", help="explicit attribute list for --parcel-url (required with it)"); s.set_defaults(fn=cmd_init)
     s = sp.add_parser("gather"); s.add_argument("project"); s.add_argument("--address"); s.add_argument("--max-photos", type=int, default=120)
     s.set_defaults(fn=cmd_gather)
     s = sp.add_parser("fetch"); s.add_argument("project"); s.add_argument("--radius", type=float, default=60)
@@ -792,6 +1148,14 @@ def main():
     s.add_argument("--footprint-name", default="city"); s.add_argument("--footprint-sigma", type=float, default=0.25)
     s.add_argument("--footprint-which", default="footprint", choices=["footprint", "roof_outline"],
                    help="does that layer trace walls (footprint) or drip edges (roof_outline)?")
+    s.add_argument("--footprint-fields", help="explicit attribute list for the footprint layer (default OBJECTID)")
+    s.add_argument("--footprint-where", default="1=1", help="where clause, e.g. \"CateTitle='Building'\"")
+    s.add_argument("--footprint-geojson", help="local GeoJSON (lon/lat polygons) instead of --footprint-layer")
+    s.add_argument("--parcel-fields", help="explicit attribute list for site.json parcel_url")
+    s.add_argument("--no-osm", action="store_true", help="skip OpenStreetMap (Overpass mirrors can time out for minutes)")
+    s.add_argument("--no-ortho", action="store_true")
+    s.add_argument("--ortho-url", help="ArcGIS MapServer / ImageServer of a city orthophoto (tried first)")
+    s.add_argument("--ortho-attribution")
     s.set_defaults(fn=cmd_fetch)
     s = sp.add_parser("lidar"); s.add_argument("project"); s.add_argument("--dataset")
     s.add_argument("--ground-mode", default="plane", choices=["plane", "surface"],
@@ -799,6 +1163,8 @@ def main():
     s.add_argument("--footprint-file", help="json with ring_enu outline(s) in the site frame (e.g. city planimetrics)")
     s.add_argument("--footprint-key"); s.add_argument("--footprint-shift", help="dx,dy registration shift (m)")
     s.add_argument("--footprint-buffer", type=float, default=2.5)
+    s.add_argument("--mask-grow", type=float, help="extra growth of the footprint mask (m); default 1.3 for a wall-line "
+                   "footprint (fetch --footprint-which footprint), else 0")
     s.add_argument("--min-hag", type=float, default=1.5)
     s.add_argument("--min-hag-inside", type=float, default=0.4, help="surface mode: min height inside the (grown) walls")
     s.add_argument("--walls-grow", type=float, default=1.0, help="surface mode: grow the walls by this for the no-ground mask")
@@ -811,14 +1177,33 @@ def main():
     s.add_argument("--min-pts", type=int, default=25); s.add_argument("--max-obs-pts", type=int, default=600)
     s.add_argument("--seed-only", action="store_true", help="ignore footprints; take the blob at the origin")
     s.add_argument("--keep-multi-returns", action="store_true", help="keep non-last returns (default drops them: tree canopy)")
+    s.add_argument("--extra-dims", help="extra LAS dimensions, e.g. GpsTime,Intensity -> data/lidar_extra.npy; "
+                   "GpsTime also gives the flight date in lidar.json")
     s.set_defaults(fn=cmd_lidar)
     s = sp.add_parser("suggest"); s.add_argument("project"); s.add_argument("--force", action="store_true"); s.set_defaults(fn=cmd_suggest)
-    s = sp.add_parser("obs"); s.add_argument("project"); s.add_argument("action", choices=["add", "import", "import-geo", "list", "remove"])
+    s = sp.add_parser("obs"); s.add_argument("project")
+    s.add_argument("action", choices=["add", "import", "import-geo", "import-multipatch", "list", "remove"])
     s.add_argument("file", nargs="?"); s.add_argument("--target"); s.add_argument("--value"); s.add_argument("--sigma")
-    s.add_argument("--source"); s.add_argument("--kind"); s.add_argument("--xy"); s.add_argument("--date"); s.set_defaults(fn=cmd_obs)
+    s.add_argument("--source"); s.add_argument("--kind"); s.add_argument("--xy"); s.add_argument("--date")
+    s.add_argument("--profile", help="import-multipatch: region profile with a lod2 layer")
+    s.add_argument("--layer", help="import-multipatch: ArcGIS multipatch layer URL"); s.add_argument("--fields")
+    s.add_argument("--z-unit", help="import-multipatch: m | ft | ftUS (default from the profile, else m)")
+    s.add_argument("--radius", type=float, default=30.0); s.add_argument("--max-points", type=int, default=300)
+    s.add_argument("--shift-source", default="city3d", help="import-multipatch: nuisance name (shift.<name>.dz)")
+    s.set_defaults(fn=cmd_obs)
     s = sp.add_parser("fit"); s.add_argument("project"); s.add_argument("--exclude", nargs="*", default=[])
     s.add_argument("--no-robust", action="store_true"); s.add_argument("--accept", action="store_true", help="write fitted wings back to spec.json")
+    s.add_argument("--sigma-free", help="sigma from a reduced free set too, e.g. pitches,eave_heights (or M.pitch,...)")
+    s.add_argument("--use-edges", action="store_true", help="free the overhangs pm.py edges measured (prior = the measurement)")
     s.set_defaults(fn=cmd_fit)
+    s = sp.add_parser("resid"); s.add_argument("project"); s.add_argument("--spec", help="default spec_fitted.json")
+    s.add_argument("--no-png", action="store_true"); s.set_defaults(fn=cmd_resid)
+    s = sp.add_parser("edges"); s.add_argument("project"); s.add_argument("--write-obs", action="store_true")
+    s.add_argument("--step", type=float, default=0.5); s.add_argument("--strip", type=float, default=1.0)
+    s.add_argument("--plane-tol", type=float, default=0.25); s.set_defaults(fn=cmd_edges)
+    s = sp.add_parser("features"); s.add_argument("project"); s.add_argument("--profile")
+    s.add_argument("--half", type=float, default=30.0); s.add_argument("--shift-name", default="city")
+    s.add_argument("--out", help="default PROJECT/features.json"); s.set_defaults(fn=cmd_features)
     s = sp.add_parser("build"); s.add_argument("project"); s.add_argument("--with-fit", action="store_true"); s.set_defaults(fn=cmd_build)
     s = sp.add_parser("plot"); s.add_argument("project"); s.set_defaults(fn=cmd_plot)
     s = sp.add_parser("photo-info"); s.add_argument("images", nargs="+"); s.add_argument("--surface-height", type=float)
@@ -837,6 +1222,9 @@ def main():
     s.add_argument("--plain-ground", action="store_true", help="neutral grade plane instead of the orthophoto (keeps trees out)")
     s.set_defaults(fn=cmd_blender)
     a = ap.parse_args()
+    from propmodel import ept
+    if ept.install_offline_guard():
+        print("offline: PROPMODEL_OFFLINE=1, answers from PROPMODEL_CACHE only")
     a.fn(a)
 
 

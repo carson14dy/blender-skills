@@ -21,6 +21,13 @@ Observation schema (JSON), one dict per observation::
     {"target": "roof_z", "points": [[x, y, z], ...], "sigma": 0.12, "source": "3DEP"}
     {"target": "outline", "which": "roof_outline", "polygon": [[x, y], ...],
      "sigma": 0.4, "source": "MS footprints", "shift": "msfp"}
+    {"target": "outline", "which": "roof_outline", "segments": [[[x0, y0], [x1, y1]], ...],
+     "sigma": 0.05, "source": "auto:edges ...", "kind": "lidar_drip"}   # measured pieces of the outline only
+
+An observation with ``"disabled": true`` stays in observations.json but is not used by the fit
+(e.g. the LiDAR hull outline once ``pm.py edges`` has measured the drip edges). A ``roof_z`` row
+with ``"dz_param": "shift.<name>.dz"`` gets that vertical offset as a nuisance parameter
+automatically (weak 2 m prior, like the horizontal outline shifts).
 
 ``target`` is either a measurement key from
 :meth:`propmodel.roofgeom.BuildingModel.measurements` (``roof.area``,
@@ -261,6 +268,22 @@ def _outline_samples(poly_xy, spacing=0.5):
     return np.array([ring.interpolate(i / n, normalized=True).coords[0] for i in range(n)])
 
 
+def _segment_samples(segments, spacing=0.5):
+    """Samples along open outline pieces (measured edges): interval midpoints, >= 2 per segment."""
+    out = []
+    for seg in segments:
+        a, b = np.asarray(seg[0], float)[:2], np.asarray(seg[-1], float)[:2]
+        n = max(int(np.linalg.norm(b - a) / spacing), 2)
+        t = (np.arange(n) + 0.5) / n
+        out.append(a + np.outer(t, b - a))
+    return np.vstack(out) if out else np.zeros((0, 2))
+
+
+def active(observations):
+    """Observations the fit uses (``"disabled": true`` rows are kept on file but skipped)."""
+    return [o for o in observations if not o.get("disabled")]
+
+
 class Predictor:
     def __init__(self, obs: List[Obs]):
         self.obs = obs
@@ -268,10 +291,16 @@ class Predictor:
         self._cur = None
         for o in obs:
             if o.target == "outline":
-                poly = o.raw["polygon"]
-                samp = _outline_samples(poly, o.raw.get("spacing", 0.5))
-                n_eff = max(4, len(poly) - 1)
-                self._cache[id(o)] = (samp, math.sqrt(len(samp) / n_eff))
+                if o.raw.get("segments"):
+                    # measured edge pieces: one degree of freedom (the edge offset) per segment, so the
+                    # observation's sigma is the 1-sigma of each measured edge position
+                    samp = _segment_samples(o.raw["segments"], o.raw.get("spacing", 0.5))
+                    n_eff = max(1, len(o.raw["segments"]))
+                else:
+                    poly = o.raw["polygon"]
+                    samp = _outline_samples(poly, o.raw.get("spacing", 0.5))
+                    n_eff = max(4, len(poly) - 1)
+                self._cache[id(o)] = (samp, math.sqrt(max(len(samp), 1) / n_eff))
 
     def residuals(self, wings, nuis, with_meta=False):
         """Return normalised residual vector (pred-obs)/sigma and per-row obs index."""
@@ -380,7 +409,7 @@ def _huber_w(r, k=HUBER_K):
 def _fit_once(spec: dict, observations: List[dict], max_iter=40, robust=True, verbose=False, mc_samples=48):
     """Fit wing parameters. ``spec`` = {"wings": [...], "free": [...], "ties": [...],
     "priors": {name: {"value": v, "sigma": s}}, "nuisance": [...]}."""
-    obs = prepare(observations)
+    obs = prepare(active(observations))
     nuis_names = list(spec.get("nuisance", []))
     for o in obs:
         if o.target == "outline" and o.raw.get("shift"):
@@ -388,6 +417,9 @@ def _fit_once(spec: dict, observations: List[dict], max_iter=40, robust=True, ve
                 nm = f"shift.{o.raw['shift']}.{ax}"
                 if nm not in nuis_names:
                     nuis_names.append(nm)
+        if o.target == "roof_z" and str(o.raw.get("dz_param", "")).startswith("shift.") \
+                and o.raw["dz_param"] not in nuis_names:
+            nuis_names.append(o.raw["dz_param"])
     ps = ParamSpace(spec["wings"], spec.get("free", []), spec.get("ties", []), nuis_names)
     pred = Predictor(obs)
     priors = []
@@ -541,9 +573,9 @@ def fit(spec: dict, observations: List[dict], max_iter=40, robust=True, verbose=
     """
     global _GROUND
     _GROUND = tuple(spec["ground"]) if spec.get("ground") else None
-    active = list(observations)
+    use = active(observations)
     excluded = []
-    res = _fit_once(spec, active, max_iter, robust, verbose)
+    res = _fit_once(spec, use, max_iter, robust, verbose)
     while snoop and len(excluded) < max_excluded:
         worst, wr = None, snoop_threshold
         for i, r in enumerate(res["residuals"]):
@@ -551,10 +583,10 @@ def fit(spec: dict, observations: List[dict], max_iter=40, robust=True, verbose=
                 worst, wr = i, abs(r["residual_sigma"])
         if worst is None:
             break
-        excluded.append(active.pop(worst))
+        excluded.append(use.pop(worst))
         if verbose:
             print(f"excluding blunder: {excluded[-1].get('source')} -> {excluded[-1]['target']} ({wr:.1f} sigma)")
-        res = _fit_once(spec, active, max_iter, robust, verbose)
+        res = _fit_once(spec, use, max_iter, robust, verbose)
     if excluded:
         wings = [Wing.from_dict(w) for w in res["wings"]]
         pred = Predictor(prepare(excluded))

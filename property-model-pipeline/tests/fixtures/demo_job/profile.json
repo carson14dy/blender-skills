@@ -1,0 +1,9 @@
+{
+  "name": "synthetic-test",
+  "note": "Region profile for the offline synthetic test job: no real services, no real place.",
+  "lidar": {"dataset": "SYNTH_TestHouse_2020", "year": 2020},
+  "footprints": {"geojson": "footprint.geojson", "name": "city", "which": "footprint", "sigma": 0.25,
+                 "out_fields": ["OBJECTID"]},
+  "lod2": {"file": "lod2.json", "z_unit": "ftUS", "out_fields": ["OBJECTID"]},
+  "registration": {"expected_shift": [0.55, -0.80], "stop_above_m": 1.5}
+}

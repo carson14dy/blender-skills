@@ -21,6 +21,28 @@ from .geo import mercator_to_lonlat
 NON_SURFACE = {2, 3, 4, 5, 7, 9, 18}   # ground, low/medium/high vegetation, low noise, water, high noise
 
 
+def flight_dates(gps_time, gps_time_type=None):
+    """Acquisition date(s) from LAS GpsTime. Adjusted standard GPS time (LAS global encoding bit 0 = 1; 3DEP)
+    is GPS seconds - 1e9 since 1980-01-06; GPS week seconds (< 604800) carry no date. Returns
+    {flight_date (median, ISO), flight_date_first, flight_date_last, gps_time, leaf_on} (dates None when unknown).
+    leaf_on: the median date falls between 1 May and 15 October (northern temperate trees in leaf: they can hide eaves)."""
+    import datetime as _dt
+    t = np.asarray(gps_time, float)
+    t = t[np.isfinite(t)]
+    if not len(t):
+        return {"flight_date": None, "gps_time": "none"}
+    if gps_time_type == "week" or (gps_time_type is None and float(np.max(np.abs(t))) < 604800 * 1.01):
+        return {"flight_date": None, "gps_time": "GPS week seconds (no date in the data)"}
+    epoch = _dt.datetime(1980, 1, 6, tzinfo=_dt.timezone.utc)
+
+    def day(v):
+        return (epoch + _dt.timedelta(seconds=float(v) + 1e9)).date()
+    med, lo, hi = day(np.median(t)), day(np.min(t)), day(np.max(t))
+    leaf = (5 <= med.month <= 9) or (med.month == 10 and med.day <= 15)
+    return {"flight_date": med.isoformat(), "flight_date_first": lo.isoformat(), "flight_date_last": hi.isoformat(),
+            "gps_time": "adjusted standard", "leaf_on": bool(leaf)}
+
+
 def to_local(pts3857, frame):
     """EPT rows [x3857, y3857, z, cls, ret, nret] -> [e, n, z_abs, cls, ret, nret] (metres)."""
     lon, lat = mercator_to_lonlat(pts3857[:, 0], pts3857[:, 1])

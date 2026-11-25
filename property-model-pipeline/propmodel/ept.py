@@ -6,6 +6,11 @@ https://usgs.entwine.io/boundaries/resources.geojson.
 Points come back in EPSG:3857 (Web Mercator) with Z in metres (usually NAVD88).
 Use :func:`propmodel.lidar.to_local` to convert — never measure in 3857 directly
 (horizontal scale error of 1/cos(lat), ~30 % at 40 deg N).
+
+Offline / cached mode: with ``PROPMODEL_OFFLINE=1`` every request is answered from the cache
+only and a miss raises :class:`OfflineMiss` (no network). :func:`install_offline_guard` makes
+the same true for every other ``requests`` call in the process (the other fetchers check their
+cache first, so a guarded run reads cached responses and fails fast on a miss).
 """
 from __future__ import annotations
 
@@ -21,16 +26,54 @@ import requests
 
 INDEX_URL = "https://usgs.entwine.io/boundaries/resources.geojson"
 UA = {"User-Agent": "propmodel/0.1 (property measurement toolkit)"}
+# LAS dimension names for --extra-dims (case-insensitive aliases -> laspy attribute)
+EXTRA_DIMS = {"gpstime": "gps_time", "gps_time": "gps_time", "intensity": "intensity",
+              "scananglerank": "scan_angle_rank", "scan_angle_rank": "scan_angle_rank", "scanangle": "scan_angle",
+              "scan_angle": "scan_angle", "pointsourceid": "point_source_id", "point_source_id": "point_source_id",
+              "userdata": "user_data", "user_data": "user_data"}
+
+
+class OfflineMiss(RuntimeError):
+    """PROPMODEL_OFFLINE=1 and the response is not in the cache."""
+
+
+def offline():
+    return os.environ.get("PROPMODEL_OFFLINE", "") not in ("", "0", "false", "no")
+
+
+def install_offline_guard():
+    """Make every ``requests`` call in this process raise OfflineMiss (cache-only run).
+
+    Not a RequestException subclass on purpose: retry loops that catch request errors must not
+    sleep and retry on a cache miss. Returns True when the guard is (now) active."""
+    if not offline():
+        return False
+    from requests import sessions
+    if getattr(sessions.Session.request, "_propmodel_offline", False):
+        return True
+
+    def _blocked(self, method, url, *a, **k):
+        raise OfflineMiss(f"offline (PROPMODEL_OFFLINE=1): {method} {url} is not in the cache")
+    _blocked._propmodel_offline = True
+    sessions.Session.request = _blocked
+    return True
+
+
+def cache_path(url, cache_dir):
+    """Cache file for ``url`` (the key every EPT request uses; fixtures build caches with it)."""
+    key = hashlib.sha1(url.encode()).hexdigest()[:20] + os.path.splitext(url.split("?")[0])[1]
+    return os.path.join(cache_dir, key)
 
 
 def _cached_get(url, cache_dir, binary=False, timeout=120):
     os.makedirs(cache_dir, exist_ok=True)
-    key = hashlib.sha1(url.encode()).hexdigest()[:20] + os.path.splitext(url.split("?")[0])[1]
-    path = os.path.join(cache_dir, key)
+    path = cache_path(url, cache_dir)
     if os.path.exists(path):
         with open(path, "rb") as f:
             data = f.read()
     else:
+        if offline():
+            raise OfflineMiss(f"offline (PROPMODEL_OFFLINE=1): {url} is not in the cache ({path})")
         r = requests.get(url, headers=UA, timeout=timeout)
         r.raise_for_status()
         data = r.content
@@ -108,10 +151,16 @@ class EPT:
                             stack.append((ck, hier))
         return out
 
-    def read(self, bbox, max_depth=None, progress=None):
+    def read(self, bbox, max_depth=None, progress=None, extra=None):
+        """Points in bbox (3857) as rows [x, y, z, class, return, n_returns].
+
+        ``extra``: LAS dimension names (``GpsTime``, ``Intensity``, ``ScanAngleRank``...); then returns
+        (rows, extra_rows) with one extra column per name in the same row order (NaN where a chunk lacks it)."""
         import laspy
         keys = self.nodes_in(bbox, max_depth)
-        chunks = []
+        names = [EXTRA_DIMS.get(str(n).lower().replace("-", "_"), str(n)) for n in (extra or [])]
+        chunks, xchunks = [], []
+        self.gps_time_type = None
         for i, k in enumerate(keys):
             if progress:
                 progress(i, len(keys), k)
@@ -125,6 +174,19 @@ class EPT:
             ret = np.asarray(las.return_number)[m]
             nret = np.asarray(las.number_of_returns)[m]
             chunks.append(np.column_stack([x[m], y[m], z[m], cls, ret, nret]))
-        if not chunks:
-            return np.zeros((0, 6))
-        return np.vstack(chunks)
+            if names:
+                cols = []
+                for nm in names:
+                    try:
+                        cols.append(np.asarray(getattr(las, nm), float)[m])
+                    except (AttributeError, ValueError, KeyError):
+                        cols.append(np.full(int(m.sum()), np.nan))
+                xchunks.append(np.column_stack(cols))
+                try:   # LAS global encoding bit 0: 1 = adjusted standard GPS time, 0 = GPS week seconds
+                    self.gps_time_type = "adjusted_standard" if int(las.header.global_encoding.gps_time_type) else "week"
+                except Exception:  # noqa: BLE001
+                    pass
+        pts = np.vstack(chunks) if chunks else np.zeros((0, 6))
+        if not names:
+            return pts
+        return pts, (np.vstack(xchunks) if xchunks else np.zeros((0, len(names))))

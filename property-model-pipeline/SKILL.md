@@ -34,6 +34,38 @@ Real Blender (GUI) works too: pass `--blender /path/to/blender`, or drive an ope
 through the blender-mcp addon with `scripts/blender/send_to_mcp.py`.
 `PM=property-model-pipeline/scripts/pm.py` below. Set `PROPMODEL_CACHE` to move the download cache.
 
+## Fast demo path (address to studio page in under an hour)
+
+For a client demo from public online data only (aerial imagery, city GIS, county parcel/assessor records,
+USGS LiDAR; no photos, no listing sites). Full procedure, gate table and client messages:
+`references/demo-runbook.md`. Job folders live in scratch, never in this repo.
+
+```bash
+python3 scripts/demo_run.py new  JOB --address "<address>" --profile sioux-falls-sd   # profile: references/regions/
+python3 scripts/demo_run.py run  JOB --site-dir STUDIO     # records, hazards, fetch, LiDAR, city LOD2, starting spec
+#   exits 3 at the one manual step: edit JOB/spec.json wings from the LiDAR plane table + JOB/overview.png (10-15 min)
+python3 scripts/demo_run.py run  JOB --site-dir STUDIO --from fit   # fit, drip edges, checks, build, diagrams, package, smoke test
+python3 scripts/demo_run.py status JOB                    # gate table + timings; JOB/publish.json = the Artifact call
+```
+Then send the publish call, and only with an approved GPU box follow the render stage (Blender Cycles 4K stills
+and turntable, 3DGRUT splat, Topaz 4K upscale of the video; runbook S10-S12).
+
+Gates that STOP a run (fix the cause, never hand-edit a number):
+* G0: the address matches no city address point, or several;
+* G1: an addition or new-build permit after the LiDAR flight, or a house built in or after the LiDAR year
+  (ask the client: model the roof as flown and flag it, use the city's newer roof model, or skip);
+* G1p / G8: any owner, taxpayer or contractor field in a saved or packaged file (hard);
+* G2: no city footprint at the address, LiDAR under 2 pts/m2, or a city-to-LiDAR shift above 1.5 m (wrong
+  building or datum);
+* G3: roof_z RMS above 0.10 m, a CONFLICT row, or an unassigned LiDAR plane of 8 m2 or more (time box: 3 fits);
+* G4: drip edges not measured, an overhang above 2.5 m, or sigma = 0 on the area or an edge total (hard);
+* G6-G8: Blender mesh area off the report by > 0.5 %, diagram totals off the report, a studio file over
+  15 MB, a failed strict-CSP smoke test, studio squares more than 1 % off the report.
+
+What the demo tier does not do: photo measurement, `pm.py gather`, windows/doors beyond "assumed", yard
+detail beyond LiDAR terrain and city paving, colour matching, review rounds. Those are the accuracy tier,
+only on request and capped at 3 rounds.
+
 ## Workflow
 
 ```bash
@@ -81,7 +113,7 @@ the building. Never trace roof edges under canopy in imagery.
 
 ```bash
 python3 $PM init   JOB --address "123 Main St, Ames, IA 50010"   # Census geocoder
-python3 $PM gather JOB      # listing photos + facts (needs the agent-reach CLI from the agent-reach skill)
+python3 $PM gather JOB      # listing photos + facts (agent-reach CLI); accuracy tier only, never in a demo run
 python3 $PM fetch  JOB      # MS/OSM footprints, aerial (Esri, falls back to USGS NAIP), DEM
 python3 $PM lidar  JOB      # USGS 3DEP point cloud -> roof planes
 python3 $PM plot   JOB      # then split wings in spec.json from the plane list and fit
@@ -183,10 +215,16 @@ contact shadow from a front-corner 3/4 view, auto-cropped to 4:3 — the look of
 it as `thumb` in the viewer's project index.
 Automatic edge classification in viewers can double-count where one roof runs under another's
 overhang; ship the report's verified edge lengths alongside the model for takeoffs.
+`scripts/studio/package_house.py JOB --site STUDIO --slug S --label L --pdf` packages one house into the complete
+studio folder (every card row rebuilt from `report.json`, 15 MB per-file gate, privacy scan, PDF), and
+`scripts/studio/smoke.py --site STUDIO --house S --job JOB` tests it under the artifact's strict CSP
+(`csp_server.py`). Restore the complete folder before a publish with `scripts/studio/restore_site.md`.
 
 ## Rules
 
 * Never invent observations or σ to make a fit look good; a missing source is just missing.
+* Public data only; no logins or bot-wall workarounds. Every ArcGIS query names its fields (`*` is refused);
+  never store owner, occupant, taxpayer or contractor names. House data stays out of this public repo.
 * Tell the user the LiDAR year and any CONFLICT rows, in plain words, with the report.
 * Units: internally metres. Accept "42' 6\"", "12.95m", "25.3 sq", "2450 sqft", "6/12", "26.6deg".
 * Attribution: Esri imagery / OSM / Microsoft footprints require attribution in deliverables
