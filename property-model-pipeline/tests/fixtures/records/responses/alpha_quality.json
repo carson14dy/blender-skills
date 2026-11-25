@@ -1,0 +1,74 @@
+{
+ "displayFieldName": "",
+ "fieldAliases": {
+  "OBJECTID": "OBJECTID",
+  "TAG": "TAG",
+  "House_desc": "House_desc",
+  "Grade": "Grade",
+  "OWNNAME1": "OWNNAME1"
+ },
+ "fields": [
+  {
+   "name": "OBJECTID",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "TAG",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "House_desc",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "Grade",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "OWNNAME1",
+   "type": "esriFieldTypeString"
+  }
+ ],
+ "features": [
+  {
+   "attributes": {
+    "OBJECTID": 61,
+    "TAG": "T0000001",
+    "COUNTYID": "C-0000001",
+    "House_desc": "10 Ranch 1st 1970-1979",
+    "Grade": 4,
+    "Grade_desc": "Average",
+    "OWNNAME1": "PLANTED NAME ONE"
+   },
+   "geometry": {
+    "rings": [
+     [
+      [
+       -140.00009303,
+       9.99986439
+      ],
+      [
+       -140.00009303,
+       10.00013561
+      ],
+      [
+       -139.99991062,
+       10.00013561
+      ],
+      [
+       -139.99991062,
+       9.99986439
+      ],
+      [
+       -140.00009303,
+       9.99986439
+      ]
+     ]
+    ],
+    "spatialReference": {
+     "wkid": 4326
+    }
+   }
+  }
+ ]
+}

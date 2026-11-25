@@ -1,0 +1,106 @@
+{
+ "displayFieldName": "",
+ "fieldAliases": {
+  "OBJECTID": "OBJECTID",
+  "STRUCTURE": "STRUCTURE",
+  "NUMBERSTORIES": "NUMBERSTORIES",
+  "OWNEDBY": "OWNEDBY"
+ },
+ "fields": [
+  {
+   "name": "OBJECTID",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "STRUCTURE",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "NUMBERSTORIES",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "OWNEDBY",
+   "type": "esriFieldTypeString"
+  }
+ ],
+ "features": [
+  {
+   "attributes": {
+    "OBJECTID": 31,
+    "STRUCTURE": 110,
+    "NUMBERSTORIES": 1,
+    "GROUNDELEVATION": 1500.2,
+    "BUILDINGTOPELEVATION": 1522.8,
+    "CAPTUREMETH": "Consultant Deliverable",
+    "OWNEDBY": -1
+   },
+   "geometry": {
+    "rings": [
+     [
+      [
+       -140.00005472,
+       9.9999548
+      ],
+      [
+       -140.00005472,
+       10.00006329
+      ],
+      [
+       -139.99994528,
+       10.00006329
+      ],
+      [
+       -139.99994528,
+       9.9999548
+      ],
+      [
+       -140.00005472,
+       9.9999548
+      ]
+     ]
+    ],
+    "spatialReference": {
+     "wkid": 4326
+    }
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 32,
+    "STRUCTURE": 110,
+    "NUMBERSTORIES": 2,
+    "OWNEDBY": -1
+   },
+   "geometry": {
+    "rings": [
+     [
+      [
+       -139.99987231,
+       9.9999548
+      ],
+      [
+       -139.99987231,
+       10.00006329
+      ],
+      [
+       -139.99976286,
+       10.00006329
+      ],
+      [
+       -139.99976286,
+       9.9999548
+      ],
+      [
+       -139.99987231,
+       9.9999548
+      ]
+     ]
+    ],
+    "spatialReference": {
+     "wkid": 4326
+    }
+   }
+  }
+ ]
+}

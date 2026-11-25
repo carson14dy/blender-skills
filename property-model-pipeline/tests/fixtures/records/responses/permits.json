@@ -1,0 +1,120 @@
+{
+ "displayFieldName": "",
+ "fieldAliases": {
+  "OBJECTID": "OBJECTID",
+  "MAINADDRESS": "MAINADDRESS",
+  "PERMITNUMBER": "PERMITNUMBER",
+  "WORKCLASS": "WORKCLASS",
+  "contractor_name": "contractor_name"
+ },
+ "fields": [
+  {
+   "name": "OBJECTID",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "MAINADDRESS",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "PERMITNUMBER",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "WORKCLASS",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "contractor_name",
+   "type": "esriFieldTypeString"
+  }
+ ],
+ "features": [
+  {
+   "attributes": {
+    "OBJECTID": 41,
+    "MAINADDRESS": "1 TEST AVE",
+    "PERMITNUMBER": "RES-19-0001",
+    "PERMITTYPE": "Residential Building",
+    "PERMITSTATUS": "Finaled",
+    "WORKCLASS": "Reshingle",
+    "APPLYDATE": 1558353600000,
+    "ISSUEDATE": 1558440000000,
+    "FINALIZEDATE": 1560340800000,
+    "VALUATION": 9800.0,
+    "contractor_name": "PLANTED CONTRACTOR LLC"
+   },
+   "geometry": {
+    "x": -139.99999088,
+    "y": 10.00001808,
+    "spatialReference": {
+     "wkid": 4326
+    }
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 42,
+    "MAINADDRESS": "1 TEST AVE",
+    "PERMITNUMBER": "RES-17-0002",
+    "PERMITTYPE": "Residential Building",
+    "PERMITSTATUS": "Finaled",
+    "WORKCLASS": "Deck",
+    "APPLYDATE": 1491134400000,
+    "ISSUEDATE": 1491220800000,
+    "FINALIZEDATE": 1501588800000,
+    "VALUATION": 4000.0,
+    "contractor_name": "PLANTED BUILDER INC"
+   },
+   "geometry": {
+    "x": -139.99999088,
+    "y": 10.00001808,
+    "spatialReference": {
+     "wkid": 4326
+    }
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 43,
+    "MAINADDRESS": "1 TEST AVE",
+    "PERMITNUMBER": "RES-24-0003",
+    "PERMITTYPE": "Residential Building",
+    "PERMITSTATUS": "Expired",
+    "WORKCLASS": "Reshingle",
+    "APPLYDATE": 1719835200000,
+    "ISSUEDATE": 1719921600000,
+    "FINALIZEDATE": null,
+    "VALUATION": 12000.0
+   },
+   "geometry": {
+    "x": -139.99999088,
+    "y": 10.00001808,
+    "spatialReference": {
+     "wkid": 4326
+    }
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 44,
+    "MAINADDRESS": "3 TEST AVE",
+    "PERMITNUMBER": "RES-22-0004",
+    "PERMITTYPE": "Residential Building",
+    "PERMITSTATUS": "Finaled",
+    "WORKCLASS": "Addition",
+    "APPLYDATE": 1646136000000,
+    "ISSUEDATE": 1646222400000,
+    "FINALIZEDATE": 1662724800000,
+    "VALUATION": 80000.0
+   },
+   "geometry": {
+    "x": -139.99981758,
+    "y": 10.0,
+    "spatialReference": {
+     "wkid": 4326
+    }
+   }
+  }
+ ]
+}

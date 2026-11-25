@@ -560,15 +560,15 @@ measurements". Measurements come only from the report.
 
 | Quantity | Value | Measured on | Notes |
 |---|---|---|---|
-| GPU box price (RTX PRO 6000, compute) | 98 credits/h, billed per second | 2026-11-25 benchmark | 9 min 38 s cost 15.74 credits |
+| GPU box price (RTX PRO 6000, compute) | 98 credits/h, billed per second | 2026-11-25 benchmark | 9 min 38 s cost 15.74 credits. Starts can fail with "no free RTX PRO 6000" after about 5 min (not billed); 3 of 4 tries failed on 2026-11-25 |
 | Blender Cycles on the box, 1440 px | 2.1 s per image | 2026-11-25 benchmark | full resolution 12-26 s per image, limited by the box's 4 CPU cores |
-| 3DGRUT one-time build in `/workspace` | not yet measured | | estimate 20-30 billed min; failed on the benchmark box for lack of compiler and CUDA 12.8 tools |
-| Box minutes per house (renders only) | not yet measured | | estimate 12-15 min |
-| Box minutes per house (with splat) | not yet measured | | estimate 25-40 min |
-| Splat: iterations, held-out PSNR, web file size | not yet measured | | start 15k iterations, cap ~400k gaussians, web file <= 11 MB |
-| Topaz 2160p, 10 s 1080p turntable: credits | not yet measured | | ask the client before the first run |
-| Topaz 2160p: seconds to finish | not yet measured | | |
-| Presigned upload URL lifetime (`media_upload`) | not yet measured | | decides whether slots are requested at step 1 or step 5 |
+| 3DGRUT one-time build in `/workspace` | 948 s (16 min), runs while the renders run | 2026-11-25 Billings run | apt build-essential, CUDA 12.8.1 local toolkit (5.2 GB installer download, about 7 min; the extracted toolkit lives in the venv under /workspace), torch 2.8 cu128, tiny-cuda-nn compile with ninja -j 4. Later boxes find the cached venv and skip all of it |
+| Box minutes per house (renders only) | about 6 min | 2026-11-25 Billings run | env 76 s, 3 stills at 3840x2160 4.5 s each, 240-frame 1080p turntable 150 s (0.6 s/frame), encode + upload 9 s, 200 splat views at 1440 px 102 s |
+| Box minutes per house (with splat) | 23.7 min, 38.7 credits (first run, includes the 16 min 3DGRUT build) | 2026-11-25 Billings run | with the build cached: about 6 min renders + 5 min training + 1 min export, so about 12-13 min / 20 credits |
+| Splat: iterations, held-out PSNR, web file size | 15k iterations in 301 s; held-out PSNR 35.6 dB, SSIM 0.957 (20 views) | 2026-11-25 Billings run | the house is crisp; ground right in front of low cameras smears (few views there) |
+| Topaz 2160p, 10 s 1080p turntable: credits | 8 credits | 2026-11-25 Billings run | output 3840x2160 HEVC, 240 frames, 60 MB (over the 15 MB studio limit: link it, do not embed). Edges come out as sharp as a native 4K render, but PSNR vs native 4K is 0.4-2 dB lower than a plain resize of the 1080p (sharper, not more exact). A native 4K turntable would cost about 6 s/frame = 24 box min = 39 credits |
+| Topaz 2160p: seconds to finish | about 3 min (queued + processed) | 2026-11-25 Billings run | started while the splat trained, so it added no box time |
+| Presigned upload URL lifetime (`media_upload`) | 24 h (`expires_in_seconds: 86400`) | 2026-11-25 | request every slot at step 1. Zip slots are signed for `application/octet-stream`: a PUT with any other Content-Type gets 403 |
 | Artifact serves `.mp4` / `.pdf` / splat files | not yet tested | | fallbacks: image sequence, a download link, base64 in JSON |
 | Wall-clock to report + studio page live | not yet measured | | estimate 40-50 min |
 | Wall-clock total per house | not yet measured | | estimate 70-95 min |

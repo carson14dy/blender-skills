@@ -1,0 +1,434 @@
+{
+  "name": "testland-zz",
+  "title": "Testville, ZZ (invented test region: no real services)",
+  "checked": "2026-11-25",
+  "state": "ZZ",
+  "counties": [
+    "Alpha",
+    "Beta"
+  ],
+  "never_global": [
+    "created_user",
+    "last_edited_user"
+  ],
+  "layers": {
+    "address_points": {
+      "url": "https://gis.example.test/arcgis/rest/services/City/MapServer/0",
+      "role": "geocode",
+      "match": [
+        "parcel_polygon",
+        "key",
+        "address"
+      ],
+      "label": "City address points",
+      "out_fields": [
+        "OBJECTID",
+        "TAG",
+        "ADDRESS",
+        "LAT",
+        "LON",
+        "MUNICIPALITY",
+        "COUNTY",
+        "YEARBUILT",
+        "OCCUPANCY",
+        "CONSTRTYPE",
+        "CORNERLOT"
+      ],
+      "never": [],
+      "key": {
+        "field": "TAG",
+        "from": "parcels.TAG"
+      },
+      "address_where": "ADDRESS = '{street}'",
+      "where_template": "ADDRESS = '{street}'",
+      "lat_field": "LAT",
+      "lon_field": "LON",
+      "county_field": "COUNTY",
+      "address_field": "ADDRESS",
+      "city_values": [
+        "TESTVILLE"
+      ]
+    },
+    "parcels": {
+      "url": "https://gis.example.test/arcgis/rest/services/City/MapServer/1",
+      "role": "parcel",
+      "match": [
+        "point",
+        "address"
+      ],
+      "label": "City parcels",
+      "address_where": "ADDRESS = '{street}'",
+      "out_fields": [
+        "OBJECTID",
+        "TAG",
+        "ADDRESS",
+        "ADDITION",
+        "ACREAGE",
+        "SQFT",
+        "LEGAL",
+        "ACTIVITY",
+        "LANDUSE",
+        "NUMUNITS",
+        "COUNTY",
+        "COUNTYID",
+        "PARCELTYPE"
+      ],
+      "never": [
+        "OWNNAME1",
+        "OWNNAME2",
+        "OWNADDRESS",
+        "OWNCITY",
+        "OWNSTATE",
+        "OWNZIP",
+        "OWNZIP2",
+        "OWNEROCCSTATUS",
+        "FORM_SIGNEDBY",
+        "FORM_COMMENTS"
+      ]
+    },
+    "footprints": {
+      "url": "https://gis.example.test/arcgis/rest/services/City/MapServer/5",
+      "role": "footprint",
+      "match": [
+        "parcel_polygon"
+      ],
+      "label": "City building footprints",
+      "which": "roof_outline",
+      "sigma": 0.25,
+      "out_fields": [
+        "OBJECTID",
+        "STRUCTURE",
+        "NUMBERSTORIES",
+        "GROUNDELEVATION",
+        "BUILDINGTOPELEVATION",
+        "CAPTUREMETH"
+      ],
+      "never": [
+        "OWNEDBY",
+        "COMMENTS"
+      ]
+    },
+    "permits": {
+      "url": "https://gis.example.test/arcgis/rest/services/Community/MapServer/3",
+      "role": "permits",
+      "match": [
+        "parcel_polygon",
+        "address"
+      ],
+      "label": "City building permits",
+      "since": "2015-01-02",
+      "address_where": "MAINADDRESS LIKE '{street}%'",
+      "reroof_where": "WORKCLASS = 'Reshingle'",
+      "out_fields": [
+        "OBJECTID",
+        "MAINADDRESS",
+        "PERMITNUMBER",
+        "PERMITTYPE",
+        "PERMITSTATUS",
+        "WORKCLASS",
+        "APPLYDATE",
+        "ISSUEDATE",
+        "FINALIZEDATE",
+        "VALUATION"
+      ],
+      "never": [
+        "contractor_name"
+      ]
+    },
+    "lidar": {
+      "dataset": "ZZ_Test_2020",
+      "year": 2020,
+      "collected": [
+        "2020-04-10",
+        "2020-12-22"
+      ]
+    },
+    "ortho": {
+      "url": "https://imagery.example.test/MapServer/export",
+      "attribution": "Test imagery",
+      "date": "2026-04-21"
+    }
+  },
+  "county_sources": {
+    "Alpha": {
+      "match_values": [
+        "ALPHA"
+      ],
+      "user_agent_required": true,
+      "layers": {
+        "alpha_assessed": {
+          "url": "https://county-a.example.test/rest/services/Equalization/AssessedValues/MapServer/1",
+          "role": "assessor",
+          "match": [
+            "parcel_polygon",
+            "key"
+          ],
+          "key": {
+            "field": "TAG",
+            "from": "parcels.TAG"
+          },
+          "label": "Alpha County assessed values",
+          "year_note": "assessment year not stated by the layer",
+          "out_fields": [
+            "OBJECTID",
+            "TAG",
+            "MRALVL",
+            "MRABVL",
+            "MRNLVL",
+            "MRNBVL",
+            "TOTAL",
+            "TYPE"
+          ],
+          "map": {
+            "assessed_land": [
+              "MRNLVL",
+              "MRALVL"
+            ],
+            "assessed_building": [
+              "MRNBVL",
+              "MRABVL"
+            ],
+            "assessed_total": "TOTAL",
+            "assessed_class": "TYPE"
+          },
+          "never": [
+            "MRTNM1",
+            "MRTNM2",
+            "MRTADR",
+            "MRTCTY",
+            "MRTSTATE",
+            "MRTZPC",
+            "MRTZPC2",
+            "NAME"
+          ]
+        },
+        "alpha_quality": {
+          "url": "https://county-a.example.test/rest/services/Equalization/HouseQuality_2024/MapServer/1",
+          "role": "quality",
+          "match": [
+            "parcel_polygon",
+            "key"
+          ],
+          "key": {
+            "field": "TAG",
+            "from": "parcels.TAG"
+          },
+          "label": "Alpha County house quality 2024",
+          "out_fields": [
+            "OBJECTID",
+            "TAG",
+            "COUNTYID",
+            "House_desc",
+            "Grade",
+            "Grade_desc"
+          ],
+          "never": [
+            "ADDRESS",
+            "OWNNAME1",
+            "OWNNAME2",
+            "OWNADDRESS"
+          ]
+        },
+        "alpha_sales_2025": {
+          "url": "https://county-a.example.test/rest/services/Equalization/Residential_Sales/MapServer/1",
+          "role": "sales",
+          "match": [
+            "parcel_polygon"
+          ],
+          "label": "Alpha County residential sales 2025",
+          "out_fields": [
+            "OBJECTID",
+            "TAG",
+            "COUNTYID",
+            "CLASS",
+            "House_desc",
+            "grade_desc",
+            "CONDITION",
+            "SALE_DATE",
+            "SALE_PRICE",
+            "ASSMENT_YEAR",
+            "MRLNVC",
+            "MRBDVC",
+            "MRTOTC"
+          ],
+          "never": [
+            "OWNNAME1",
+            "OWNNAME2",
+            "OWNADDRESS",
+            "MRTNM1",
+            "MRTNM2",
+            "MRTADR"
+          ]
+        },
+        "alpha_sales_2023": {
+          "url": "https://county-a.example.test/rest/services/Equalization/Residential_Sales/MapServer/3",
+          "role": "sales",
+          "match": [
+            "parcel_polygon"
+          ],
+          "label": "Alpha County residential sales 2023",
+          "out_fields": [
+            "OBJECTID",
+            "TAG",
+            "COUNTYID",
+            "INSTR_DATE",
+            "SELL_PRICE",
+            "Year_Built",
+            "CLASS",
+            "House_Desc",
+            "Grade",
+            "Condition"
+          ],
+          "never": [
+            "OWNNAME1"
+          ]
+        }
+      }
+    },
+    "Beta": {
+      "match_values": [
+        "BETA"
+      ],
+      "layers": {
+        "beta_parcels": {
+          "url": "https://county-b.example.test/rest/services/Pro29/Parcels/MapServer/0",
+          "role": "parcel",
+          "match": [
+            "point",
+            "parcel_polygon"
+          ],
+          "label": "Beta County parcels",
+          "out_fields": [
+            "DBO.Parcel.PID",
+            "DBO.Parcel.Zoning",
+            "DBO.Parcel.SqFtCalc",
+            "DBO.Parcel.AcreCalc",
+            "DBO.GIS_Parcels.Class1",
+            "DBO.GIS_Parcels.Value1",
+            "DBO.GIS_Parcels.Value2"
+          ],
+          "map": {
+            "assessed_total": [
+              "DBO.GIS_Parcels.Value1",
+              "DBO.GIS_Parcels.Value2"
+            ],
+            "assessed_class": "DBO.GIS_Parcels.Class1",
+            "parcel_key": "DBO.Parcel.PID"
+          },
+          "never": [
+            "DBO.GIS_Parcels.Name",
+            "DBO.GIS_Parcels.NameADD",
+            "DBO.GIS_Parcels.Add1",
+            "DBO.GIS_Parcels.Add2",
+            "DBO.GIS_Parcels.Add3",
+            "DBO.GIS_Parcels.Zip",
+            "DBO.GIS_Parcels.ReInqAddre"
+          ]
+        },
+        "beta_permits": {
+          "url": "https://county-b.example.test/rest/services/Pro29/BuildingPermits/MapServer/2",
+          "role": "permits",
+          "match": [
+            "key"
+          ],
+          "key": {
+            "field": "PID",
+            "from": "beta_parcels.DBO.Parcel.PID"
+          },
+          "only_outside_city": true,
+          "label": "Beta County building permits",
+          "since": "2016-09-15",
+          "out_fields": [
+            "OBJECTID",
+            "PID",
+            "DateApproved",
+            "Permit",
+            "ProjectType",
+            "Type",
+            "ProjDesc",
+            "ProjectCost"
+          ],
+          "map": {
+            "work_class": "Type",
+            "permit_type": "ProjectType",
+            "description": "ProjDesc"
+          },
+          "never": [
+            "PropertyOwner",
+            "PropertyAddress"
+          ]
+        },
+        "beta_fullsales": {
+          "url": "https://county-b.example.test/rest/services/Pro29/FullSales/MapServer/11",
+          "role": "sales",
+          "match": [
+            "key"
+          ],
+          "key": {
+            "field": "PARCEL_ID",
+            "from": "beta_parcels.DBO.Parcel.PID"
+          },
+          "label": "Beta County sales",
+          "out_fields": [
+            "OBJECTID",
+            "PARCEL_ID",
+            "SALE_DATE",
+            "SALE_YEAR",
+            "SALE_PRICE",
+            "FULLVALUE",
+            "PROPERTY_CLASS"
+          ],
+          "map": {
+            "sale_value": "FULLVALUE",
+            "sale_class": "PROPERTY_CLASS"
+          },
+          "never": [
+            "SELLERS_NAME",
+            "BUYERS_NAME",
+            "ADDRESS",
+            "CITY",
+            "STATE",
+            "ZIP"
+          ]
+        }
+      }
+    }
+  },
+  "hazards": {
+    "wfo": [
+      "XXX"
+    ],
+    "timezone": "America/Chicago",
+    "storm_radius_mi": 10,
+    "layers": {
+      "flood": {
+        "url": "https://flood.example.test/arcgis/rest/services/public/NFHL/MapServer/28",
+        "role": "flood",
+        "match": [
+          "parcel_polygon",
+          "point"
+        ],
+        "out_fields": [
+          "FLD_ZONE",
+          "ZONE_SUBTY",
+          "SFHA_TF",
+          "STATIC_BFE",
+          "DFIRM_ID"
+        ],
+        "never": []
+      }
+    },
+    "code_notes": null,
+    "radar_site": {
+      "id": "KXXX",
+      "lat": 10.03,
+      "lon": -140.0,
+      "source": "invented"
+    }
+  },
+  "not_public": [
+    "living area",
+    "sketch dimensions",
+    "roof material"
+  ]
+}
