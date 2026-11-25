@@ -103,7 +103,11 @@ def facet_metrics(facet):
         normal = -normal
     horiz = math.hypot(normal[0], normal[1])
     slope = horiz / normal[2] if normal[2] > 1e-12 else math.inf
-    azimuth = (math.degrees(math.atan2(normal[0], normal[1])) % 360.0) if horiz > 1e-9 else None
+    azimuth = None
+    if horiz > 1e-9:
+        azimuth = math.degrees(math.atan2(normal[0], normal[1])) % 360.0
+        if azimuth > 360.0 - 1e-9:          # -1e-15 deg (cos 90 noise) wraps to 360.0 in float; north is 0
+            azimuth = 0.0
     return {
         "area_m2": area, "area_ft2": area / FT2, "plan_area_m2": plan,
         "pitch_x12": slope * 12.0, "pitch_deg": math.degrees(math.atan(slope)),

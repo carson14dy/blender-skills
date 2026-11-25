@@ -61,6 +61,12 @@ def test_gable_matches_hand_calculation(seed):
     json.dumps(key)                                                    # serialisable
 
 
+def test_azimuth_stays_in_0_360():
+    for seed in range(1, 61):
+        for f in A.compute(G.build_house(S.make_spec(seed)))["facets"]:
+            assert 0.0 <= f["azimuth_deg"] < 360.0
+
+
 def test_line_counts_and_lengths_gable():
     key = A.compute(G.build_house(S.make_spec(5)))
     kinds = sorted(l["kind"] for l in key["lines"])
