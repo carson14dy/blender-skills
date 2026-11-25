@@ -7,6 +7,8 @@ A collection of Claude Code skills for automating 3D product workflows in Blende
 ### Measurement-grade property models (accuracy first)
 - **[property-model-pipeline](property-model-pipeline/SKILL.md)** — Address → exact Blender model + roof/siding measurement report with ±1σ on every number. Fuses USGS 3DEP LiDAR, satellite/aerial imagery, OSM + Microsoft footprints, county parcel data, inspection photos (EXIF/drone metadata, plane rectification, camera matching) and past measurement reports in one robust least-squares fit; flags and excludes conflicting sources. See [examples/ames-ia-demo](property-model-pipeline/examples/ames-ia-demo/README.md) and [accuracy budget](property-model-pipeline/references/accuracy-budget.md).
 
+- **[virtual-homes](virtual-homes/SKILL.md)** — Seeded virtual test houses with an exact roof answer key (areas, pitch, ridge/hip/valley/eave/rake/flashing, squares, materials) and realistic ground / on-roof / drone photo sets with ground-truth camera poses, for grading measurement pipelines and training 3DGUT show models.
+
 ### 3D Model Generation (generative — not metric)
 - **[image-to-3d](image-to-3d/SKILL.md)** — Convert a single photo into a textured 3D model using Meshy API
 - **[multi-image-to-3d](multi-image-to-3d/SKILL.md)** — Convert 1-4 photos from different angles into a high-accuracy 3D model
