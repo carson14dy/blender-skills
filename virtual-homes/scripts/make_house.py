@@ -63,6 +63,9 @@ def main(argv=None):
     from vhomes import blender_scene, render  # needs bpy
     built = blender_scene.build(house, key)
     used = blender_scene.setup_render(a.samples, a.device, seed=sp["seed"])
+    print(f"render device: {used}", flush=True)
+    if a.device == "gpu" and used == "CPU":
+        raise SystemExit("--device gpu was asked for but Cycles found no GPU; stopping instead of rendering on CPU")
     render.add_rig_cameras(cams)
     if not a.no_blend:
         import bpy

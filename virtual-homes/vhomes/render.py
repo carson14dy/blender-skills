@@ -54,6 +54,7 @@ def render_cameras(cams_doc, out_root, cams, seed, keep_raw=False, log_path=None
     sc.render.resolution_percentage = 100
     sc.render.pixel_aspect_x = sc.render.pixel_aspect_y = 1.0
     sc.render.use_motion_blur = False
+    sc.render.use_persistent_data = True          # keep the scene's BVH between frames (only the camera moves)
     raw_dir = os.path.join(out_root, "renders", "_raw")
     os.makedirs(raw_dir, exist_ok=True)
     cam_ob = bpy.data.objects.get("_render_camera")
