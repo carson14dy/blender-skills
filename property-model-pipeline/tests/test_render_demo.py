@@ -25,6 +25,14 @@ FAKE_GEO = {"lat": 0.512345, "lon": -140.532109}        # open Pacific: no real 
 HOUSE = ([-5.0, -4.0, 0.0], [5.0, 4.0, 6.0])
 
 
+def RB_TOKENS(job):
+    """render_bundle.address_tokens(job), loaded from the script by path."""
+    spec = importlib.util.spec_from_file_location("render_bundle_under_test", BUNDLE)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.address_tokens(str(job))
+
+
 def slope_ground(x, y):
     return 0.08 * x - 0.05 * y
 
@@ -276,12 +284,13 @@ def test_bundle_clean_job(tmp_path):
         jb = json.loads(z.read(f"{rec['id']}/render_job.json"))
     for bad in ("Nonesuch", "nonesuch", "4321", "Faketown", "0.5123", "140.5321", "ZZ99887766", str(tmp_path)):
         assert bad not in blob, bad
+    assert any("4321" in t and "Nonesuch" not in t for t in RB_TOKENS(j)), "the bare house number is a bundle token"
     assert jb["front_az"] == 135.0 and jb["bbox"]["walls"] and jb["bbox"]["roof"] and jb["turntable"]["frames"] == 240
     assert json.load(open(j / "out" / "render_bundle.json"))["id"] == rec["id"]
 
 
 @pytest.mark.parametrize("planted", [b"... 4321 Nonesuch Lane ...", b"slug nonesuch-4321", b"lat 0.5123 x",
-                                     b"pid ZZ99887766"])
+                                     b"pid ZZ99887766", b"numerals block '4321' on the wall"])
 def test_bundle_refuses_a_planted_address_token(tmp_path, planted):
     j = _bundle_job(tmp_path, blend_bytes=b"BLENDER-v500 " + planted + b" end")
     (j / "out" / "render_bundle.zip").write_bytes(b"old bundle")             # an older bundle must not survive

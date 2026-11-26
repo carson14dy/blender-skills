@@ -275,6 +275,24 @@ def test_media_bundle(tmp_path):
     assert not (site / "houses" / "test-house" / "media" / "turntable_2160p.mp4").exists()
     h = json.loads((site / "houses" / "index.json").read_text())["houses"][0]
     assert h["media"] == "houses/test-house/media.json"
+    page = (site / "houses" / "test-house" / "report.html").read_text()
+    assert 'id="s-renders"' in page
+    assert 'src="media/turntable_1080p.mp4"' in page and 'src="media/hero_street.jpg"' in page
+    assert 'href="https://example.com/v4k.mp4"' in page and "upscaled with Topaz" in page
+    assert "houses/test-house/media/" not in page          # links resolve next to report.html
+
+
+def test_report_without_media_has_no_renders_section(tmp_path):
+    job = make_job(tmp_path)
+    site = make_site(tmp_path)
+    assert run(job, site) == 0
+    page = (site / "houses" / "test-house" / "report.html").read_text()
+    assert "s-renders" not in page and "<video" not in page
+
+
+def test_media_section_drops_a_non_https_4k_link():
+    block = P.media_section({"stills": [], "video": None, "video4k": {"url": "javascript:alert(1)"}}, "houses/h/")
+    assert block == ""
 
 
 # ------------------------------------------------------------------------------------------------ md2html

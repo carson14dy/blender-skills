@@ -115,6 +115,15 @@ Past each details.json stair's foot (--stair-foot m along the run, the stair wid
 then lowered to the lower quartile (--stair-foot-q) of the last returns within --stair-foot-radius (stair_foot_ground):
 the bridge over the excluded stair carries the bottom tread's height past the foot, above the measured landing.
 
+Paving at the wall feet (--paving-foot, applied after every terrain pass): where draped concrete paving (a driveway, walk or
+patio) meets a retaining-wall face on its downhill side, the terrain nodes and the concrete overlay's vertices within
+--paving-foot m of the face take the paving plane extended from --paving-foot-band m out (paving_foot_plane: a line fitted
+along the face's normal to the terrain there, so a measured crossfall is kept), and terrain triangles that still stand over
+it within the strip are dropped (poking_triangles): one straight joint instead of a lip, and no face-line slivers (two rows
+of nodes snapped onto a face oblique to the grid at different heights) or wedges at the joints of a stepped wall. Left
+alone: grade pads (their own level), a band that is not paving-like (steeper than 0.3 or not planar: a bank) and a band
+crossed by another wall.
+
 Vehicles: inside the street / paving outlines, returns more than --paving-hump over the local lowest-return surface (a
 3 m grey opening, exact on planes and slopes) are parked cars or trailers; they are dropped before any gridding
 (lidar.paving_humps), so the street is bridged under them instead of rising as an asphalt mound. Street cells more
@@ -1798,6 +1807,211 @@ def drape_on_mesh(geom, NX, NY, Z, lift, faces_ok=None, alt=None):
     return verts, tris
 
 
+# per cell fold (split_diagonals): the corners (dj, di) of the quad's two triangles, in quad_face order
+# (triangle 0 = face corners 0-1-2, triangle 1 = 0-2-3)
+_TRI_CORNERS = {False: (((0, 0), (0, 1), (1, 1)), ((0, 0), (1, 1), (1, 0))),
+                True: (((0, 1), (1, 1), (1, 0)), ((0, 1), (1, 0), (0, 0)))}
+
+
+def mesh_z(NX, NY, Z, alt, x0, y0, c, x, y):
+    """Terrain height at plan points (x, y) on the mesh triangles: grid nodes at (NX, NY, Z) (nodes may be snapped off the
+    regular grid onto wall faces, by less than a cell), each cell folded along its split_diagonals diagonal (``alt``). The
+    point's own cell is searched first, then its 8 neighbours. nan where no triangle holds the point."""
+    x = np.atleast_1d(np.asarray(x, float)); y = np.atleast_1d(np.asarray(y, float))
+    ny, nx = Z.shape
+    out = np.full(x.shape, np.nan)
+    i0 = np.floor((x - x0) / c).astype(int); j0 = np.floor((y - y0) / c).astype(int)
+    for dj, di in ((0, 0), (0, -1), (-1, 0), (0, 1), (1, 0), (-1, -1), (-1, 1), (1, -1), (1, 1)):
+        todo = np.isnan(out)
+        if not todo.any():
+            break
+        i = i0 + di; j = j0 + dj
+        ok = todo & (i >= 0) & (i < nx - 1) & (j >= 0) & (j < ny - 1)
+        if not ok.any():
+            continue
+        k = np.nonzero(ok)[0]; ii, jj = i[k], j[k]; fl = alt[jj, ii]
+        for t in (0, 1):
+            P = []
+            for v in range(3):
+                (mj, mi), (aj, ai) = _TRI_CORNERS[False][t][v], _TRI_CORNERS[True][t][v]
+                cj = jj + np.where(fl, aj, mj); ci = ii + np.where(fl, ai, mi)
+                P.append((NX[cj, ci], NY[cj, ci], Z[cj, ci]))
+            (x1, y1, z1), (x2, y2, z2), (x3, y3, z3) = P
+            px, py = x[k], y[k]
+            den = (y2 - y3) * (x1 - x3) + (x3 - x2) * (y1 - y3)
+            with np.errstate(invalid="ignore", divide="ignore"):
+                l1 = ((y2 - y3) * (px - x3) + (x3 - x2) * (py - y3)) / den
+                l2 = ((y3 - y1) * (px - x3) + (x1 - x3) * (py - y3)) / den
+            l3 = 1 - l1 - l2
+            hit = (np.abs(den) > 1e-12) & (np.minimum(np.minimum(l1, l2), l3) >= -1e-9) & np.isnan(out[k])
+            out[k[hit]] = (l1 * z1 + l2 * z2 + l3 * z3)[hit]
+    return out
+
+
+def paving_foot_plane(faces, zf, paving, solids=None, near=0.1, band=(0.3, 0.6), n=4, max_slope=0.3, max_rms=0.03,
+                      skip=None):
+    """The paving plane at the foot of the retaining-wall faces: plane(x, y) -> z for plan points on the downhill side of a
+    face (or on it) within ``near`` m of it, nan elsewhere. z is the straight line fitted to the surface ``zf`` (the
+    terrain under the draped paving) at ``n`` points ``band`` m out along the face's downhill normal from the point's
+    foot on the face, extended back to the point: a sloping or crossfalling drive keeps its measured slope up to the
+    joint, while whatever the grid does within the last cell (the side grade of the step, face nodes snapped from both
+    sides of a face that is oblique to the grid at different heights) is replaced. Only where every sample lies on
+    ``paving`` (a shapely geometry), the path from the face out to the last sample stays outside ``solids`` (the wall
+    footprints, + 0.02 m: no other wall in between), and the samples are paving-like: fitted slope within
+    +-``max_slope`` and rms about the line <= ``max_rms`` (a bank or a step in the band is not a paving joint, and is left
+    alone). Points more than 5 mm inside a wall footprint or inside ``skip`` (a shapely geometry: grade pads, which keep
+    their own measured / levelled height), and points whose samples fall in ``skip`` (the paving in front is a pad), get
+    nan. The nearest face segment with valid samples is used.
+    ``faces`` = wall_faces() output [(line, down, thickness)]."""
+    segs = []
+    for line, down, _th in faces:
+        P = np.asarray(line, float)
+        for a_, b_ in zip(P[:-1], P[1:]):
+            d = b_ - a_; ln = float(np.hypot(*d))
+            if ln < 1e-6:
+                continue
+            d = d / ln
+            segs.append((a_, d, down * np.array([-d[1], d[0]]), ln))
+    ts = np.linspace(band[0], band[1], max(int(n), 2))
+    tm = ts.mean(); tv = ((ts - tm) ** 2).sum()
+    bad = solids.buffer(0.02) if solids is not None and not solids.is_empty else None
+    inner = solids.buffer(-0.005) if solids is not None and not solids.is_empty else None
+    if skip is not None and not skip.is_empty:
+        sk_in = skip.buffer(-0.005)
+        inner = sk_in if inner is None else inner.union(sk_in)
+        shapely.prepare(skip)
+    else:
+        skip = None
+    path = np.arange(0.05, band[1] + 1e-9, 0.05)                 # the way out to the samples: no other wall on it
+    if paving is not None and not paving.is_empty:
+        shapely.prepare(paving)
+
+    def plane(x, y):
+        x = np.asarray(x, float); y = np.asarray(y, float)
+        shp = x.shape; x = x.ravel(); y = y.ravel()
+        out = np.full(x.shape, np.nan); best = np.full(x.shape, np.inf)
+        if paving is None or paving.is_empty or not segs:
+            return out.reshape(shp)
+        for a_, d, nrm, ln in segs:
+            s = (x - a_[0]) * d[0] + (y - a_[1]) * d[1]
+            t = (x - a_[0]) * nrm[0] + (y - a_[1]) * nrm[1]
+            sc = np.clip(s, 0.0, ln)
+            dist = np.hypot(s - sc, t)
+            m = (t >= -0.005) & (dist <= near) & (dist < best)          # (nodes snapped onto the face: within 5 mm)
+            if not m.any():
+                continue
+            k = np.nonzero(m)[0]
+            fx = a_[0] + sc[k] * d[0]; fy = a_[1] + sc[k] * d[1]
+            ok = np.ones(len(k), bool); zs = []
+            for tk in ts:
+                qx = fx + tk * nrm[0]; qy = fy + tk * nrm[1]
+                ok &= shapely.contains_xy(paving, qx, qy)
+                if skip is not None:
+                    ok &= ~shapely.contains_xy(skip, qx, qy)
+                zs.append(np.asarray(zf(qx, qy), float).reshape(-1))
+            if bad is not None:
+                for tk in path:
+                    ok &= ~shapely.contains_xy(bad, fx + tk * nrm[0], fy + tk * nrm[1])
+            zs = np.array(zs)
+            ok &= np.isfinite(zs).all(0)
+            if not ok.any():
+                continue
+            g = ((ts - tm)[:, None] * (zs - zs.mean(0))).sum(0) / tv
+            res = zs - (zs.mean(0) + g * (ts - tm)[:, None])
+            with np.errstate(invalid="ignore"):
+                ok &= (np.abs(g) <= max_slope) & (np.sqrt((res ** 2).mean(0)) <= max_rms)
+            if not ok.any():
+                continue
+            zt = zs.mean(0) + g * (np.maximum(t[k], 0.0) - tm)
+            kk = k[ok]
+            out[kk] = zt[ok]; best[kk] = dist[kk]
+        if inner is not None:
+            cand = np.isfinite(out)
+            if cand.any():
+                cin = np.nonzero(cand)[0]
+                out[cin[shapely.contains_xy(inner, x[cin], y[cin])]] = np.nan
+        return out.reshape(shp)
+    return plane
+
+
+def paving_wall_feet(Z, NX, NY, plane, max_change=0.3):
+    """Grid nodes (at their mesh positions NX, NY) within the reach of ``plane`` (paving_foot_plane: the paving at the foot
+    of a retaining-wall face) take the plane's height, unless that would move them by more than ``max_change`` m (then
+    something else stands there). Returns (new grid, bool mask of the nodes moved)."""
+    zp = plane(NX, NY)
+    with np.errstate(invalid="ignore"):
+        m = np.isfinite(zp) & (np.abs(zp - Z) <= max_change)
+    Zn = np.where(m, zp, Z)
+    return Zn, m & (np.abs(Zn - Z) > 1e-6)
+
+
+def poking_triangles(NX, NY, Z, alt, plane, cells=None, tol=0.02, solids=None, strip=None):
+    """Terrain triangles that poke through the paving at a wall foot: triangles (bool [ny-1, nx-1, 2], quad_face order:
+    0 = corners 0-1-2, 1 = corners 0-2-3) that stand more than ``tol`` m over ``plane`` (paving_foot_plane: defined on
+    the downhill side of a face within its ``near`` m, outside the walls) at a corner, edge midpoint, edge quarter point or
+    the centroid, and that lie wholly within the foot strip ``strip`` (shapely: the downhill side of the faces out to the
+    plane's ``near``) and the wall bodies (``solids`` + 0.01 m): a sliver on the face line whose nodes the plane could
+    not take, or the wall's hidden step showing in front of a face (at a concave joint of a stepped wall the chord
+    between the two faces' nodes runs in front of the corner, and the triangle from it to the back line stands there as
+    a dark wedge). A triangle reaching out past the strip onto the open paving (ordinary terrain under the overlay) or
+    past a wall's back (the retained ground) is never one. Without ``strip`` only triangles whose corners all lie within
+    the plane's reach count. ``cells`` (bool [ny-1, nx-1]): the cells to test (default all)."""
+    ny, nx = Z.shape
+    poke = np.zeros((ny - 1, nx - 1, 2), bool)
+    if cells is None:
+        cells = np.ones((ny - 1, nx - 1), bool)
+    jj, ii = np.nonzero(cells)
+    if not len(jj):
+        return poke
+    fl = alt[jj, ii]
+    W = [(1, 0, 0), (0, 1, 0), (0, 0, 1), (0.5, 0.5, 0), (0, 0.5, 0.5), (0.5, 0, 0.5), (0.75, 0.25, 0), (0.25, 0.75, 0),
+         (0, 0.75, 0.25), (0, 0.25, 0.75), (0.25, 0, 0.75), (0.75, 0, 0.25), (1 / 3, 1 / 3, 1 / 3)]
+    for t in (0, 1):
+        P = []
+        for v in range(3):
+            (mj, mi), (aj, ai) = _TRI_CORNERS[False][t][v], _TRI_CORNERS[True][t][v]
+            cj = jj + np.where(fl, aj, mj); ci = ii + np.where(fl, ai, mi)
+            P.append((NX[cj, ci], NY[cj, ci], Z[cj, ci]))
+        hit = np.zeros(len(jj), bool)
+        for w in W:
+            qx = sum(w[v] * P[v][0] for v in range(3)); qy = sum(w[v] * P[v][1] for v in range(3))
+            qz = sum(w[v] * P[v][2] for v in range(3))
+            zp = plane(qx, qy)
+            with np.errstate(invalid="ignore"):
+                hit |= np.isfinite(zp) & (qz > zp + tol)
+        if hit.any():
+            # only a triangle wholly within the foot strip and the wall bodies (one reaching out onto the open paving or
+            # back onto the retained ground is ordinary terrain)
+            kk = np.nonzero(hit)[0]
+            if strip is not None:
+                cover = strip if solids is None or solids.is_empty else strip.union(solids.buffer(0.01))
+                tri_ = shapely.polygons(np.stack([np.column_stack([P[v][0][kk], P[v][1][kk]]) for v in range(3)], 1))
+                within = shapely.area(shapely.difference(tri_, cover)) < 1e-5
+            else:
+                within = np.ones(len(kk), bool)
+                for v in range(3):
+                    within &= np.isfinite(plane(P[v][0][kk], P[v][1][kk]))
+            hit[kk[~within]] = False
+        poke[jj[hit], ii[hit], t] = True
+    return poke
+
+
+def level_overlay(verts, plane, lift, max_change=0.3):
+    """Draped overlay vertices ([[x, y, z], ...], modified in place) within the reach of ``plane`` (paving_foot_plane)
+    take the plane + ``lift`` (the same paving joint as the terrain nodes under them; a piece draped on a triangle that
+    crosses in front of a face at a joint lies on the plane too), unless that moves them by more than ``max_change``.
+    Returns the number of vertices moved."""
+    if not verts:
+        return 0
+    V = np.asarray(verts, float)
+    zp = plane(V[:, 0], V[:, 1]) + lift
+    with np.errstate(invalid="ignore"):
+        m = np.isfinite(zp) & (np.abs(zp - V[:, 2]) <= max_change) & (np.abs(zp - V[:, 2]) > 1e-6)
+    for k in np.nonzero(m)[0]:
+        verts[k][2] = round(float(zp[k]), 4)
+    return int(m.sum())
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--ground", default="auto", choices=["auto", "class2", "filtered"],
@@ -2021,6 +2235,14 @@ def main():
                          "--spike-mean nodes, plus isolated rock nodes) takes mean + this, lowered by at most "
                          "--spike-mean-drop (lone teeth; 0 = off)")
     ap.add_argument("--spike-fourth-passes", type=int, default=2, help="passes of the fourth despike pass")
+    ap.add_argument("--paving-foot", type=float, default=0.1,
+                    help="where draped concrete paving meets a retaining-wall face on its downhill side, the "
+                         "terrain nodes and overlay vertices within this many m of the face take the paving plane extended "
+                         "from --paving-foot-band m out (paving_foot_plane), and terrain triangles still standing more than "
+                         "0.02 m over it there are dropped (poking_triangles): one clean straight joint instead of a lip and "
+                         "face-line slivers (m; 0 = off)")
+    ap.add_argument("--paving-foot-band", default="0.3,0.6",
+                    help="see --paving-foot: the distances out from the face (m) the plane is fitted over")
     ap.add_argument("project"); ap.add_argument("features"); ap.add_argument("out")
     ap.add_argument("--half", type=float, default=34.0); ap.add_argument("--cell", type=float, default=0.5)
     ap.add_argument("--bed-width", type=float, default=0.9, help="rock bed band around the walls (m)")
@@ -2481,6 +2703,33 @@ def main():
             print(f"terrain: wall backs: {int(bmv.sum())} back-line nodes at / over a wall top moved uphill off the back "
                   f"line by {bam[bmv].min():.3f}-{bam[bmv].max():.3f} m (terrain kept under the cap's back edge)")
 
+    # paving at the wall feet (after every pass that moves a node): draped paving meeting a retaining-wall face on its
+    # downhill side runs at its own plane (fitted --paving-foot-band m out) up to the face -- one straight joint
+    pfoot = None
+    npfoot = 0
+    if walls and wfaces and a.paving_foot > 0:
+        paving_ = concrete            # driveways, walks, patios (a street edge at a wall is often a bank: left alone)
+        if not paving_.is_empty:
+            solids_ = unary_union([LineString(l_).buffer(th / 2, cap_style="flat", join_style="mitre") for l_, th in walls])
+            alt0_ = split_diagonals(Z, node_xy[0], node_xy[1])
+            Z0_, NX0_, NY0_ = Z.copy(), node_xy[0].copy(), node_xy[1].copy()
+
+            def _zmesh(qx, qy):
+                return mesh_z(NX0_, NY0_, Z0_, alt0_, xs[0], ys[0], c, qx, qy)
+            b0_, b1_ = (float(v) for v in a.paving_foot_band.split(","))
+            # grade pads keep their own (measured / levelled) height
+            padg_ = unary_union([Polygon(p_["polygon"]).buffer(0) for p_ in pads]) if pads else None
+            pfoot = paving_foot_plane(wfaces, _zmesh, paving_, solids_, near=a.paving_foot, band=(b0_, b1_), skip=padg_)
+            Zpf, pfm = paving_wall_feet(Z, node_xy[0], node_xy[1], pfoot)
+            dz = Zpf - Z
+            npfoot = int(pfm.sum())
+            if pfm.any():
+                print(f"terrain: paving at wall feet: {npfoot} nodes within {a.paving_foot} m downhill of a face set to the "
+                      f"paving plane fitted {b0_}-{b1_} m out ({int((dz < -1e-6).sum())} lowered, max {max(0.0, -dz.min()):.2f} m; "
+                      f"{int((dz > 1e-6).sum())} raised, max {max(0.0, dz.max()):.2f} m)")
+            Z, rock_rise = Zpf, rock_rise + dz
+            keep_nodes |= pfm
+
     # face centres
     cx = (X[:-1, :-1] + X[1:, 1:]) / 2
     cy = (Y[:-1, :-1] + Y[1:, 1:]) / 2
@@ -2517,6 +2766,17 @@ def main():
     faces, fcls = [], []
     alt = split_diagonals(Z, node_xy[0], node_xy[1])   # per-cell fold along the more level diagonal (never turned over)
     faces_ok = np.zeros((ny - 1, nx - 1), bool)
+    poke = None
+    if pfoot is not None:
+        # terrain triangles still standing over the paving plane within --paving-foot of a face (e.g. from a face node to
+        # a node behind the face, crossing in front of the next face at a joint): dropped, the draped paving covers them
+        fl_ = unary_union([LineString(l_) for l_, _d, _t in wfaces])
+        ccx = (node_xy[0][:-1, :-1] + node_xy[0][1:, 1:]) / 2; ccy = (node_xy[1][:-1, :-1] + node_xy[1][1:, 1:]) / 2
+        nearc = (shapely.distance(fl_, shapely.points(ccx.ravel(), ccy.ravel())) < a.paving_foot + 1.5 * c).reshape(ccx.shape)
+        strip_ = unary_union([LineString(l_).buffer(d_ * a.paving_foot, single_sided=True, join_style="mitre")
+                              for l_, d_, _t in wfaces])
+        poke = poking_triangles(node_xy[0], node_xy[1], Z, alt, pfoot, cells=nearc, solids=solids_, strip=strip_)
+    npoke = 0
     for j in range(ny - 1):
         for i in range(nx - 1):
             k = j * (nx - 1) + i
@@ -2525,11 +2785,23 @@ def main():
             if not cut.is_empty and cut.intersects(Polygon([(X[j, i], Y[j, i]), (X[j, i + 1], Y[j, i + 1]),
                                                             (X[j + 1, i + 1], Y[j + 1, i + 1]), (X[j + 1, i], Y[j + 1, i])])):
                 continue   # the hole is closed by the overlays around it and by what add_site.py puts in it
-            faces.append(quad_face(j, i, nx, alt[j, i]))
+            q_ = quad_face(j, i, nx, alt[j, i])
             faces_ok[j, i] = True
             # ground everywhere (paving and beds are crisp draped overlays), except boulders / outcrops the
             # rock merge raised: those get the rock class (add_site gives them a lighter stone material)
+            if poke is not None and poke[j, i].any():
+                # the quad's own two triangles (0-1-2, 0-2-3: its 0-2 fold), the poking one left out
+                for t_, tri_ in ((0, [q_[0], q_[1], q_[2]]), (1, [q_[0], q_[2], q_[3]])):
+                    if poke[j, i, t_]:
+                        npoke += 1
+                    else:
+                        faces.append(tri_); fcls.append(5 if rockf[k] else 0)
+                continue
+            faces.append(q_)
             fcls.append(5 if rockf[k] else 0)
+    if pfoot is not None:
+        print(f"terrain: paving at wall feet: {npoke} terrain triangles standing over the paving plane within "
+              f"{a.paving_foot} m of a face dropped")
 
     # ---- crisp draped overlays (exact polygon edges, z from the terrain triangles themselves) -----------
     def drape(geom, lift):
@@ -2547,6 +2819,10 @@ def main():
                              ("concrete", concrete.difference(house).difference(wallpoly), 0.03),
                              ("rock_bed", beds.difference(house).difference(wallpoly), 0.02)):
         v, t = drape(geom.buffer(0), lift)
+        nlev = level_overlay(v, pfoot, lift) if (pfoot is not None and name == "concrete") else 0
+        if nlev:
+            print(f"paving: {name} overlay: {nlev} vertices within {a.paving_foot} m of a wall face set to the paving "
+                  f"plane + {lift} m")
         overlays[name] = {"verts": v, "tris": t}
 
     def zat(x, y):
@@ -2619,7 +2895,8 @@ def main():
                      "cell": c, "nodes": int(Z.size), "rock_faces": int(sum(1 for v in fcls if v == 5)),
                      "cells_folded_13": int(alt[faces_ok].sum()),
                      "rock_raised_nodes": int((rock_rise > 0.05).sum()), "curb_lines": len(curbs),
-                     "street_m2": street.area, "concrete_m2": concrete.area, "bed_m2": beds.area}}
+                     "street_m2": street.area, "concrete_m2": concrete.area, "bed_m2": beds.area,
+                     "paving_foot_nodes": npfoot, "paving_foot_tris_dropped": npoke}}
     json.dump(out, open(a.out, "w"))
     print(json.dumps(out["stats"], indent=1), len(faces), "faces")
 

@@ -95,6 +95,11 @@ def address_tokens(job):
             for k, v in d.items():
                 if re.search(r"^(tag|countyid|pid|parcel_?id|parcel_number|apn)$", str(k), re.I) and v and len(str(v)) >= 5:
                     toks.append(re.escape(str(v)))
+    # the bare house number too (an object name like "numerals block '4321'" carries no street name); only for the
+    # bundle scan, not the repo grep, where a bare number would hit unrelated code
+    num = re.match(r"^\s*(\d{3,}[A-Za-z]?)\s+\S", (cfg.get("address") or "").split(",")[0])
+    if num:
+        toks.append(rf"(?<![\d.]){re.escape(num.group(1))}(?![\d.])")
     for src in (site.get("geocode") or {}, site.get("origin") or {}, (model.get("site") or {}).get("origin") or {},
                 (model.get("site") or {}).get("geocode") or {}):
         for k in ("lat", "lon"):

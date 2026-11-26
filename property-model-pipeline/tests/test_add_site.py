@@ -1137,3 +1137,63 @@ def test_satellite_dish_faces_its_azimuth_on_a_grounded_mast(tmp_path):
     assert abs((m["min"][1] + m["max"][1]) / 2 - -0.75) < 1e-3       # 0.25 m behind (north of) the rim centre
     assert abs(m["min"][2] - (-1.0 - 0.1)) < 1e-4 and abs(m["max"][2] - 0.5) < 1e-4   # from the lower step to the dish
     assert all(v["kind"] == "dish" for v in r.values())
+
+
+CRACK_LOOK = r"""
+import bpy, json, sys
+bpy.ops.wm.open_mainfile(filepath=sys.argv[1])
+out = {"domes": {}}
+for o in bpy.data.collections["Site"].objects:
+    if o.type == "MESH" and o.name in ("jointed", "speckled"):
+        nt = o.data.materials[0].node_tree
+        out["domes"][o.name] = sorted(n.label for n in nt.nodes if n.label in ("cracks", "crack width"))
+t = bpy.data.objects["Terrain (LiDAR ground)"]
+a = t.data.attributes.get("rock_cracks")
+out["weights"] = [d.value for d in a.data] if a else None
+out["xy"] = [[v.co.x, v.co.y] for v in t.data.vertices]
+nt = t.data.materials[0].node_tree
+out["terrain_weight"] = [n.attribute_name for n in nt.nodes if n.bl_idname == "ShaderNodeAttribute"
+                         and n.label.startswith("crack weight")]
+out["weight_used"] = any(l.from_node.label == "crack weight" for l in nt.links)
+json.dump(out, open(sys.argv[2], "w"))
+"""
+
+
+def test_boulder_cracks_false_drops_the_joint_network_on_the_dome_and_the_terrain_round_it(tmp_path):
+    """A boulder item with "cracks": false (a speckled boulder whose photos show no dark fissures) gets a stone material
+    without the joint network, and the terrain within 0.1 m of its outline (which shows through a dome clamped to the
+    terrain) carries no joints either: point attribute rock_cracks 0 there, 1 elsewhere, weighting the terrain's joint
+    mask. A default boulder keeps its joints, and with every boulder jointed no weight attribute is written."""
+    blend = str(tmp_path / "empty.blend")
+    (tmp_path / "empty.py").write_text(EMPTY)
+    _run([str(tmp_path / "empty.py"), blend])
+    xs = [0, 1, 2, 3, 4, 5]
+    verts = [[x, y, 0.0] for y in xs for x in xs]
+    faces = [[j * 6 + i, j * 6 + i + 1, (j + 1) * 6 + i + 1, (j + 1) * 6 + i] for j in range(5) for i in range(5)]
+    scene = {"verts": verts, "faces": faces, "face_class": [1] * 25, "classes": ["ground", "rock"],
+             "vertex_rock": [1.0] * 36, "overlays": {}, "curbs": [], "edging": [], "parcel": None, "points": []}
+    speck = [[2.9, 2.9], [4.1, 2.9], [4.1, 4.1], [2.9, 4.1]]
+    yard = {"items": [{"kind": "boulder", "name": "jointed", "polygon": [[0.9, 0.9], [2.1, 0.9], [2.1, 2.1], [0.9, 2.1]],
+                       "top_z": 0.6},
+                      {"kind": "boulder", "name": "speckled", "polygon": speck, "top_z": 0.6, "cracks": False}],
+            "face_normals": False}
+    sp, yp, out, js = tmp_path / "scene.json", tmp_path / "yard.json", str(tmp_path / "out.blend"), str(tmp_path / "c.json")
+    sp.write_text(json.dumps(scene)); yp.write_text(json.dumps(yard))
+    log = _run([ADD_SITE, blend, str(sp), str(yp), out])
+    assert '4 vertices round boulders with "cracks": false carry no joint network' in log
+    (tmp_path / "look.py").write_text(CRACK_LOOK)
+    _run([str(tmp_path / "look.py"), out, js])
+    r = json.load(open(js))
+    assert "cracks" in r["domes"]["jointed"] and "crack width" in r["domes"]["jointed"]
+    assert r["domes"]["speckled"] == []
+    for (x, y), w in zip(r["xy"], r["weights"]):
+        assert w == (0.0 if 2.8 <= x <= 4.2 and 2.8 <= y <= 4.2 else 1.0)
+    assert r["terrain_weight"] == ["rock_cracks"] and r["weight_used"]
+    # every boulder jointed: no weight attribute, the terrain joints as before
+    yard["items"][1].pop("cracks")
+    yp.write_text(json.dumps(yard))
+    log = _run([ADD_SITE, blend, str(sp), str(yp), out])
+    assert "no joint network" not in log
+    _run([str(tmp_path / "look.py"), out, js])
+    r = json.load(open(js))
+    assert r["weights"] is None and r["terrain_weight"] == [] and "cracks" in r["domes"]["speckled"]

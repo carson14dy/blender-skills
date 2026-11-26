@@ -127,11 +127,16 @@ geometry, placed from photo measurements. details.json (metres, model frame):
               "color": [r,g,b]} ],
   "panels": [ {"name": "...", "polygon": [[x,y,z],...], "material": "siding"} ],    # flat infill (e.g. gable end over a porch)
   "beams": [ {"name": "...", "p0": [x,y,z], "p1": [x,y,z], "size": [width, depth], "material": "trim", "color": [r,g,b],
-              "facet": "F2", "z_offset": 0.03} ],
+              "facet": "F2", "z_offset": 0.03, "bevel": 0.0, "bevel_end": "p0"} ],
               # a beam whose TOP face runs along p0 -> p1 (rim/porch beams, headers, trellis rafters). Give p0/p1 as
               # [x,y] to lay the beam IN the roof plane (the facet named, else the top facet at the midpoint; also over
-              # an outline hole): its top sits z_offset above the plane and its depth hangs along the roof normal
-  "beam_ends": [ {"xy": [x,y], "size": [width, depth], "length": 1.0, "proud": null, "drop": 0.06, "color": [r,g,b]} ],
+              # an outline hole): its top sits z_offset above the plane and its depth hangs along the roof normal.
+              # "bevel": m > 0 cuts the end(s) named by "bevel_end" ("p0", "p1" or "both"; default "p0") on the slant:
+              # the bottom edge of that end is set back `bevel` m along the beam while the top runs out to the point,
+              # so the end face slopes down and back (a bevelled / chamfered rafter or header tail). Default 0: square
+  "beam_ends": [ {"xy": [x,y], "size": [width, depth], "length": 1.0, "proud": null, "drop": 0.06, "bevel": 0.0,
+                  "color": [r,g,b]} ],
+              # "bevel": as for beams, on the tip (the outer end): its bottom edge set back `bevel` m toward the wall
               # rafter tails / outlooker ends under the nearest eave or rake: xy is the visible tip (as traced on an
               # orthophoto); the beam runs back square to that edge, its top `drop` under the roof edge. "proud"
               # overrides the tip's distance outside the edge line (0.02: a purlin end flush with the fascia). Check
@@ -663,6 +668,38 @@ def box_verts(origin, ex, ey, ez):
 def oriented_box(name, origin, ex, ey, ez, c, m):
     """Box spanned by vectors ex, ey, ez from origin."""
     return mesh(name, box_verts(origin, ex, ey, ez), BOX_FACES, c, m)
+
+
+def bevelled_box_verts(origin, ex, ey, ez, start=0.0, end=0.0):
+    """box_verts with slanted ends along ex: the BOTTOM edge (the face at origin, spanned by ex and ey) of the start
+    end is set `start` m forward along ex and that of the far end `end` m back, the top edges stay put, so each end
+    face slopes down and back (a bevelled beam tail). Every face stays planar; the cuts never cross (each is clamped
+    so at least 1 cm of bottom face is left)."""
+    v = box_verts(origin, ex, ey, ez)
+    L = Vector(ex).length
+    if L < 1e-9 or (start <= 0 and end <= 0):
+        return v
+    u = Vector(ex) / L
+    start, end = max(start, 0.0), max(end, 0.0)
+    if start + end > L - 0.01:
+        k = (L - 0.01) / (start + end)
+        start, end = start * k, end * k
+    for i in (0, 3):              # bottom verts at the start end
+        v[i] = v[i] + u * start
+    for i in (1, 2):              # bottom verts at the far end
+        v[i] = v[i] - u * end
+    return v
+
+
+def bevel_ends(spec, which_default="p0"):
+    """(at_p0, at_p1) bevel lengths of a beam entry ("bevel" m on the end(s) named by "bevel_end")."""
+    b = float(spec.get("bevel", 0.0) or 0.0)
+    if b <= 0:
+        return 0.0, 0.0
+    end = spec.get("bevel_end", which_default)
+    if end not in ("p0", "p1", "both"):
+        raise ValueError(f"bevel_end {end!r}: expected 'p0', 'p1' or 'both'")
+    return (b if end in ("p0", "both") else 0.0), (b if end in ("p1", "both") else 0.0)
 
 
 def boxes_mesh(name, boxes, c, m):
@@ -1788,7 +1825,8 @@ def add_beams(model, D, c, mats, frames=None):
             P0, P1, nrm = Vector(p0), Vector(p1), Vector((0, 0, 1))
         dv = P1 - P0
         sd = dv.cross(nrm).normalized() * w
-        oriented_box(nm, P0 - sd / 2 - nrm * h, dv, sd, nrm * h, c, m)
+        b0, b1 = bevel_ends(bm)
+        mesh(nm, bevelled_box_verts(P0 - sd / 2 - nrm * h, dv, sd, nrm * h, b0, b1), BOX_FACES, c, m)
 
 
 def add_beam_ends(model, D, c, mats):
@@ -1820,7 +1858,9 @@ def add_beam_ends(model, D, c, mats):
         topz = ze - be.get("drop", 0.06)
         o = tip - nrm * L - sd * (w / 2) + Vector((0, 0, topz - h))
         nm = be.get("name", f"beam end {i}")[:40]
-        oriented_box(nm, o, nrm * L, sd * w, Vector((0, 0, h)), c, pick(be, mats, "trim", "beam ends", 0.6))
+        bev = max(float(be.get("bevel", 0.0) or 0.0), 0.0)          # the tip is the far end along nrm * L
+        mesh(nm, bevelled_box_verts(o, nrm * L, sd * w, Vector((0, 0, h)), 0.0, bev), BOX_FACES, c,
+             pick(be, mats, "trim", "beam ends", 0.6))
 
 
 def add_roof_wells(model, D, c, mats):

@@ -25,7 +25,8 @@ rock-bed overlays, curb lines, subject parcel, point features). yard.json (model
              #   m clamps every dome vertex to min(dome z, terrain z + m) (terrain from the site_scene grid, bilinear), so an
              #   assumed dome profile never stands far over a flank the LiDAR terrain already follows;
              #   "max_over_terrain_local": [{"xy": [x,y], "radius": r, "max": m}] uses m within r of xy (a flank whose
-             #   terrain grid sits under the measured rock side at the outline edge)
+             #   terrain grid sits under the measured rock side at the outline edge); "cracks": false leaves the dome
+             #   without the joint network (stone(); a speckled boulder whose photos show no dark fissures)
              {"kind": "retaining_wall", "line": [[x,y],...], "top_z": z or "height": h, "thickness": 0.3,
               "material": "stone|concrete|drystack|timber|rock", "color": [r,g,b], "line_is": "centre|face", "uphill": "left|right",
               "cap_color": [[r,g,b],[r,g,b]],           # optional: a separate (e.g. lighter) material on the top faces
@@ -104,7 +105,8 @@ rock-bed overlays, curb lines, subject parcel, point features). yard.json (model
 Boulders, the "rock" terrain tone and the rock material carry a sparse joint mask (Voronoi cells ~1.9 m, lines
 under 2 cm at 0.82 x the stone value, on about half of the cell edges) and faint horizontal bedding (noise stretched
 6:1 in xy:z, +-8 % value), so outcrops read as smooth, jointed and bedded sandstone rather than plaster or a
-turtle-shell crack net.
+turtle-shell crack net. A boulder item with "cracks": false has no joint network on its dome, nor on the terrain within
+0.1 m of its outline (the point attribute rock_cracks, 0 there, weights the terrain's joint mask; boulder_tones).
 
 Terrain faces carry build_site.py's surface class: "ground" (soil / grass) or "rock" (boulders and
 outcrops the LiDAR rock merge raised, or traced rock outlines). With the scene's per-vertex "vertex_rock"
@@ -457,12 +459,13 @@ def add_bedding(nt, color_socket, stretch=None, amp=None, scale=None):
     return mix.outputs[2]
 
 
-def add_cracks(nt, color_socket, scale=None, width=None, dark=None, coverage=0.5):
+def add_cracks(nt, color_socket, scale=None, width=None, dark=None, coverage=0.5, weight=None):
     """Joint lines on stone: where Voronoi F2 - F1 (world position, `scale` cells per metre, slightly
     noise-distorted) is below `width` the colour is multiplied by `dark` -- on about `coverage` of the cell
     edges (a large noise switches joints on and off, so the stone reads as jointed, not as crazy paving).
     Defaults: CRACK_SCALE (cells ~1.9 m), CRACK_WIDTH (lines width / scale < 2 cm wide), CRACK_DARK (0.82).
-    Returns the new colour socket."""
+    ``weight``: the name of a point float attribute (0..1) the joint mask is multiplied by (0: no joints there; the
+    terrain round a boulder whose item has "cracks": false). Returns the new colour socket."""
     scale = CRACK_SCALE if scale is None else scale
     width = CRACK_WIDTH if width is None else width
     dark = CRACK_DARK if dark is None else dark
@@ -487,27 +490,37 @@ def add_cracks(nt, color_socket, scale=None, width=None, dark=None, coverage=0.5
     nt.links.new(on.outputs["Fac"], gate.inputs[0])
     both = nt.nodes.new("ShaderNodeMath"); both.operation = "MULTIPLY"
     nt.links.new(lt.outputs[0], both.inputs[0]); nt.links.new(gate.outputs[0], both.inputs[1])
+    if weight:
+        wa = nt.nodes.new("ShaderNodeAttribute"); wa.attribute_type = "GEOMETRY"; wa.attribute_name = weight
+        wa.label = "crack weight " + weight
+        wm = nt.nodes.new("ShaderNodeMath"); wm.operation = "MULTIPLY"; wm.label = "crack weight"
+        nt.links.new(both.outputs[0], wm.inputs[0]); nt.links.new(wa.outputs["Fac"], wm.inputs[1])
+        both = wm
     mix = nt.nodes.new("ShaderNodeMix"); mix.data_type = "RGBA"; mix.blend_type = "MULTIPLY"; mix.label = "cracks"
     mix.inputs[7].default_value = (dark, dark, dark, 1)
     nt.links.new(both.outputs[0], mix.inputs["Factor"]); nt.links.new(color_socket, mix.inputs[6])
     return mix.outputs[2]
 
 
-def stone(name, rgb_a, rgb_b, scale, bump=0.6):
-    """Two-tone noise stone with bedding and sparse joints (boulders, outcrops)."""
+def stone(name, rgb_a, rgb_b, scale, bump=0.6, cracks=True):
+    """Two-tone noise stone with bedding and sparse joints (boulders, outcrops). ``cracks`` False: no joint network (a
+    boulder whose photos show a speckled surface without dark fissures)."""
     m = textured(name, rgb_a, rgb_b, scale, bump)
     nt = m.node_tree
     b = nt.nodes.get("Principled BSDF")
-    col = b.inputs["Base Color"].links[0].from_socket
-    nt.links.new(add_cracks(nt, add_bedding(nt, col)), b.inputs["Base Color"])
+    col = add_bedding(nt, b.inputs["Base Color"].links[0].from_socket)
+    nt.links.new(add_cracks(nt, col) if cracks else col, b.inputs["Base Color"])
+    m["propmodel_cracks"] = bool(cracks)
     return m
 
 
-def blend_by_attribute(name, ground, rock, attr, edge=0.5, soft=0.18, tone_attrs=None):
+def blend_by_attribute(name, ground, rock, attr, edge=0.5, soft=0.18, tone_attrs=None, crack_attr=None):
     """Terrain material: two-tone noise `ground` (rgb_a, rgb_b, scale) where the point attribute `attr` is
     low, `rock` where it is high, with a noise-broken transition around `edge`. ``tone_attrs`` = (lo, hi): names of
     two point colour attributes that replace the rock tone's two colours per vertex (boulder_tones: the terrain the
-    LiDAR raised inside a yard boulder outline takes that boulder's colour range); the rock noise still mixes them."""
+    LiDAR raised inside a yard boulder outline takes that boulder's colour range); the rock noise still mixes them.
+    ``crack_attr``: name of a point float attribute that weights the rock tone's joint network (boulder_tones: 0 round a
+    boulder whose item has "cracks": false)."""
     m = mat(name, ground[0], 0.9)
     nt = m.node_tree
     b = nt.nodes.get("Principled BSDF")
@@ -547,7 +560,7 @@ def blend_by_attribute(name, ground, rock, attr, edge=0.5, soft=0.18, tone_attrs
     mix = nt.nodes.new("ShaderNodeMix"); mix.data_type = "RGBA"
     nt.links.new(mr.outputs["Result"], mix.inputs["Factor"])
     nt.links.new(rp_g.outputs["Color"], mix.inputs[6])
-    nt.links.new(add_cracks(nt, add_bedding(nt, rock_col)), mix.inputs[7])
+    nt.links.new(add_cracks(nt, add_bedding(nt, rock_col), weight=crack_attr), mix.inputs[7])
     nt.links.new(mix.outputs[2], b.inputs["Base Color"])
     bp = nt.nodes.new("ShaderNodeBump"); bp.inputs["Strength"].default_value = 0.4
     nt.links.new(nz_r.outputs["Fac"], bp.inputs["Height"]); nt.links.new(bp.outputs["Normal"], b.inputs["Normal"])
@@ -560,7 +573,9 @@ def boulder_tones(items, verts, rock, pad=0.1):
     mass) take that boulder's colour range (_two: its "color", else ``rock``), all others ``rock`` (lo, hi linear RGB).
     The LiDAR rock merge raises the terrain inside a traced boulder to its returns, so where the terrain pokes through
     the dome it shows in the boulder's own colour and the boulder reads as one stone. Returns (lo list, hi list, number
-    of vertices inside a boulder) or None when no vertex lies in a boulder (later outlines win where they overlap)."""
+    of vertices inside a boulder, crack weights) or None when no vertex lies in a boulder (later outlines win where they
+    overlap); crack weights is a per-vertex list (0.0 within ``pad`` of a boulder whose item has "cracks": false, else 1.0:
+    the terrain showing through that dome carries no joint network either), or None when every boulder keeps its joints."""
     import shapely
     from shapely.geometry import Polygon
     import numpy as _np
@@ -571,6 +586,7 @@ def boulder_tones(items, verts, rock, pad=0.1):
     V = _np.asarray(verts, float)
     lo = _np.tile(_np.asarray(rock[0], float), (len(V), 1)); hi = _np.tile(_np.asarray(rock[1], float), (len(V), 1))
     inside = _np.zeros(len(V), bool)
+    cw = _np.ones(len(V))
     for it in bl:
         pg = Polygon(it["polygon"]).buffer(0)
         if pg.is_empty:
@@ -578,9 +594,11 @@ def boulder_tones(items, verts, rock, pad=0.1):
         m = shapely.contains_xy(pg.buffer(pad), V[:, 0], V[:, 1])
         a_, b_ = _two(it, tuple(rock[0]), tuple(rock[1]))
         lo[m] = a_; hi[m] = b_; inside |= m
+        cw[m] = 1.0 if it.get("cracks", True) else 0.0
     if not inside.any():
         return None
-    return [tuple(r) for r in lo], [tuple(r) for r in hi], int(inside.sum())
+    return ([tuple(r) for r in lo], [tuple(r) for r in hi], int(inside.sum()),
+            [float(v) for v in cw] if (cw < 1.0).any() else None)
 
 
 OVERLAY_SKIRT = 0.10    # m: vertical skirt under the outer edges of every draped overlay (yard.json "overlay_skirt")
@@ -1094,7 +1112,7 @@ def k_boulder(it, G, c, M, i):
         # a mass the LiDAR cannot tell from rock (dense juniper): leafy two-tone noise, no joints or bedding
         rock = textured(f"Foliage mass {i}", *_two(it, (0.035, 0.045, 0.022), (0.075, 0.085, 0.04)), 9.0, 1.0, rough=0.95)
     else:
-        rock = stone(f"Rock {i}", *_two(it, *dflt), 3.0, 0.6)
+        rock = stone(f"Rock {i}", *_two(it, *dflt), 3.0, 0.6, cracks=bool(it.get("cracks", True)))
     ob = mesh(it.get("name", f"boulder {i}"), verts, faces, c, rock)
     ob.data.polygons.foreach_set("use_smooth", [True] * len(ob.data.polygons))
     ob.data.update()
@@ -2225,15 +2243,23 @@ def main():
         at = terrain.data.attributes.new("rock", "FLOAT", "POINT")
         at.data.foreach_set("value", S["vertex_rock"])
         bt = boulder_tones(Y.get("items", []), S["verts"], M["_tones"]["rock"][:2]) if Y.get("boulder_tones", True) else None
+        cra = None
         if bt:
             for nm_, cols in (("rock_tone_lo", bt[0]), ("rock_tone_hi", bt[1])):
                 ca = terrain.data.color_attributes.new(nm_, "FLOAT_COLOR", "POINT")
                 ca.data.foreach_set("color", [v for col in cols for v in (*col, 1.0)])
             print(f"terrain: {bt[2]} vertices inside yard boulder outlines take the boulder colours")
+            if bt[3] is not None:
+                cra = "rock_cracks"
+                at2 = terrain.data.attributes.new(cra, "FLOAT", "POINT")
+                at2.data.foreach_set("value", bt[3])
+                print(f"terrain: {sum(1 for v in bt[3] if v < 1.0)} vertices round boulders with \"cracks\": false carry "
+                      f"no joint network")
         terrain.data.materials.clear()
         terrain.data.materials.append(blend_by_attribute("Terrain (ground / rock)", M["_tones"]["ground"],
                                                          M["_tones"]["rock"], "rock",
-                                                         tone_attrs=("rock_tone_lo", "rock_tone_hi") if bt else None))
+                                                         tone_attrs=("rock_tone_lo", "rock_tone_hi") if bt else None,
+                                                         crack_attr=cra))
     elif "rock" in classes and any(v == classes.index("rock") for v in fc):
         terrain.data.materials.append(M["rock"])
         rk = classes.index("rock")

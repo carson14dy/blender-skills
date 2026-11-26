@@ -365,6 +365,10 @@ figcaption, .note { color:var(--fg-dim); font-size:13.5px; }
 .links { display:flex; gap:12px; flex-wrap:wrap; margin-top:10px; }
 .links a { color:var(--accent); }
 img { max-width:100%; }
+video.turntable { width:100%; border-radius:10px; border:1px solid var(--line); background:#000; display:block; }
+.stills { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:12px; }
+figure.still { margin:0; display:grid; gap:6px; }
+figure.still img { width:100%; border-radius:8px; border:1px solid var(--line); display:block; }
 """
 
 FONTS = ('<link rel="preconnect" href="https://fonts.googleapis.com">'
@@ -377,9 +381,43 @@ def _section_id(name):
     return "s-" + re.sub(r"[^a-z0-9]+", "-", os.path.splitext(name)[0].lower()).strip("-")
 
 
+def media_section(media, base):
+    """Renders block for the report page from a media.json dict; `base` = the house folder prefix its src paths carry
+    ("houses/SLUG/"), stripped so the links resolve next to report.html. Empty string when there is nothing to show."""
+    if not media:
+        return ""
+    e = html.escape
+
+    def rel(src):
+        return src[len(base):] if src.startswith(base) else src
+
+    out = []
+    video = media.get("video")
+    if video and video.get("src"):
+        out.append(f'<video class="turntable screen-only" controls playsinline preload="metadata" '
+                   f'src="{e(rel(video["src"]))}"></video>'
+                   f'<p class="note screen-only">Turntable, 1080p, {e(video.get("label") or LABEL_RENDER)}.</p>')
+    v4 = media.get("video4k") or {}
+    if v4.get("url", "").startswith("https://"):
+        out.append(f'<p class="links screen-only"><a href="{e(v4["url"])}" target="_blank" rel="noopener">'
+                   f'4K turntable ({e(v4.get("label") or LABEL_TOPAZ)})</a></p>')
+    stills = [s for s in media.get("stills") or [] if s.get("src")]
+    if stills:
+        figs = "".join(f'<figure class="still"><img src="{e(rel(s["src"]))}" alt="{e(s.get("caption") or s["name"])}"'
+                       f' loading="lazy"><figcaption>{e(s.get("caption") or s["name"])}</figcaption></figure>'
+                       for s in stills)
+        out.append(f'<div class="stills">{figs}</div>')
+    if not out:
+        return ""
+    return ('<section class="part renders" id="s-renders"><h2>Renders</h2>'
+            '<p class="note">Pictures and video of the measured model. They are for viewing only: every number comes '
+            'from the measurements below, never from an image.</p>' + "".join(out) + "</section>")
+
+
 def report_html(label, generated, rows, report_md, sections=(), diagrams=(), thumb=None, note=None,
-                pdf_href=None, print_css=""):
-    """The studio report page. `sections`: [(file name, markdown)], `diagrams`: [(file name, href)]."""
+                pdf_href=None, print_css="", renders=""):
+    """The studio report page. `sections`: [(file name, markdown)], `diagrams`: [(file name, href)], `renders`: the
+    media_section() block (shown after the cover)."""
     e = html.escape
     kpi = "".join(f"<tr><td>{e(a)}</td><td>{e(b)}</td></tr>" for a, b in rows)
     cover = ['<header class="cover">', '<p class="eyebrow">Roof measurement report</p>', f"<h1>{e(label)}</h1>",
@@ -393,6 +431,8 @@ def report_html(label, generated, rows, report_md, sections=(), diagrams=(), thu
         cover.append(f'<p class="links screen-only"><a href="{e(pdf_href)}" download>Download the PDF report</a></p>')
     cover.append("</header>")
     parts = ["\n".join(cover)]
+    if renders:
+        parts.append(renders)
     if diagrams:
         figs = "".join(f'<figure class="diagram"><img src="{e(href)}" alt="{e(diagram_caption(n))}">'
                        f"<figcaption>{e(diagram_caption(n))}</figcaption></figure>" for n, href in diagrams)
@@ -738,27 +778,8 @@ def package(a):
             put(f"houses/{slug}/diagrams/{n}", dp)
             dia_hrefs.append((n, f"diagrams/{n}"))
 
-        # report page
-        sec_md = [(n, open(p, encoding="utf-8").read()) for n, p in sections]
-        pdf_pub = f"houses/{slug}/report.pdf"
-        pdf_exists = bool(a.pdf)
-        if not a.pdf and os.path.exists(os.path.join(site, pdf_pub)):
-            print(f"WARN: {pdf_pub} in the site is from an earlier package and is no longer linked: "
-                  "re-run with --pdf so the PDF carries these numbers")
-        page = report_html(label, generated, rows, report_md, sec_md, dia_hrefs, thumb_href, note,
-                           "report.pdf" if pdf_exists else None, print_css)
-        rp = os.path.join(hdir, "report.html")
-        with open(rp, "w", encoding="utf-8") as f:
-            f.write(page)
-        put(f"houses/{slug}/report.html", rp)
-
-        # detail.json
-        detail = detail_json(report, label, extras, waste, note, generated, rows)
-        if pdf_exists:
-            detail["pdf"] = pdf_pub
-
-        # media
-        media_pub = None
+        # media (staged before the report page, which shows it)
+        media_pub, mj = None, None
         if a.media:
             mfiles, mj = media_files(a.media, slug, a.video_4k_url)
             for pub, src in mfiles.items():
@@ -771,6 +792,27 @@ def package(a):
             with open(mp, "w", encoding="utf-8") as f:
                 json.dump(mj, f, indent=1, ensure_ascii=False)
             put(media_pub, mp)
+
+        # report page
+        sec_md = [(n, open(p, encoding="utf-8").read()) for n, p in sections]
+        pdf_pub = f"houses/{slug}/report.pdf"
+        pdf_exists = bool(a.pdf)
+        if not a.pdf and os.path.exists(os.path.join(site, pdf_pub)):
+            print(f"WARN: {pdf_pub} in the site is from an earlier package and is no longer linked: "
+                  "re-run with --pdf so the PDF carries these numbers")
+        page = report_html(label, generated, rows, report_md, sec_md, dia_hrefs, thumb_href, note,
+                           "report.pdf" if pdf_exists else None, print_css, media_section(mj, f"houses/{slug}/"))
+        rp = os.path.join(hdir, "report.html")
+        with open(rp, "w", encoding="utf-8") as f:
+            f.write(page)
+        put(f"houses/{slug}/report.html", rp)
+
+        # detail.json
+        detail = detail_json(report, label, extras, waste, note, generated, rows)
+        if pdf_exists:
+            detail["pdf"] = pdf_pub
+
+        if media_pub:
             detail["media"] = media_pub
         dj = os.path.join(hdir, "detail.json")
         with open(dj, "w", encoding="utf-8") as f:

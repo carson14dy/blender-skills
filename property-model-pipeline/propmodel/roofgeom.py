@@ -21,7 +21,11 @@ plane's own roof (a lower eave under the corner of an upper roof) is kept: being
 overhung never opens a roof. Openings of a wing's own outline (``outline_holes``)
 and other wings' walls rising through a roof stay open, and every roof stops at
 the faces of solids standing through it (``penetrations``: a chimney, an
-exterior chimney chase); the cut edges are flashing (headwall / sidewall).
+exterior chimney chase); the cut edges are flashing (headwall / sidewall). The
+edges round an opening are open roof edges (eave where level, rake where
+sloped, i.e. drip edge), tagged with the opening, also when the opening lies
+over a lower roof that runs in under the overhang (a light well over a lower
+roof: the lower roof under it stays whole).
 
 Everything is computed analytically with polygon clipping, so areas and edge
 lengths are exact for the model (no tessellation error). The measurement
@@ -85,7 +89,8 @@ class Wing:
     # measured shapes that are not rectangles (site frame, metres). The parametric rectangle still defines
     # the roof PLANES; these only replace where the roof stops and where the walls stand:
     outline: Optional[list] = None          # roof drip-edge polygon [[x,y],...] (prow ends, notches)
-    outline_holes: Optional[list] = None    # openings in the roof (an open trellis bay): [[[x,y],...], ...]
+    outline_holes: Optional[list] = None    # openings in the roof (an open trellis bay, a light well): [[[x,y],...], ...];
+                                            # their edges are eave / rake tagged "WING:index" (Edge.opening)
     walls: Optional[list] = None            # wall polygon [[x,y],...] (cantilevers, recesses); sides are named w0, w1, ...
     # solids standing through the roof (a masonry chimney, an exterior chimney chase): [{"polygon": [[x,y],...],
     # "z": [z0, z1], "label": "..."}] (site frame; z0 / z1 null = unbounded). EVERY roof facet (any wing) stops at their
@@ -349,6 +354,8 @@ class Edge:
     p1: tuple
     penetration: Optional[str] = None   # headwall / sidewall round a solid standing through the roof: "WING:index"
                                         # of that wing's ``penetrations`` (chimney flashing); None otherwise
+    opening: Optional[str] = None       # eave / rake round an opening of a wing's own outline: "WING:index" of that
+                                        # wing's ``outline_holes`` (a roof bay / light well); None otherwise
 
     @property
     def length(self):
@@ -708,11 +715,11 @@ def _merge_collinear(edges):
         if out:
             p = out[-1]
             if p.kind == e.kind and p.facets == e.facets and p.penetration == e.penetration \
-                    and np.allclose(p.p1, e.p0, atol=1e-6):
+                    and p.opening == e.opening and np.allclose(p.p1, e.p0, atol=1e-6):
                 d0 = np.subtract(p.p1, p.p0)
                 d1 = np.subtract(e.p1, e.p0)
                 if np.linalg.norm(np.cross(d0, d1)) < 1e-9 * (np.linalg.norm(d0) * np.linalg.norm(d1) + 1e-12) + 1e-9:
-                    out[-1] = Edge(p.kind, p.facets, p.p0, e.p1, p.penetration)
+                    out[-1] = Edge(p.kind, p.facets, p.p0, e.p1, p.penetration, p.opening)
                     continue
         out.append(e)
     return out
@@ -726,6 +733,8 @@ def _classify_edges(facets: List[Facet], wings: List[Wing]):
     own roof outline -> eave (horizontal) / rake (sloped). Anything else is a
     roof-to-wall junction -> headwall (horizontal) / sidewall (sloped, step flashing); a junction lying on
     the face of a solid standing through the roof (``Wing.penetrations``) is tagged with it (chimney flashing).
+    An eave / rake on an opening of the facet's own wing outline (``Wing.outline_holes``) is tagged with that
+    opening (``Edge.opening``): kinds and lengths as on the outer outline, but identifiable in the takeoff.
     """
     edges: List[Edge] = []
     outline = {w.id: w.roof_outline() for w in wings}
@@ -736,6 +745,8 @@ def _classify_edges(facets: List[Facet], wings: List[Wing]):
     pen_rings = [(f"{w.id}:{k}", Polygon([q[:2] for q in pen["polygon"]]).buffer(0).boundary)
                  for w in wings for k, pen in enumerate(w.penetrations or [])
                  if isinstance(pen, dict) and len(pen.get("polygon") or []) >= 3]
+    hole_rings = [(f"{w.id}:{k}", w.id, Polygon([q[:2] for q in h]).buffer(0).boundary)
+                  for w in wings for k, h in enumerate(w.outline_holes or []) if h and len(h) >= 3]
 
     for F in facets:
         pieces = []
@@ -779,11 +790,14 @@ def _classify_edges(facets: List[Facet], wings: List[Wing]):
                 kind = "eave" if horiz else "rake"
             else:
                 kind = "headwall" if horiz else "sidewall"
-            pen = None
+            pen = opening = None
             if not on_outline:
                 pen = next((key for key, ring in pen_rings if ring.distance(mid) <= EDGE_TOL), None)
+            else:
+                opening = next((key for key, wid, ring in hole_rings
+                                if wid in F.wings and ring.distance(mid) <= EDGE_TOL), None)
             p0, p1 = _seg3d(F.plane, a, b)
-            edges.append(Edge(kind, [F.id], p0, p1, pen))
+            edges.append(Edge(kind, [F.id], p0, p1, pen, opening))
     return _merge_collinear(edges)
 
 
@@ -932,6 +946,7 @@ def to_mesh_json(model: BuildingModel):
                   "grade_range": list(w.grade_range) if w.grade_range else None} if w.area_siding is not None else {})}
              for w in model.walls]
     edges = [{"kind": e.kind, "facets": e.facets, "p0": list(e.p0), "p1": list(e.p1), "length_m": e.length,
-              **({"penetration": e.penetration} if e.penetration else {})} for e in model.edges]
+              **({"penetration": e.penetration} if e.penetration else {}),
+              **({"opening": e.opening} if e.opening else {})} for e in model.edges]
     return {"facets": facets, "walls": walls, "edges": edges, "wings": [w.to_dict() for w in model.wings],
             "ground": list(model.ground) if model.ground is not None else None}

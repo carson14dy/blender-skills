@@ -1075,3 +1075,102 @@ def test_lidar_plane_pad_takes_the_measured_ground_at_a_wall_foot_under_the_eave
     few = dict(pad, fit={"min_n": 20, "polygon": [[3.9, -0.6], [4.0, -0.6], [4.0, -0.5], [3.9, -0.5]]})
     pads2, rep2 = build_site.resolve_lidar_pads([few, {"polygon": [[0, 0], [1, 0], [1, 1]], "z": 1.0}], np.c_[x, y], z)
     assert len(pads2) == 1 and pads2[0]["z"] == 1.0 and rep2[0][1] is None and "returns" in rep2[0][2]["why"]
+
+
+def test_mesh_z_follows_the_triangles_of_a_snapped_grid():
+    """mesh_z samples the terrain on its own triangles (per-cell fold, nodes moved off the regular grid by less than a
+    cell): on a plane every sample is exact, wherever the nodes moved; outside the mesh it is nan."""
+    c = 0.25
+    xs = np.arange(-1, 1 + 1e-9, c); X, Y = np.meshgrid(xs, xs)
+    rng = np.random.default_rng(3)
+    NX = X + rng.uniform(-0.3 * c, 0.3 * c, X.shape); NY = Y + rng.uniform(-0.3 * c, 0.3 * c, X.shape)
+    NX[0, :], NX[-1, :], NX[:, 0], NX[:, -1] = X[0, :], X[-1, :], X[:, 0], X[:, -1]
+    NY[0, :], NY[-1, :], NY[:, 0], NY[:, -1] = Y[0, :], Y[-1, :], Y[:, 0], Y[:, -1]
+    plane = lambda x, y: 0.3 * x - 0.7 * y + 1.0
+    Z = plane(NX, NY)
+    alt = build_site.split_diagonals(Z, NX, NY)
+    qx = rng.uniform(-0.9, 0.9, 200); qy = rng.uniform(-0.9, 0.9, 200)
+    z = build_site.mesh_z(NX, NY, Z, alt, xs[0], xs[0], c, qx, qy)
+    assert np.all(np.isfinite(z)) and np.allclose(z, plane(qx, qy), atol=1e-9)
+    assert np.isnan(build_site.mesh_z(NX, NY, Z, alt, xs[0], xs[0], c, [1.5], [0.0]))[0]
+
+
+def _oblique_drive_scene(c=0.25, half=3.0):
+    """A concrete drive meeting a 1 m retaining wall whose face runs at 8.5 deg to the grid (y = 0.15 x, uphill north, 0.25 m
+    thick): the drive falls 0.2 m/m away from the wall (a crossfall) and 0.05 m/m along it; the grid's face nodes carry a
+    0.12 m lip (the side grade of the step) and, snapped onto the oblique face from both sides, stand at different heights."""
+    xs = np.arange(-half, half + 1e-9, c); X, Y = np.meshgrid(xs, xs)
+    k = 0.15; nrm = np.array([k, -1.0]) / np.hypot(k, 1.0)          # downhill unit normal of the face
+    t = lambda x, y: (x * nrm[0] + y * nrm[1])                       # signed distance downhill of the face
+    drive = lambda x, y: -1.0 + 0.05 * x - 0.2 * t(x, y)
+    Z = np.where(t(X, Y) > 0, drive(X, Y), 0.0)
+    item = {"kind": "retaining_wall", "line": [[-half - 1, -k * (half + 1)], [half + 1, k * (half + 1)]], "thickness": 0.25,
+            "top_z": 0.1, "line_is": "face", "uphill": "left"}
+    walls = build_site.wall_lines({"items": [item]}); faces = build_site.wall_faces({"items": [item]})
+    node = [X.copy(), Y.copy()]
+    Zb = build_site.apply_breaklines(Z.copy(), xs, xs, walls, c, snap=node)
+    on_face = np.abs(t(node[0], node[1])) < 1e-6
+    Zb = np.where(on_face & (t(X, Y) > 0), Zb + 0.12, Zb)            # the lip on the face nodes from the drive side
+    Zb = np.where(on_face & (t(X, Y) <= 0), drive(node[0], node[1]) + 0.25, Zb)   # body nodes on the face: higher still
+    pave = Polygon([(-half, -half), (half, -half), (half, k * half - 0.01), (-half, -k * half - 0.01)])
+    solids = shapely.unary_union([LineString(l_).buffer(th / 2, cap_style="flat", join_style="mitre") for l_, th in walls])
+    return xs, node, Zb, faces, walls, pave, solids, t, drive
+
+
+def test_paving_wall_feet_run_the_drive_plane_up_to_the_face():
+    """Draped paving meeting a wall face on its downhill side: the nodes within 0.1 m of the face (the face nodes, snapped
+    from both sides at different heights) take the drive plane fitted 0.3-0.6 m out and extended to the face -- the
+    crossfall kept, the lip and the face-line slivers gone; nodes further out and on the upper level are left alone."""
+    c = 0.25
+    xs, node, Z, faces, walls, pave, solids, t, drive = _oblique_drive_scene(c)
+    alt = build_site.split_diagonals(Z, node[0], node[1])
+    zf = lambda qx, qy: build_site.mesh_z(node[0], node[1], Z, alt, xs[0], xs[0], c, qx, qy)
+    plane = build_site.paving_foot_plane(faces, zf, pave, solids, near=0.1)
+    Zp, moved = build_site.paving_wall_feet(Z, node[0], node[1], plane)
+    tn = t(node[0], node[1])
+    zone = (tn >= -1e-6) & (tn <= 0.1) & (np.abs(node[0]) < 2.2)
+    assert zone.sum() >= 15 and moved[zone].all()
+    err0 = Z[zone] - drive(node[0][zone], node[1][zone])
+    err1 = Zp[zone] - drive(node[0][zone], node[1][zone])
+    assert err0.min() > 0.05 and err0.mean() > 0.1                    # the lip / side grade over the drive
+    # on the drive within 0.06 m (a sample 0.3 m out can lie in a triangle reaching a lipped face node one cell away)
+    assert np.abs(err1).max() < 0.06 and np.abs(err1).mean() < 0.035
+    assert np.allclose(Zp[tn > 0.15], Z[tn > 0.15]) and np.allclose(Zp[tn < -0.01], Z[tn < -0.01])
+    # no sliver left on the face line: neighbouring face nodes differ by the drive's own slope only
+    f = np.nonzero(zone)[0] if zone.ndim == 1 else np.argwhere(zone)
+    zz = sorted((node[0][j, i], Zp[j, i]) for j, i in f)
+    assert max(abs(b[1] - a[1]) - 0.06 * abs(b[0] - a[0]) for a, b in zip(zz, zz[1:])) < 0.03
+    # a band that is not paving (the samples off the paving outline) or a grade pad in front leaves the nodes alone
+    off = build_site.paving_foot_plane(faces, zf, Polygon([(-3, -3), (-2.9, -3), (-2.9, -2.9)]), solids, near=0.1)
+    assert not build_site.paving_wall_feet(Z, node[0], node[1], off)[1].any()
+    padded = build_site.paving_foot_plane(faces, zf, pave, solids, near=0.1, skip=Polygon([(-3, -3), (3, -3), (3, -0.2), (-3, -0.2)]).buffer(0))
+    assert not build_site.paving_wall_feet(Z, node[0], node[1], padded)[1][np.abs(node[0]) < 2.2].any()
+    # a bank (fitted slope over 0.3: here the drive rising 0.6 m/m away from the wall) is not a paving joint
+    steep = build_site.paving_foot_plane(faces, lambda qx, qy: zf(qx, qy) + 0.8 * t(qx, qy), pave, solids, near=0.1)
+    assert not build_site.paving_wall_feet(Z, node[0], node[1], steep)[1].any()
+
+
+def test_poking_triangles_drop_slivers_in_the_foot_strip_and_keep_ordinary_terrain():
+    """A terrain triangle wholly in the foot strip (and the wall body behind it) standing over the paving plane is dropped
+    (a sliver on the face line, the hidden step showing in front of a face); one reaching out onto the open paving, or
+    one standing no higher than the plane, is kept."""
+    plane = lambda x, y: np.where((np.asarray(y) >= -0.1) & (np.asarray(y) <= 0.005), 0.0, np.nan)
+    strip = Polygon([(-5, -0.1), (5, -0.1), (5, 0), (-5, 0)])
+    solids = Polygon([(-5, 0), (5, 0), (5, 0.25), (-5, 0.25)])
+    NX = np.array([[0.0, 0.25, 0.5]] * 3)
+    for rows, keep_out in (((-0.08, 0.0, 0.25), False), ((-0.3, 0.0, 0.25), True)):
+        NY = np.array([[rows[j]] * 3 for j in range(3)])
+        Z = np.array([[0.0, 0.0, 0.0], [0.0, 0.3, 0.0], [1.0, 1.0, 1.0]])     # one face node 0.3 m over the drive
+        alt = np.zeros((2, 2), bool)
+        poke = build_site.poking_triangles(NX, NY, Z, alt, plane, solids=solids, strip=strip)
+        touching = np.zeros((2, 2, 2), bool)                       # triangles with the high face node as a corner
+        for j in range(2):
+            for i in range(2):
+                for tt, cs in enumerate(build_site._TRI_CORNERS[False]):
+                    touching[j, i, tt] = any((j + dj, i + di) == (1, 1) for dj, di in cs)
+        if keep_out:
+            assert not poke[0].any()                                # they reach out onto the open paving: terrain
+        else:
+            assert poke[0][touching[0]].all() and not poke[0][~touching[0]].any()
+        Z[1, 1] = 0.0
+        assert not build_site.poking_triangles(NX, NY, Z, alt, plane, solids=solids, strip=strip).any()
