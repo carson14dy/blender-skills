@@ -1,0 +1,63 @@
+{
+ "displayFieldName": "",
+ "fieldAliases": {
+  "DBO.Parcel.PID": "DBO.Parcel.PID",
+  "DBO.GIS_Parcels.Name": "DBO.GIS_Parcels.Name"
+ },
+ "fields": [
+  {
+   "name": "DBO.Parcel.PID",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "DBO.GIS_Parcels.Name",
+   "type": "esriFieldTypeString"
+  }
+ ],
+ "features": [
+  {
+   "attributes": {
+    "DBO.Parcel.OBJECTID": 81,
+    "DBO.Parcel.PID": "B-000-001",
+    "DBO.Parcel.Zoning": "R1",
+    "DBO.Parcel.SqFtCalc": 6460.4,
+    "DBO.Parcel.AcreCalc": 0.1483,
+    "DBO.GIS_Parcels.Class1": "NA-O",
+    "DBO.GIS_Parcels.Value1": 312000,
+    "DBO.GIS_Parcels.Value2": 0,
+    "DBO.GIS_Parcels.Name": "PLANTED NAME",
+    "DBO.GIS_Parcels.NameADD": "PLANTED NAME 2",
+    "DBO.GIS_Parcels.Add1": "PLANTED MAIL 1"
+   },
+   "geometry": {
+    "rings": [
+     [
+      [
+       -140.00009121,
+       9.99986439
+      ],
+      [
+       -140.00009121,
+       10.00013561
+      ],
+      [
+       -139.99990879,
+       10.00013561
+      ],
+      [
+       -139.99990879,
+       9.99986439
+      ],
+      [
+       -140.00009121,
+       9.99986439
+      ]
+     ]
+    ],
+    "spatialReference": {
+     "wkid": 4326
+    }
+   }
+  }
+ ]
+}

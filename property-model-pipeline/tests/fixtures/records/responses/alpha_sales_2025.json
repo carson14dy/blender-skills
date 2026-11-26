@@ -1,0 +1,28 @@
+{
+ "displayFieldName": "",
+ "fieldAliases": {
+  "OBJECTID": "OBJECTID",
+  "TAG": "TAG",
+  "SALE_DATE": "SALE_DATE",
+  "SALE_PRICE": "SALE_PRICE"
+ },
+ "fields": [
+  {
+   "name": "OBJECTID",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "TAG",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "SALE_DATE",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "SALE_PRICE",
+   "type": "esriFieldTypeString"
+  }
+ ],
+ "features": []
+}

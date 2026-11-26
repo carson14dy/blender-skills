@@ -1,0 +1,92 @@
+{
+ "displayFieldName": "",
+ "fieldAliases": {
+  "OBJECTID": "OBJECTID",
+  "TAG": "TAG",
+  "ADDRESS": "ADDRESS",
+  "ACREAGE": "ACREAGE",
+  "SQFT": "SQFT",
+  "COUNTY": "COUNTY",
+  "OWNNAME1": "OWNNAME1"
+ },
+ "fields": [
+  {
+   "name": "OBJECTID",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "TAG",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "ADDRESS",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "ACREAGE",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "SQFT",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "COUNTY",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "OWNNAME1",
+   "type": "esriFieldTypeString"
+  }
+ ],
+ "features": [
+  {
+   "attributes": {
+    "OBJECTID": 21,
+    "TAG": "T0000001",
+    "ADDRESS": "1 TEST AVE",
+    "ADDITION": "EXAMPLE ADDN",
+    "ACREAGE": 0.1483,
+    "SQFT": 6458.0,
+    "LEGAL": "LOT 1 BLK 1 EXAMPLE ADDN",
+    "ACTIVITY": "11 - Single-Family",
+    "LANDUSE": 11,
+    "NUMUNITS": 1,
+    "COUNTY": "ALPHA",
+    "COUNTYID": "C-0000001",
+    "PARCELTYPE": "Standard Tax Parcel",
+    "OWNNAME1": "PLANTED NAME ONE",
+    "OWNADDRESS": "PLANTED MAIL ADDRESS"
+   },
+   "geometry": {
+    "rings": [
+     [
+      [
+       -140.00009121,
+       9.99986439
+      ],
+      [
+       -140.00009121,
+       10.00013561
+      ],
+      [
+       -139.99990879,
+       10.00013561
+      ],
+      [
+       -139.99990879,
+       9.99986439
+      ],
+      [
+       -140.00009121,
+       9.99986439
+      ]
+     ]
+    ],
+    "spatialReference": {
+     "wkid": 4326
+    }
+   }
+  }
+ ]
+}

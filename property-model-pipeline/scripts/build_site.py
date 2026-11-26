@@ -1,0 +1,2905 @@
+#!/usr/bin/env python3
+"""Build the site (terrain + yard surfaces) around a measured house, for add_site.py in Blender.
+
+    python3 build_site.py PROJECT city_features.json OUT/site_scene.json [--half 34] [--cell 0.5]
+
+Terrain = LiDAR ground returns (class 2) in the model datum, linearly interpolated on a grid
+(holes under the house are bridged), lightly median-filtered (LiDAR noise ~5 cm). Each grid
+face gets a surface class from planimetric polygons (city "impervious surface" or traced):
+street, concrete (driveway / sidewalk / walk / patio), rock bed (a band around the walls and
+under decks), lawn; faces inside the house walls are dropped (not under a storey that cantilevers over
+open ground: standing_cells). Curbs are emitted along street
+edges with heights sampled from the terrain on both sides.
+
+city_features.json (model frame, metres) — as written by the job's GIS step:
+  {"impervious": [{"geoms": [[outer, hole...]], "props": {"SurfaceType": "Paved", "SurfaceUse": "Driveway"}}],
+   "sidewalk":   [{"geoms": [[x,y],...] (lines), "props": {"WIDTH": 4 (ft)}}],
+   "parcels":    [{"geoms": [[outer]], "props": {"ADDRESS": ...}}],
+   "hydrants":   [{"geoms": [[x,y]]}]}
+   "curbs":      [{"geoms": [[x,y],...] (lines)}]   optional: only these edges get a curb (default: every
+                 street edge; a bank meeting the asphalt has none). No curb within --curb-cut of a driveway.
+   "rocks":      [{"geoms": [[outer]]}]              optional traced boulder / outcrop outlines (rock faces)
+Extra keys in the project's details.json-style file can add rock beds (--beds beds.json).
+--cutouts cuts pits (window wells) out of the ground and every surface; the grid cells they touch are
+dropped and the draped overlays around them close the hole exactly at the polygon edge.
+
+Hillside terrain (--ground filtered --keep-rocks): ground = morphological filter on the last returns
+(median of each ground cell's lowest returns), then max(ground, solid surface) where the solid surface is
+the top of single-return, locally planar returns (bare ground, boulders, outcrops; never canopy), so
+boulders keep their measured height. The solid surface is masked only on the roof plan (+ --solid-mask-buffer)
+and the decks / excludes / paving-like polygons, and tall patches grow back over their edges (the planarity
+window fails on every boulder edge, lidar.merge_solid). Inside traced rock outlines ("rocks" features and,
+with --boulders yard.json, boulder items) the terrain also takes the --rock-q quantile of the single returns per
+cell (capped at the outline's top_z), and raised nodes are despiked (lidar.despike). Faces the merge raises
+(or inside rock outlines) get class "rock". --grade yard.json levels grade_pad items (areaways, patios cut
+into the slope; never over rock raised > 0.5 m); a pad with "z": "lidar" takes the plane fitted to the last returns
+round it instead (fit_pad_plane: the ground at a wall foot under the eave, which the 1 m building exclusion of the
+ground filter bridges across the house -- a re-entrant corner then lifts it) and --breaklines yard.json makes the terrain step inside
+every retaining_wall item instead of ramping through it. A wall item with "line_is": "face" gives its
+exposed (downhill) face; it is extruded to the uphill side ("uphill": "left"|"right" of the line direction,
+or found from the terrain). Draped overlays are cut out of every wall footprint and lie exactly on the terrain
+triangles (drape_on_mesh), so they meet wall faces and rough ground without gaps or flaps; their triangles
+are wound counter-clockwise (normals up). Each terrain cell is folded along the diagonal whose nodes differ
+less in height (split_diagonals); the quad is written so that its own 0-2 diagonal is that fold, and
+add_site.py triangulates along it, so the drapes and the rendered terrain use the same triangles.
+Use --cell 0.25 near a house (QL1 LiDAR has ~2 returns per 0.25 m cell).
+
+Spikes (lit pyramids): the filtered ground drops isolated shrub-top cells (--ground-despike, lidar.ground_surface), and
+every node is despiked twice -- after the rock merge and again after the pads / breaklines (whose own nodes are
+skipped) -- by lidar.clamp_spikes: z <= 3x3 median + --spike-clamp and <= highest neighbour + --peak-clamp; rock nodes
+(rock_rise > --spike-rock and the pits their closing adds) are also lifted to >= 3x3 median - --pit-clamp and smoothed
+with a Gaussian (--rock-smooth, one ring of foot nodes with --rock-smooth-ring) that never goes below the measured
+height of the node's own cell (--rock-smooth-floor); small off-rock bumps over the 5x5 median take that median
+(--bump-clamp). Shrub / mulch beds: --beds entries may be {"polygon", "label", "no_solid": true} and --veg-mask lists
+more; there the single returns are shrub tops, not rock: no solid merge, no rock-outline quantile, and the terrain is
+capped at the grey opening of the ground (--veg-window, --veg-dh: lidar.veg_floor). Inside traced rock outlines no node
+stays below its cell's lowest last return (--rock-floor-last). A third pass (--spike-third) clamps once more to the 3x3
+median + 0.3 everywhere but the breakline bands, pads, cut-outs and tall rock (rock_rise >= --spike-third-rise), and
+lowers crest / bump nodes the median cannot see (a node on a one-cell crest is its own median) to the mean of its 8
+neighbours + 0.3 / its 5x5 median, unless a LiDAR return supports its height (lidar.clamp_unsupported).
+
+Wall feet and overlays at walls: after the breaklines, nodes within one cell of a retaining-wall face on its downhill side
+(also past the face's ends; nodes snapped onto the face count) take min(z, their cell's lowest last return), nodes out to
+--wall-foot m min(z, that + --wall-foot-tol), and the later despike passes skip them (wall_foot_lower: a grade pad's blend or
+the side grade of a smeared step otherwise leaves pale shards on the lower level). Snapped feet (nodes from beyond the face that
+the breaklines snap onto it, snapped_feet) are feet of their own face even where the snap carries them a few millimetres into
+the span of a wall meeting it at a corner; one with a twin (a node snapped onto the same point of the face from inside the
+wall body) moves --wall-foot-shift m downhill off the face, and the twin never stands above it (no terrain curtain in front of
+the face); a lone foot stays on the face (moved, its triangles to the back line would cross the face in front of it). A grade pad's blend
+stops at a retaining-wall face that runs along the pad edge (--pad-face-stop: no blend on its downhill side). Their counterpart behind the face
+(wall_back_floor, --wall-back-floor): nodes on the uphill side within the wall thickness + --wall-back-reach cells (default
+1.5; also in the wedge behind a convex joint of the face line, outside both segments' spans) that lie under the
+median (--wall-back-q; 0 = the lowest) of the last returns within one cell of them behind the wall body take it (never over
+the wall top + --wall-back-floor, never by more than 1 m: a deck or eave over the bank; inside a grade pad never over the pad z
++ --pad-back-tol: the returns over a patio include a deck overhead): the side grade is extrapolated along
+the slope beyond the band and drops below a ledge, a boulder top or a bed that runs level to the face. Nodes on a downhill face
+(or a moved foot) are raised there only when the point --wall-front-probe m further downhill is behind a wall too (a terrace;
+at a corner the lower level runs to the face). Draped street / paving / bed overlays are cut
+back from a --overlay-wall-gap strip on the uphill side of every face (uphill_strips), so a polygon lapping over a face is never
+draped on the upper level's triangles. A fourth despike pass (--spike-fourth) clamps the non-rock nodes once more, and nodes of
+street cells are kept within --street-clamp of the locally fitted road plane (road_plane).
+
+Last passes (on the --spike-fourth nodes plus isolated rock nodes, rock patches of <= 2 nodes): crest tips more than
+--spike-mean over the mean of their 8 neighbours and lone peaks (higher than all 8) more than --tip-clamp over it are
+lowered, never by more than --spike-mean-drop (clamp_mean, clamp_tips: a crest node is its own 3x3 median, so the median
+clamps never see it, and a lone node 0.2-0.3 m proud renders as a lit tooth). Nodes at a retaining wall's faces more than
+--wall-top-tol over its top_z with no LiDAR last return near their height take top_z + that (wall_top_clamp: a side grade
+extrapolated from a cliff behind a wall). Behind a wall over FLAT measured ground (wall_back_cap, --wall-back-cap, the
+uphill counterpart of the wall feet): nodes from the wall's back line out to --wall-back-cap-reach m behind the body whose
+behind-the-body last returns within --wall-back-cap-radius m span less than --wall-back-cap-flat take min(z, their lowest +
+--wall-back-cap), nodes on the back line whose returns there are no more than 0.1 m over the wall top stand no higher
+than the top (a side grade extrapolated from a walk ramp or a bank otherwise covers the cap's back edge), and nodes inside a
+wall body that the snap missed (at a joint of the face line) stand no higher than its top; where the LiDAR sees the cap
+itself (>= 3 last returns in the back half of the body, median <= top + 0.1 m: no soil on it), nodes on the body's back
+boundary (back lines, the mitre wedge of a convex joint) stand at the top - --wall-cap-drop (--wall-cap-seen), and at a
+free wall end the beyond-end nodes within one cell snap onto the end's back corner / end line at the same height
+(--wall-cap-ends: no snap reaches past a wall's end, and a bank or boulder toe there otherwise laps over the cap's end).
+Last, back-line nodes at or over
+a wall top - 0.01 m move uphill off the back line (--wall-back-shift, default --wall-foot-shift; more where their triangles
+across the body would still reach the cap's back edge: wall_back_shift), so the terrain stays under the cap there. Rock-raised nodes whose --flat-rock-window (0.5 m) holds a flat cluster of
+last returns (>= --flat-rock-n within --flat-rock-dz, at least --flat-rock-share of the window's returns: a shelf or
+ledge, not a step edge) and standing over it are lowered to the cluster's median, never below all of their 8 neighbours
+(lidar.flat_window_median: the outline quantile and the rock smoothing otherwise carry a cliff's height out over the shelf
+at its foot). The filtered ground also excludes the roof plan (--ground-exclude-roof: eave
+returns a few metres over a hillside pass the morphological filter and put a hump next to the walls).
+
+Decks and stairs (--decks details.json, add_details.py): applied LAST, after every despike pass, the terrain inside each
+deck polygon is capped at top_z - --deck-clear and inside each stair footprint at the line through its treads' lowest
+corners - --stair-clear, blended like a grade pad over --deck-blend m outside (cap_terrain; only lowers, never drags a
+breakline band, pad, wall foot or cut-out from outside). A deck excluded from the ground filter is otherwise bridged from
+the grade around it, which on a hillside runs through the boards. The yard.json "steps" items of --grade get the same
+stair cap (--step-caps): the LiDAR ground over a measured stair is a smooth ramp through the treads. The capped nodes
+(inside or within --deck-blend + one cell of a deck / stair) are listed in the scene as "fixed_nodes": add_site.py's
+steep-face smoothing leaves them in place (it otherwise lifts a stair foot beside a boulder face back over the treads).
+Past each details.json stair's foot (--stair-foot m along the run, the stair width + 0.25 m on each side) the nodes are
+then lowered to the lower quartile (--stair-foot-q) of the last returns within --stair-foot-radius (stair_foot_ground):
+the bridge over the excluded stair carries the bottom tread's height past the foot, above the measured landing.
+
+Paving at the wall feet (--paving-foot, applied after every terrain pass): where draped concrete paving (a driveway, walk or
+patio) meets a retaining-wall face on its downhill side, the terrain nodes and the concrete overlay's vertices within
+--paving-foot m of the face take the paving plane extended from --paving-foot-band m out (paving_foot_plane: a line fitted
+along the face's normal to the terrain there, so a measured crossfall is kept), and terrain triangles that still stand over
+it within the strip are dropped (poking_triangles): one straight joint instead of a lip, and no face-line slivers (two rows
+of nodes snapped onto a face oblique to the grid at different heights) or wedges at the joints of a stepped wall. Left
+alone: grade pads (their own level), a band that is not paving-like (steeper than 0.3 or not planar: a bank) and a band
+crossed by another wall.
+
+Vehicles: inside the street / paving outlines, returns more than --paving-hump over the local lowest-return surface (a
+3 m grey opening, exact on planes and slopes) are parked cars or trailers; they are dropped before any gridding
+(lidar.paving_humps), so the street is bridged under them instead of rising as an asphalt mound. Street cells more
+than --street-bank over the locally fitted road plane near the street edge (a street polygon lapping onto a bank) leave
+the street overlay and stay ground (street_bank; kerbed edges are kept).
+"""
+import argparse
+import json
+import os
+import sys
+
+import numpy as np
+from shapely.geometry import Polygon, LineString, Point, MultiPolygon
+from shapely.ops import unary_union
+import shapely
+
+CLASSES = ["ground", "rock_bed", "concrete", "street", "house", "rock"]   # face_class indexes this ("ground": soil / grass)
+
+
+def polys_of(feats, pred=lambda p: True):
+    out = []
+    for fe in feats or []:
+        if not pred(fe.get("props") or {}):
+            continue
+        for g in fe["geoms"]:
+            try:
+                poly = Polygon(g[0], g[1:]) if isinstance(g[0][0], (list, tuple)) else Polygon(g)
+                if not poly.is_valid:
+                    poly = poly.buffer(0)
+                out.append(poly)
+            except Exception:
+                continue
+    return unary_union(out) if out else Polygon()
+
+
+def _wing_poly(w):
+    import math
+    if w.get("walls"):
+        return Polygon(w["walls"]).buffer(0)
+    t = math.radians(w["azimuth"])
+    u = np.array([math.sin(t), math.cos(t)]); v = np.array([-u[1], u[0]])
+    cxy = np.array([w["cx"], w["cy"]])
+    L, W = w["length"] / 2, w["width"] / 2
+    return Polygon([cxy + s * L * u + r * W * v for s, r in ((-1, -1), (1, -1), (1, 1), (-1, 1))])
+
+
+def standing_cells(wings, extra_polys, Z, fx, fy, c, raised=(), tol=0.5):
+    """Grid cells (centres fx, fy) wholly inside the house where it stands on the ground: inside a wing that
+    reaches the ground, or a --house-extra polygon, or inside a `raised` wing (an upper storey whose walls stand
+    on another storey: add_site.py keep_wall_bottoms) where the cell's mean terrain height is no more than `tol`
+    below that wing's base_z (where it meets the hillside). Ground under a raised storey that overhangs open
+    ground stays, so no hole opens between the lower walls and the overhang's wall line."""
+    zc = ((Z[:-1, :-1] + Z[:-1, 1:] + Z[1:, :-1] + Z[1:, 1:]) / 4).ravel()
+    out = np.zeros(fx.shape, bool)
+    for w in wings:
+        if w.get("roof_only"):
+            continue
+        ins = shapely.contains_xy(_wing_poly(w).buffer(-c * 0.75), fx, fy)
+        out |= ins & ((zc >= float(w.get("base_z", 0.0)) - tol) if w.get("id") in raised else True)
+    for pg in extra_polys:
+        out |= shapely.contains_xy(pg.buffer(-c * 0.75), fx, fy)
+    return out
+
+
+def _wing_union(model):
+    import math
+    polys = []
+    for w in model["wings"]:
+        if w.get("roof_only"):
+            continue
+        if w.get("walls"):
+            polys.append(_wing_poly(w)); continue
+        t = math.radians(w["azimuth"])
+        u = np.array([math.sin(t), math.cos(t)]); v = np.array([-u[1], u[0]])
+        cxy = np.array([w["cx"], w["cy"]])
+        L, W = w["length"] / 2, w["width"] / 2
+        polys.append(Polygon([cxy + s * L * u + r * W * v for s, r in ((-1, -1), (1, -1), (1, 1), (-1, 1))]))
+    return unary_union(polys)
+
+
+def offset_line(line, dist):
+    """Polyline offset by ``dist`` to its left (negative: right), mitred joints (mitre length capped)."""
+    P = np.asarray(line, float)
+    if len(P) < 2:
+        return P.tolist()
+    d = np.diff(P, axis=0)
+    ln = np.maximum(np.hypot(d[:, 0], d[:, 1]), 1e-9)
+    nrm = np.column_stack([-d[:, 1], d[:, 0]]) / ln[:, None]
+    out = []
+    for k in range(len(P)):
+        if k == 0 or k == len(P) - 1:
+            n = nrm[min(k, len(nrm) - 1)]
+        else:
+            m = nrm[k - 1] + nrm[k]
+            mn = np.hypot(*m)
+            m = m / mn if mn > 1e-9 else nrm[k]
+            n = m / max(float(m @ nrm[k]), 0.35)
+        out.append((P[k] + dist * n).tolist())
+    return out
+
+
+def uphill_side(line, thickness, zfun, reach=0.5):
+    """+1 when the grade left of the line (direction of travel) is higher than on its right, else -1:
+    the length-weighted mean of zfun sampled ``thickness + reach`` either side of each segment midpoint."""
+    P = np.asarray(line, float)
+    acc = 0.0
+    for a_, b_ in zip(P[:-1], P[1:]):
+        d = b_ - a_; ln = float(np.hypot(*d))
+        if ln < 1e-6:
+            continue
+        n = np.array([-d[1], d[0]]) / ln; m = (a_ + b_) / 2; off = thickness + reach
+        acc += ln * (float(zfun(*(m + off * n))) - float(zfun(*(m - off * n))))
+    return 1 if acc >= 0 else -1
+
+
+def wall_lines(data, zfun=None):
+    """Retaining-wall lines for breaklines: a yard.json dict (items of kind retaining_wall) or a list of
+    {"line": [[x,y],...], "thickness": t} -> [(centre line, thickness)].
+
+    ``"line_is": "face"``: the line is the wall's exposed (downhill) face, as measured from the LiDAR step;
+    the wall is extruded to the uphill side: ``"uphill": "left"|"right"`` (of the line direction) or, when
+    absent, the side where ``zfun(x, y)`` (the terrain) is higher. Default: the line is the centre."""
+    items = data.get("items", []) if isinstance(data, dict) else data
+    out = []
+    for it in items:
+        if not (isinstance(it, dict) and it.get("line") and it.get("kind", "retaining_wall") == "retaining_wall"):
+            continue
+        th = float(it.get("thickness", 0.3))
+        line = it["line"]
+        if it.get("line_is", "centre") == "face":
+            side = {"left": 1, "right": -1}.get(it.get("uphill"))
+            if side is None:
+                if zfun is None:
+                    raise ValueError(f"wall {it.get('name')}: line_is face needs 'uphill' or a terrain")
+                side = uphill_side(line, th, zfun)
+            line = offset_line(line, side * th / 2)
+        out.append((line, th))
+    return out
+
+
+def wall_faces(data, zfun=None):
+    """Exposed (downhill) faces of the retaining walls of a yard.json dict (or item list) -> [(face line, down, thickness)]:
+    ``down`` = +1 when the downhill side is left of the line direction, -1 when it is right. A ``"line_is": "face"`` item
+    gives its own line (downhill = the side opposite ``uphill``, or the lower terrain); a centre-line item gives its line
+    moved half a thickness to its downhill side (the lower ``zfun`` side; skipped without a terrain)."""
+    items = data.get("items", []) if isinstance(data, dict) else data
+    out = []
+    for it in items:
+        if not (isinstance(it, dict) and it.get("line") and len(it["line"]) >= 2
+                and it.get("kind", "retaining_wall") == "retaining_wall"):
+            continue
+        th = float(it.get("thickness", 0.3))
+        up = {"left": 1, "right": -1}.get(it.get("uphill"))
+        if up is None:
+            if zfun is None:
+                continue
+            up = uphill_side(it["line"], th, zfun)
+        line = it["line"] if it.get("line_is", "centre") == "face" else offset_line(it["line"], -up * th / 2)
+        out.append(([list(map(float, p[:2])) for p in line], -up, th))
+    return out
+
+
+def uphill_strips(faces, gap=0.15):
+    """Plan strips ``gap`` m wide on the uphill side of every wall face (the face line extended by ``gap`` past both
+    ends): draped paving / bed overlays are cut back to the face there. A paving polygon that laps a few centimetres over
+    a face (or past a wall end) onto the upper level would otherwise be draped on the upper level's terrain triangles and
+    stand up as a pale spike on the wall. ``gap`` may be a list, one per face (face_overlay_gaps); a face with gap 0 gets
+    no strip."""
+    gaps = list(gap) if isinstance(gap, (list, tuple, np.ndarray)) else [gap] * len(faces)
+    polys = []
+    for (line, down, _th), gap in zip(faces, gaps):
+        if gap <= 0:
+            continue
+        P = np.asarray(line, float)
+        d0 = P[1] - P[0]; d1 = P[-1] - P[-2]
+        n0, n1 = np.hypot(*d0), np.hypot(*d1)
+        if n0 < 1e-9 or n1 < 1e-9:
+            continue
+        P = P.copy(); P[0] = P[0] - gap * d0 / n0; P[-1] = P[-1] + gap * d1 / n1
+        # single-sided buffer: positive distance = left of the line direction; the uphill side is -down
+        pg = LineString(P).buffer(-down * gap, single_sided=True, join_style="mitre")
+        if not pg.is_empty:
+            polys.append(pg)
+    return unary_union(polys) if polys else Polygon()
+
+
+def cell_lowest(pxy, pz, x0, y0, c, shape):
+    """Lowest return of every grid node's cell (node (j, i) at (x0 + i c, y0 + j c), cell +-c/2); nan where empty."""
+    ny, nx = shape
+    i = np.floor((pxy[:, 0] - (x0 - c / 2)) / c).astype(int)
+    j = np.floor((pxy[:, 1] - (y0 - c / 2)) / c).astype(int)
+    ok = (i >= 0) & (i < nx) & (j >= 0) & (j < ny)
+    low = np.full(shape, np.inf)
+    np.minimum.at(low, (j[ok], i[ok]), pz[ok])
+    low[~np.isfinite(low)] = np.nan
+    return low
+
+
+def snapped_feet(NX, NY, faces, x0, y0, c, eps=1e-3):
+    """Snapped foot nodes: grid nodes whose original position (x0 + i c, y0 + j c) lies beyond a retaining-wall face on its
+    downhill side and that apply_breaklines snapped onto that face (mesh position NX, NY on the face line, within a
+    segment's span). Returns (bool mask, face index grid (-1 elsewhere), downhill unit normal grid [ny, nx, 2]).
+    A node from inside the wall body is snapped onto the same face next to it (the 'uphill duplicate'): it is not one."""
+    return _face_snaps(NX, NY, faces, x0, y0, c, eps)[:3]
+
+
+def _face_snaps(NX, NY, faces, x0, y0, c, eps=1e-3):
+    """snapped_feet() + the face index of every node snapped onto a downhill face line from either side (-1 elsewhere)."""
+    ny, nx = NX.shape
+    X0, Y0 = np.meshgrid(x0 + c * np.arange(nx), y0 + c * np.arange(ny))
+    moved = np.hypot(NX - X0, NY - Y0) > 1e-9
+    mask = np.zeros(NX.shape, bool); kk = np.full(NX.shape, -1); nn = np.zeros(NX.shape + (2,))
+    onf = np.full(NX.shape, -1)
+    for k, (line, down, th) in enumerate(faces):
+        P = np.asarray(line, float)
+        for a_, b_ in zip(P[:-1], P[1:]):
+            d = b_ - a_; ln = float(np.hypot(*d))
+            if ln < 1e-9:
+                continue
+            d = d / ln; n = down * np.array([-d[1], d[0]])         # n points downhill
+            s = (NX - a_[0]) * d[0] + (NY - a_[1]) * d[1]
+            t = (NX - a_[0]) * n[0] + (NY - a_[1]) * n[1]
+            t0 = (X0 - a_[0]) * n[0] + (Y0 - a_[1]) * n[1]
+            line_ = moved & (onf < 0) & (np.abs(t) <= eps) & (s >= -1e-6) & (s <= ln + 1e-6)
+            onf[line_] = k
+            on = line_ & ~mask & (t0 > eps)
+            mask |= on; kk[on] = k; nn[on] = n
+    return mask, kk, nn, onf
+
+
+def wall_foot_lower(Z, NX, NY, faces, low, x0, y0, c, reach=0.5, tol=0.3, walls=None, overhead=1.0, shift=0.0,
+                    shift_lone=False):
+    """Foot of every retaining-wall face: grid nodes (at their mesh positions NX, NY: nodes snapped onto a face count)
+    within one cell of the face on its downhill side -- also past the face's ends -- take min(z, lowest last return of
+    their own cell; with none, or only returns more than ``overhead`` m above the node (a deck or an eave over the foot),
+    of the next cell down the face normal, up to 3 cells); nodes one cell to ``reach`` m
+    out take min(z, that return + ``tol``). Grade-pad blends reach across a wall and the side grade of a smeared step can
+    leave the foot standing up as a pale terrain shard on the lower level. Nodes on the uphill side of another wall's
+    face (inside its band, ``walls`` = wall_lines output) are left to that wall -- except snapped foot nodes
+    (snapped_feet: their original cell lies beyond the face, on the lower level), which are always feet of their own face:
+    snapping can carry a node a few millimetres into the span of a wall that meets this one at a corner. ``shift`` > 0
+    moves every snapped foot node that far downhill along the face normal, IN PLACE in NX, NY, so it never coincides
+    with the node snapped onto the same face from inside the wall body (which keeps that face's side grade) and the
+    lower level reaches the face; a snapped foot with no such twin (``shift_lone`` False, the default) stays on the face:
+    moved, its triangles to the wall's back line (or into another wall's band at an inside corner) would cross the face
+    ``shift`` m in front of it as a steep terrain curtain. Never raises a node. Returns (new grid, bool mask of the foot
+    nodes)."""
+    Z = np.array(Z, float, copy=True)
+    ny, nx = Z.shape
+    sfoot, sk, sn, onf = _face_snaps(NX, NY, faces, x0, y0, c)
+    near = np.full(Z.shape, np.inf); tdn = np.zeros(Z.shape); ndir = np.zeros(Z.shape + (2,))
+    owner = np.full(Z.shape, -1)
+    uph = [np.zeros(Z.shape, bool) for _ in faces]
+    for k, (line, down, th) in enumerate(faces):
+        P = np.asarray(line, float)
+        bx0, by0 = P.min(0) - reach - c; bx1, by1 = P.max(0) + reach + c
+        cand = (NX >= bx0) & (NX <= bx1) & (NY >= by0) & (NY <= by1)
+        if not cand.any():
+            continue
+        dk = np.full(Z.shape, np.inf); tk = np.zeros(Z.shape); nk = np.zeros(Z.shape + (2,))
+        span = np.zeros(Z.shape, bool)
+        for a_, b_ in zip(P[:-1], P[1:]):
+            d = b_ - a_; ln = float(np.hypot(*d))
+            if ln < 1e-9:
+                continue
+            d = d / ln; n = down * np.array([-d[1], d[0]])         # n points downhill
+            s = (NX - a_[0]) * d[0] + (NY - a_[1]) * d[1]
+            t = (NX - a_[0]) * n[0] + (NY - a_[1]) * n[1]
+            dist = np.hypot(s - np.clip(s, 0, ln), t)
+            better = cand & (dist < dk)
+            dk = np.where(better, dist, dk); tk = np.where(better, t, tk)
+            nk[better] = n
+            span = np.where(better, (s >= -1e-6) & (s <= ln + 1e-6), span)
+        # behind the wall = uphill of a face, within a segment's span (a node past the end of a wall line is not behind it)
+        uph[k] = cand & (tk < -1e-6) & (dk <= th + 1.5 * c) & span
+        mine = cand & (tk >= -1e-6) & (dk <= reach + 1e-6) & (dk < near)
+        near = np.where(mine, dk, near); tdn = np.where(mine, tk, tdn); ndir[mine] = nk[mine]
+        owner[mine] = k
+    foot = owner >= 0
+    for k in range(len(faces)):
+        others = np.zeros(Z.shape, bool)
+        for j in range(len(faces)):
+            if j != k:
+                others |= uph[j]
+        foot &= ~((owner == k) & others)
+    # snapped foot nodes are feet of the face they were snapped onto, whatever other wall's band they fall in
+    foot |= sfoot
+    near[sfoot] = 0.0; ndir[sfoot] = sn[sfoot]
+    jj, ii = np.nonzero(foot)
+    lowered = np.zeros(Z.shape, bool)
+    for j_, i_ in zip(jj, ii):
+        lo = low[j_, i_]
+        step = 1
+        # no return in the cell, or only returns well above the node (a deck or an eave over the foot): look further down
+        while not (np.isfinite(lo) and lo < Z[j_, i_] + overhead) and step <= 3:
+            px = x0 + i_ * c + step * c * ndir[j_, i_, 0]; py = y0 + j_ * c + step * c * ndir[j_, i_, 1]
+            i2, j2 = int(round((px - x0) / c)), int(round((py - y0) / c))
+            if 0 <= i2 < nx and 0 <= j2 < ny:
+                lo = low[j2, i2]
+            step += 1
+        if not np.isfinite(lo):
+            continue
+        cap = lo if near[j_, i_] <= c + 1e-6 else lo + tol
+        if Z[j_, i_] > cap:
+            Z[j_, i_] = cap
+            lowered[j_, i_] = True
+    if shift > 0 and sfoot.any():
+        mv = sfoot.copy()
+        if not shift_lone:
+            # only a foot node with a twin (a node snapped onto the same point of the face from inside the wall body) is
+            # moved off the face; a lone foot stays ON the face: moved, the triangles from it to the wall's back line (or
+            # to another wall's band at a corner) would cross the face `shift` m in front of it as a terrain curtain
+            mv[:] = False
+            for j_, i_ in zip(*np.nonzero(sfoot)):
+                mv[j_, i_] = any(0 <= j_ + dj < ny and 0 <= i_ + di < nx and (dj or di)
+                                 and onf[j_ + dj, i_ + di] == sk[j_, i_] and not sfoot[j_ + dj, i_ + di]
+                                 and np.hypot(NX[j_ + dj, i_ + di] - NX[j_, i_], NY[j_ + dj, i_ + di] - NY[j_, i_]) <= 0.01
+                                 for dj in (-1, 0, 1) for di in (-1, 0, 1))
+        NX[mv] += shift * sn[mv, 0]
+        NY[mv] += shift * sn[mv, 1]
+        # the node snapped onto the same face from inside the wall body next to a foot node (its grid neighbour, now up to
+        # `shift` m behind it; on an oblique face a centimetre or two along it) never stands above it: the strip between
+        # them hangs in front of the face as a terrain curtain
+        for j_, i_ in zip(*np.nonzero(sfoot)):
+            for dj in (-1, 0, 1):
+                for di in (-1, 0, 1):
+                    j2, i2 = j_ + dj, i_ + di
+                    if (dj or di) and 0 <= j2 < ny and 0 <= i2 < nx and onf[j2, i2] == sk[j_, i_] and not sfoot[j2, i2] \
+                            and np.hypot(NX[j2, i2] - NX[j_, i_], NY[j2, i2] - NY[j_, i_]) <= shift + 0.01 \
+                            and Z[j2, i2] > Z[j_, i_]:
+                        Z[j2, i2] = Z[j_, i_]
+                        foot[j2, i2] = True
+    return Z, foot
+
+
+def wall_back_floor(Z, NX, NY, faces, tops, pxy, pz, c, tol=0.2, min_rise=0.05, overhead=1.0, radius=None, min_n=2, q=0.0,
+                    reach_cells=1.5, corners=True, ceiling=None, front_tol=0.03, front_probe=0.05):
+    """Retained ground behind every retaining-wall face: grid nodes (at their mesh positions NX, NY) behind a face (its
+    uphill side, within the wall thickness + 1.5 cells of the face, inside a segment's span) lying more than ``min_rise``
+    under the lowest of the returns (``pxy`` [n, 2], heights ``pz``; last returns) within ``radius`` m (default one cell)
+    of them that are themselves behind the wall body (at least the thickness uphill of the face: no cap or face hits;
+    at least ``min_n`` of them) are raised to that lowest return -- never more than ``tol`` over the top of the nearest
+    segment, and not where that return is more than ``overhead`` m above the node (a deck, an eave or a shrub over the
+    bank, not ground). The breakline side grade is extrapolated from beyond the band along the slope there; where a flat
+    ledge, a boulder top or a bed runs level to the face it lands below the measured surface (the counterpart of
+    wall_foot_lower, which never lets a foot node stand above its cell's lowest return). ``faces`` = wall_faces(),
+    ``tops`` = face_tops() (a wall without tops is skipped). ``q`` > 0 takes that quantile of those returns instead of the
+    lowest (0.5: their median, the per-cell estimate the filtered ground uses; the lowest return of a rough rock top or a
+    ledge sits a noise sigma or two under its surface); the ``overhead`` test stays on the lowest return, so a node q = 0
+    raises is raised at least as high with q > 0. ``reach_cells``: the band behind a face is the wall thickness + that
+    many cells. ``corners``: the wedge behind a convex joint of a face line (the uphill side is the outside of the turn,
+    outside both segments' spans) counts too, within the same reach of the joint, capped at the higher of the two
+    segments' tops + ``tol``; returns there are behind the wall body when they are at least the thickness from both
+    segments (the ground filter shaves a narrow terrace at such a corner and the span test alone leaves a notch).
+    ``ceiling`` (grid, nan = none): never raise a node above it (e.g. a grade pad's z + 0.02 inside the pad: the pad is the
+    measured surface, and the returns over it include a deck overhead). Face-line nodes: a node on a face line or up to
+    ``front_tol`` m in front of it (apply_breaklines snaps the nodes beside a wall onto its downhill face; wall_foot_lower
+    moves the snapped feet just off it) stands for the lower level at that face's foot: it is raised as another wall's
+    retained ground only when the point ``front_probe`` m further downhill is behind a wall too and no other face line
+    lies between that point and the wall (the face stands on that wall's terrace). Where two walls meet at a corner the
+    snap carries such nodes a few millimetres into the other wall's span, and the band behind a wall reaches round the
+    corner onto the lower level in front of the other: raising them hangs a terrain curtain in front of the face (0 = off).
+    Never lowers a node. Returns (new grid, raised mask)."""
+    from scipy.spatial import cKDTree
+    Z = np.array(Z, float, copy=True)
+    raised = np.zeros(Z.shape, bool)
+    if not len(pxy):
+        return Z, raised
+    r = c if radius is None else radius
+    pxy = np.asarray(pxy, float); pz = np.asarray(pz, float)
+    tree = cKDTree(pxy)
+
+    def _seg_dt(qx, qy, a_, b_, n):
+        d = b_ - a_; ln = float(np.hypot(*d)); d = d / ln
+        s_ = np.clip((qx - a_[0]) * d[0] + (qy - a_[1]) * d[1], 0.0, ln)
+        t_ = (qx - a_[0]) * n[0] + (qy - a_[1]) * n[1]
+        return np.hypot(qx - (a_[0] + s_ * d[0]), qy - (a_[1] + s_ * d[1])), t_
+
+    def _behind(QX, QY):
+        """Nodes behind a face (span band or convex-joint wedge): (distance into the band, cap, frame, wedge, index of the
+        face, nearest point on its line)."""
+        best = np.full(QX.shape, np.inf); cap = np.full(QX.shape, np.nan)
+        fidx = np.full(QX.shape, -1); foot = np.zeros(QX.shape + (2,))
+        frame = np.zeros(QX.shape + (5,))       # segment point a (2), downhill normal n (2), thickness of the chosen face
+        wedge = {}                              # node -> (two segments [(a, b, n)], thickness) behind a convex joint
+        for fk, ((line, down, th), tz) in enumerate(zip(faces, tops or [])):
+            if tz is None:
+                continue
+            P = np.asarray(line, float)
+            reach = th + reach_cells * c
+            bx0, by0 = P.min(0) - reach - c; bx1, by1 = P.max(0) + reach + c
+            cand = (QX >= bx0) & (QX <= bx1) & (QY >= by0) & (QY <= by1)
+            if not cand.any():
+                continue
+            segs = []
+            for k, (a_, b_) in enumerate(zip(P[:-1], P[1:])):
+                d = b_ - a_; ln = float(np.hypot(*d))
+                if ln < 1e-9:
+                    segs.append(None)
+                    continue
+                d = d / ln; n = down * np.array([-d[1], d[0]])         # n points downhill
+                segs.append((a_, b_, d, n, ln, tz[min(k, len(tz) - 1)]))
+                s = (QX - a_[0]) * d[0] + (QY - a_[1]) * d[1]
+                t = (QX - a_[0]) * n[0] + (QY - a_[1]) * n[1]
+                m = cand & (s >= -1e-6) & (s <= ln + 1e-6) & (t < -1e-6) & (t >= -reach - 1e-6) & (-t < best)
+                best = np.where(m, -t, best)
+                cap = np.where(m, tz[min(k, len(tz) - 1)] + tol, cap)
+                frame[m] = [a_[0], a_[1], n[0], n[1], th]
+                fidx[m] = fk
+                foot[m] = np.column_stack([QX[m] - t[m] * n[0], QY[m] - t[m] * n[1]])
+                for key in zip(*np.nonzero(m)):
+                    wedge.pop(key, None)
+            if not corners:
+                continue
+            for k in range(1, len(segs)):
+                s1, s2 = segs[k - 1], segs[k]
+                if s1 is None or s2 is None:
+                    continue
+                v = s1[1]
+                r1 = (QX - v[0]) * s1[2][0] + (QY - v[1]) * s1[2][1]          # > 0: past the end of the first segment
+                r2 = (QX - v[0]) * s2[2][0] + (QY - v[1]) * s2[2][1]          # < 0: before the start of the second
+                t1 = (QX - v[0]) * s1[3][0] + (QY - v[1]) * s1[3][1]
+                t2 = (QX - v[0]) * s2[3][0] + (QY - v[1]) * s2[3][1]
+                rv = np.hypot(QX - v[0], QY - v[1])
+                m = cand & (r1 > 1e-6) & (r2 < -1e-6) & (t1 < -1e-6) & (t2 < -1e-6) & (rv <= reach + 1e-6) & (rv < best)
+                best = np.where(m, rv, best)
+                cap = np.where(m, max(s1[5], s2[5]) + tol, cap)
+                fidx[m] = fk
+                foot[m] = v
+                for key in zip(*np.nonzero(m)):
+                    wedge[key] = ([(s1[0], s1[1], s1[3]), (s2[0], s2[1], s2[3])], th)
+        return best, cap, frame, wedge, fidx, foot
+    best, cap, frame, wedge, _fi, _ft = _behind(NX, NY)
+    if front_probe > 0:
+        # face-line nodes (on a downhill face or just in front of it, within a segment's span)
+        fl = np.zeros(Z.shape, bool); QX = np.array(NX, float, copy=True); QY = np.array(NY, float, copy=True)
+        for line, down, th in faces:
+            P = np.asarray(line, float)
+            for a_, b_ in zip(P[:-1], P[1:]):
+                d = b_ - a_; ln = float(np.hypot(*d))
+                if ln < 1e-9:
+                    continue
+                d = d / ln; n = down * np.array([-d[1], d[0]])
+                s = (NX - a_[0]) * d[0] + (NY - a_[1]) * d[1]
+                t = (NX - a_[0]) * n[0] + (NY - a_[1]) * n[1]
+                m = ~fl & np.isfinite(best) & (s >= -1e-6) & (s <= ln + 1e-6) & (t >= -1e-3) & (t <= front_tol + 1e-9)
+                fl |= m
+                QX[m] = NX[m] + (front_probe + np.maximum(-t[m], 0.0)) * n[0]
+                QY[m] = NY[m] + (front_probe + np.maximum(-t[m], 0.0)) * n[1]
+        if fl.any():
+            bq, _c, _f, _w, fq, ftq = _behind(QX, QY)
+            ok = np.isfinite(bq)
+            # ... and no other face between the probe and the wall it is behind (the band behind a wall reaches round a
+            # corner onto the lower level in front of the wall that meets it there)
+            lines_ = [LineString(np.asarray(l_, float)) for l_, _d, _t in faces]
+            for j_, i_ in zip(*np.nonzero(fl & ok)):
+                q0 = np.array([QX[j_, i_], QY[j_, i_]]); q1 = ftq[j_, i_]
+                dd = q1 - q0; ln_ = float(np.hypot(*dd))
+                if ln_ < 0.02:
+                    continue
+                seg = LineString([q0, q1 - 0.01 * dd / ln_])
+                if any(k_ != fq[j_, i_] and seg.intersects(lk) for k_, lk in enumerate(lines_)):
+                    ok[j_, i_] = False
+            best = np.where(fl & ~ok, np.inf, best)
+    for j_, i_ in zip(*np.nonzero(np.isfinite(best))):
+        ax_, ay_, nx_, ny_, th = frame[j_, i_]
+        h = tree.query_ball_point([NX[j_, i_], NY[j_, i_]], r)
+        if len(h) < min_n:
+            continue
+        h = np.asarray(h)
+        if (j_, i_) in wedge:                                     # behind both segments of the joint
+            sg, th = wedge[(j_, i_)]
+            (d1, t1), (d2, t2) = (_seg_dt(pxy[h, 0], pxy[h, 1], a_, b_, n) for a_, b_, n in sg)
+            # signed distance to the joint's two segments: at least the thickness from both, uphill of the nearer one
+            h = h[(np.minimum(d1, d2) >= th - 1e-6) & (np.where(d1 <= d2, t1, t2) < 0)]
+        else:
+            tq = (pxy[h, 0] - ax_) * nx_ + (pxy[h, 1] - ay_) * ny_
+            h = h[tq <= -th + 1e-6]                               # behind the wall body
+        if len(h) < min_n:
+            continue
+        lo = float(pz[h].min())
+        z0 = Z[j_, i_]
+        tgt = max(lo, float(np.quantile(pz[h], q))) if q > 0 else lo
+        # the overhead test is on the LOWEST return (a ground return within reach of the node; else a deck / eave / shrub
+        # over the bank); the quantile only sets how high the node goes, so q > 0 raises every node q = 0 raises, never less
+        if tgt > z0 + min_rise and lo < z0 + overhead:
+            new = min(tgt, cap[j_, i_])
+            if ceiling is not None and np.isfinite(ceiling[j_, i_]):
+                new = min(new, float(ceiling[j_, i_]))
+            if new > z0 + 1e-9:
+                Z[j_, i_] = new; raised[j_, i_] = True
+    return Z, raised
+
+
+def rock_outlines(features, boulders=None):
+    """Traced rock outlines: features "rocks" (props top_z optional) and yard boulder items
+    ({"kind": "boulder", "polygon", "top_z"}) -> [(Polygon, top_z or None)]."""
+    out = []
+    for fe in (features or {}).get("rocks", []):
+        tz = (fe.get("props") or {}).get("top_z")
+        for g in fe["geoms"]:
+            ring = g[0] if isinstance(g[0][0], (list, tuple)) else g
+            pg = Polygon(ring).buffer(0)
+            if not pg.is_empty:
+                out.append((pg, None if tz is None else float(tz)))
+    items = boulders.get("items", []) if isinstance(boulders, dict) else (boulders or [])
+    for it in items:
+        if isinstance(it, dict) and it.get("kind") == "boulder" and it.get("polygon"):
+            pg = Polygon(it["polygon"]).buffer(0)
+            if not pg.is_empty:
+                out.append((pg, float(it["top_z"]) if "top_z" in it else None))
+    return out
+
+
+def bed_entries(data):
+    """Bed polygons from a beds json: each entry is a ring [[x,y],...] or a dict {"polygon": ring, "label": "...",
+    "no_solid": true}. Returns (all bed polygons, the no_solid ones). A no_solid bed (shrubs / mulch: dense evergreen
+    shrubs return single, planar-looking pulses that pass the solid-surface test) is also a vegetation mask: no
+    solid-surface merge, no rock-outline quantile and no rock edge growth inside it, so the terrain there is the
+    filtered ground (lowest last returns), not the shrub tops. ``"overlay": false`` makes an entry a vegetation mask
+    only (no bed overlay): e.g. the shrub area round a bed whose drawn outline is kept clear of a boulder or a wall."""
+    polys, veg = [], []
+    for e in data or []:
+        ring = e.get("polygon") if isinstance(e, dict) else e
+        if not ring or len(ring) < 3:
+            continue
+        pg = Polygon(ring).buffer(0)
+        if pg.is_empty:
+            continue
+        if not (isinstance(e, dict) and e.get("overlay") is False):
+            polys.append(pg)
+        if isinstance(e, dict) and e.get("no_solid"):
+            veg.append(pg)
+    return polys, veg
+
+
+def paving_outlines(F, paving=None):
+    """Street + private paving outlines of a features dict (every "impervious" polygon, sidewalk lines buffered by
+    their width, extra --paving polygons): where returns standing on the pavement are vehicles, not ground."""
+    parts = [polys_of(F.get("impervious", []))]
+    for fe in F.get("sidewalk", []):
+        wid = float((fe.get("props") or {}).get("WIDTH") or 4) * 0.3048
+        parts += [LineString(gl).buffer(wid / 2, cap_style="flat") for gl in fe["geoms"] if len(gl) >= 2]
+    parts += [Polygon(p).buffer(0) for p in (paving or [])]
+    parts = [g_ for g_ in parts if not g_.is_empty]
+    return unary_union(parts) if parts else Polygon()
+
+
+def road_plane(street, X, Y, Z, radius=5.0, step=1.0, trim=0.15):
+    """Local road surface under a street outline: at every ``step`` m sample a plane through the street nodes within
+    ``radius`` m, started level at their median (the road is most of the disc) and refitted four times to the nodes within
+    ``trim`` of it (a bank strip along the edge neither lifts nor tilts it). Returns road_z(qx, qy) (nearest sample's
+    plane) or None when the street has too few nodes."""
+    from scipy.spatial import cKDTree
+    m = shapely.contains_xy(street, X, Y) if not street.is_empty else np.zeros(X.shape, bool)
+    if m.sum() < 10:
+        return None
+    P = np.column_stack([X[m], Y[m], Z[m]])
+    tree = cKDTree(P[:, :2])
+    bx0, by0, bx1, by1 = street.bounds
+    sx, sy = np.meshgrid(np.arange(bx0, bx1 + step, step), np.arange(by0, by1 + step, step))
+    S = np.column_stack([sx.ravel(), sy.ravel()])
+    near, _ = tree.query(S, distance_upper_bound=step)
+    S = S[np.isfinite(near)]
+    coef = np.full((len(S), 3), np.nan)
+    for k, idx in enumerate(tree.query_ball_point(S, radius)):
+        if len(idx) < 10:
+            continue
+        Q = P[idx]
+        A = np.column_stack([Q[:, 0] - S[k, 0], Q[:, 1] - S[k, 1], np.ones(len(Q))])
+        cf = np.array([0.0, 0.0, float(np.median(Q[:, 2]))])
+        for _ in range(4):
+            sel = np.abs(Q[:, 2] - A @ cf) <= trim
+            if sel.sum() < 6:
+                break
+            cf = np.linalg.lstsq(A[sel], Q[sel, 2], rcond=None)[0]
+        coef[k] = cf
+    ok = np.isfinite(coef[:, 0])
+    if not ok.any():
+        return None
+    S, coef = S[ok], coef[ok]
+    kd = cKDTree(S)
+
+    def road_z(qx, qy):
+        q = np.column_stack([np.ravel(qx), np.ravel(qy)])
+        _, si = kd.query(q)
+        z = coef[si, 2] + coef[si, 0] * (q[:, 0] - S[si, 0]) + coef[si, 1] * (q[:, 1] - S[si, 1])
+        return z.reshape(np.shape(qx))
+    return road_z
+
+
+def street_bank(street, X, Y, Z, c, rise=0.4, radius=5.0, step=1.0, trim=0.15, edge=3.0, keep=None):
+    """Parts of a street outline that lap onto a bank (the polygon traced a little wide of the asphalt): grid cells
+    the outline covers (centre or a corner inside), within ``edge`` m of its outline and outside ``keep`` (e.g. the kerb lines,
+    buffered: a kerbed edge keeps its asphalt up to the kerb), with any corner node more than ``rise`` over the road
+    surface. The road surface at each ``step`` m sample is a plane through the street nodes within ``radius`` m: it
+    starts level at their median (the road is most of the disc) and is refitted (least squares) four times to the
+    nodes within ``trim`` of it, so a bank strip along the edge neither lifts nor tilts it.
+    Returns the union of those cells (shapely), to take out of the street overlay (they stay ground)."""
+    from scipy.spatial import cKDTree
+    m = shapely.contains_xy(street, X, Y) if not street.is_empty else np.zeros(X.shape, bool)
+    if m.sum() < 10:
+        return Polygon()
+    P = np.column_stack([X[m], Y[m], Z[m]])
+    tree = cKDTree(P[:, :2])
+    bx0, by0, bx1, by1 = street.bounds
+    sx, sy = np.meshgrid(np.arange(bx0, bx1 + step, step), np.arange(by0, by1 + step, step))
+    S = np.column_stack([sx.ravel(), sy.ravel()])
+    near, _ = tree.query(S, distance_upper_bound=step)
+    S = S[np.isfinite(near)]
+    coef = np.full((len(S), 3), np.nan)
+    for k, idx in enumerate(tree.query_ball_point(S, radius)):
+        if len(idx) < 10:
+            continue
+        Q = P[idx]
+        A = np.column_stack([Q[:, 0] - S[k, 0], Q[:, 1] - S[k, 1], np.ones(len(Q))])
+        cf = np.array([0.0, 0.0, float(np.median(Q[:, 2]))])      # start level at the median: the road is most of it
+        for _ in range(4):
+            sel = np.abs(Q[:, 2] - A @ cf) <= trim
+            if sel.sum() < 6:
+                break
+            cf = np.linalg.lstsq(A[sel], Q[sel, 2], rcond=None)[0]
+        coef[k] = cf
+    ok = np.isfinite(coef[:, 0])
+    if not ok.any():
+        return Polygon()
+    S, coef = S[ok], coef[ok]
+    cx = (X[:-1, :-1] + X[1:, 1:]) / 2; cy = (Y[:-1, :-1] + Y[1:, 1:]) / 2
+    zmax = np.maximum.reduce([Z[:-1, :-1], Z[:-1, 1:], Z[1:, :-1], Z[1:, 1:]])
+    cand = shapely.contains_xy(street, cx, cy) | m[:-1, :-1] | m[:-1, 1:] | m[1:, :-1] | m[1:, 1:]   # cells it touches
+    cand &= shapely.distance(street.boundary, shapely.points(cx.ravel(), cy.ravel())).reshape(cx.shape) <= edge
+    if keep is not None and not keep.is_empty:
+        cand &= ~shapely.contains_xy(keep, cx, cy)
+    if not cand.any():
+        return Polygon()
+    q = np.column_stack([cx[cand], cy[cand]])
+    _, si = cKDTree(S).query(q)
+    road = coef[si, 2] + coef[si, 0] * (q[:, 0] - S[si, 0]) + coef[si, 1] * (q[:, 1] - S[si, 1])
+    bank = zmax[cand] - road > rise
+    if not bank.any():
+        return Polygon()
+    h_ = c / 2
+    cells = unary_union([Polygon([(x - h_, y - h_), (x + h_, y - h_), (x + h_, y + h_), (x - h_, y + h_)]) for x, y in q[bank]])
+    return cells.buffer(0.05, join_style="mitre").buffer(-0.05, join_style="mitre")
+
+
+def roof_plan(model, overhang=0.5):
+    """Plan outline of the roof (model.json facets), or the wings buffered by ``overhang`` when there are none."""
+    polys = []
+    for f in model.get("facets", []):
+        for p in f.get("polygons", []):
+            if isinstance(p, dict):
+                polys.append(Polygon(np.array(p["outer"])[:, :2], [np.array(h)[:, :2] for h in p.get("holes", [])]).buffer(0))
+            else:
+                polys.append(Polygon(np.array(p)[:, :2]).buffer(0))
+    if polys:
+        return unary_union(polys)
+    return _wing_union(model).buffer(overhang)
+
+
+def grade_pads(data):
+    """Flat pads: a list of {polygon, z[, blend]} or a yard.json dict (items of kind grade_pad). "z": "lidar" makes a
+    plane pad whose surface is fitted to the LiDAR last returns (fit_pad_plane; resolved in main, pad_z)."""
+    items = data.get("items", []) if isinstance(data, dict) else data
+    return [it for it in items if isinstance(it, dict) and it.get("polygon") and "z" in it
+            and it.get("kind", "grade_pad") == "grade_pad"]
+
+
+def pad_z(pad, X, Y):
+    """Height of a grade pad at (X, Y): its plane (pad["plane"] = (cx, cy, z0, gx, gy), z0 + gx (X - cx) + gy (Y - cy))
+    or its flat z."""
+    if pad.get("plane") is not None:
+        cx, cy, z0, gx, gy = (float(v) for v in pad["plane"])
+        return z0 + gx * (np.asarray(X, float) - cx) + gy * (np.asarray(Y, float) - cy)
+    return float(pad["z"])
+
+
+def fit_pad_plane(pad, pxy, pz, zfun=None, exclude=None):
+    """Plane through the LiDAR ground at a grade pad whose "z" is "lidar": the ground at a house wall's foot under the
+    eave, where the ground filter's building exclusion (the wings + 1 m) bridges the grade across the house and a
+    re-entrant corner lifts it toward the higher grade on the far side (an exterior chimney chase or a stoop standing in
+    that band then stands in a mound). Options in pad["fit"] (all optional):
+      polygon  where the returns are taken (default: the pad polygon grown by `margin`)
+      margin   0.5 m;  dz  0.5 m: only returns within dz of the current terrain zfun(x, y) (eave, wall and canopy
+               returns are metres off it);  min_n  8;  max_rms  0.06 m;  trim  3.0 (x 1.4826 MAD, never under 0.03 m)
+    pxy / pz: last returns (model datum); `exclude`: polygon(s) never sampled (the building). A trimmed least-squares fit
+    drops residuals over the trim until none is dropped. Returns ((cx, cy, z0, gx, gy), stats) - cx, cy the centroid
+    of the returns used, z0 the plane there - or (None, stats) with stats["why"] when fewer than min_n returns are left
+    or the residual rms exceeds max_rms. stats: n, rms, max_res, slope (m/m)."""
+    f = pad.get("fit") or {}
+    margin, dz = float(f.get("margin", 0.5)), float(f.get("dz", 0.5))
+    min_n, max_rms, trim = int(f.get("min_n", 8)), float(f.get("max_rms", 0.06)), float(f.get("trim", 3.0))
+    area = Polygon(f["polygon"]).buffer(0) if f.get("polygon") else Polygon(pad["polygon"]).buffer(0).buffer(margin)
+    if exclude is not None and not exclude.is_empty:
+        area = area.difference(exclude)
+    pxy = np.asarray(pxy, float).reshape(-1, 2); pz = np.asarray(pz, float).ravel()
+    stats = {"n": 0}
+    if len(pz) == 0 or area.is_empty:
+        stats["why"] = "no returns"
+        return None, stats
+    m = shapely.contains_xy(area, pxy[:, 0], pxy[:, 1])
+    if zfun is not None and m.any():
+        zt = np.asarray(zfun(pxy[m, 0], pxy[m, 1]), float)
+        ok = np.abs(pz[m] - zt) <= dz
+        m[np.nonzero(m)[0][~ok]] = False
+    x, y, z = pxy[m, 0], pxy[m, 1], pz[m]
+    keep = np.ones(len(z), bool)
+    coef, cx, cy = None, 0.0, 0.0
+    for _ in range(10):
+        if keep.sum() < max(min_n, 3):
+            break
+        cx, cy = float(x[keep].mean()), float(y[keep].mean())
+        A = np.column_stack([np.ones(keep.sum()), x[keep] - cx, y[keep] - cy])
+        coef = np.linalg.lstsq(A, z[keep], rcond=None)[0]
+        res = z - (coef[0] + coef[1] * (x - cx) + coef[2] * (y - cy))
+        r_ = res[keep]
+        lim = max(trim * 1.4826 * float(np.median(np.abs(r_ - np.median(r_)))), 0.03)
+        nk = keep & (np.abs(res) <= lim)
+        if nk.sum() == keep.sum():
+            break
+        keep = nk
+    stats["n"] = int(keep.sum())
+    if coef is None or keep.sum() < min_n:
+        stats["why"] = f"{int(keep.sum())} returns (< {min_n})"
+        return None, stats
+    res = z[keep] - (coef[0] + coef[1] * (x[keep] - cx) + coef[2] * (y[keep] - cy))
+    stats.update(rms=float(np.sqrt(np.mean(res ** 2))), max_res=float(np.abs(res).max()),
+                 slope=float(np.hypot(coef[1], coef[2])))
+    if stats["rms"] > max_rms:
+        stats["why"] = f"rms {stats['rms']:.3f} m (> {max_rms})"
+        return None, stats
+    return (cx, cy, float(coef[0]), float(coef[1]), float(coef[2])), stats
+
+
+def resolve_lidar_pads(pads, pxy, pz, zfun=None, exclude=None):
+    """The grade pads with their LiDAR planes (fit_pad_plane) for those whose "z" is "lidar"; a pad whose fit fails is
+    dropped (and reported). Returns (pads, [(label, plane or None, stats)])."""
+    out, rep = [], []
+    for pad in pads:
+        if pad.get("z") != "lidar":
+            out.append(pad)
+            continue
+        pl, st = fit_pad_plane(pad, pxy, pz, zfun=zfun, exclude=exclude)
+        rep.append((str(pad.get("name") or pad.get("label") or "grade pad")[:48], pl, st))
+        if pl is not None:
+            out.append(dict(pad, plane=pl))
+    return out, rep
+
+
+def _bilinear(xs, ys, Z):
+    """Vectorised bilinear interpolation of the grid Z (rows ys, columns xs) at arrays (x, y), clamped to the grid."""
+    xs = np.asarray(xs, float); ys = np.asarray(ys, float)
+
+    def f(x, y):
+        fi = np.clip((np.asarray(x, float) - xs[0]) / (xs[1] - xs[0]), 0, len(xs) - 1.001)
+        fj = np.clip((np.asarray(y, float) - ys[0]) / (ys[1] - ys[0]), 0, len(ys) - 1.001)
+        i_, j_ = fi.astype(int), fj.astype(int)
+        tx, ty = fi - i_, fj - j_
+        return (Z[j_, i_] * (1 - tx) * (1 - ty) + Z[j_, i_ + 1] * tx * (1 - ty)
+                + Z[j_ + 1, i_] * (1 - tx) * ty + Z[j_ + 1, i_ + 1] * tx * ty)
+    return f
+
+
+def pad_blend(Z, X, Y, pads, faces=None, rock_rise=None, along=0.05):
+    """Level the grade pads: Z = w z_pad + (1 - w) Z, w = 1 inside the polygon falling to 0 at its ``blend`` m outside
+    (never dragging down a node the rock merge raised > 0.5 m outside the polygon). Where a retaining-wall face (``faces``
+    = wall_faces()) runs along the pad edge (its segment within ``along`` m of the boundary) the pad is retained by that
+    wall: nodes outside the pad on the face's downhill side whose nearest pad-edge point lies on that face get w = 0 (the
+    blend would carry the pad level across the wall onto the lower level). Returns (new grid, mask of the nodes with
+    w > 0, number of nodes the faces kept out of the blend)."""
+    Z = np.array(Z, float, copy=True)
+    padmask = np.zeros(Z.shape, bool)
+    nblock = 0
+    pts = shapely.points(X.ravel(), Y.ravel())
+    for pad in pads:
+        pp = Polygon(pad["polygon"]).buffer(0)
+        bl = float(pad.get("blend", 0.0))
+        dist = shapely.distance(pp, pts).reshape(X.shape)
+        w = np.clip(1.0 - dist / bl, 0.0, 1.0) if bl > 0 else (dist <= 0).astype(float)
+        if rock_rise is not None:
+            w[(rock_rise > 0.5) & (dist > 0)] = 0.0        # the blend never drags a boulder / outcrop down
+        out = (w > 0) & (dist > 0)
+        if faces and out.any():
+            segs = []
+            for line, down, _th in faces:
+                P = np.asarray(line, float)
+                for a_, b_ in zip(P[:-1], P[1:]):
+                    d = b_ - a_; ln = float(np.hypot(*d))
+                    if ln < 1e-9:
+                        continue
+                    if max(pp.boundary.distance(Point(*q)) for q in (a_, b_, (a_ + b_) / 2)) <= along:
+                        d = d / ln
+                        segs.append((LineString([a_, b_]), a_, down * np.array([-d[1], d[0]])))
+            if segs:
+                jj, ii = np.nonzero(out)
+                q = shapely.points(X[jj, ii], Y[jj, ii])
+                near_pt = shapely.get_coordinates(shapely.shortest_line(pp.boundary, q))[0::2]   # on the pad edge
+                npts = shapely.points(near_pt[:, 0], near_pt[:, 1])
+                blk = np.zeros(len(jj), bool)
+                for sg, a_, n in segs:
+                    t = (X[jj, ii] - a_[0]) * n[0] + (Y[jj, ii] - a_[1]) * n[1]
+                    blk |= (shapely.distance(sg, npts) <= along) & (t > 0)
+                w[jj[blk], ii[blk]] = 0.0
+                nblock += int(blk.sum())
+        Z = w * pad_z(pad, X, Y) + (1 - w) * Z
+        padmask |= w > 0
+    return Z, padmask, nblock
+
+
+def pad_ceiling(pads, NX, NY, tol=0.0):
+    """Grid of the highest z a node at mesh position (NX, NY) inside a grade pad may be raised to by the retained-ground
+    floor (wall_back_floor): pad z + ``tol``; nan outside every pad. The pad is the measured surface; the LiDAR returns
+    over a patio cut into a slope include a deck or an eave overhead."""
+    ceil_ = np.full(np.shape(NX), np.nan)
+    for pad in pads:
+        pp = Polygon(pad["polygon"]).buffer(0)
+        m = shapely.contains_xy(pp, NX, NY) | (shapely.distance(pp, shapely.points(np.ravel(NX), np.ravel(NY)))
+                                               .reshape(np.shape(NX)) <= 1e-6)
+        ceil_ = np.where(m, np.fmax(ceil_, pad_z(pad, NX, NY) + tol), ceil_)
+    return ceil_
+
+
+def align_apron(drive, front, reach=2.5):
+    """Make the driveway meet a garage front line exactly: the part of the driveway within `reach` of the
+    front is extended up to the line (hull of its near vertices and the line) and anything beyond the
+    line (under the garage) is cut off. `drive` is a shapely (Multi)Polygon, `front` [[x,y],[x,y]]."""
+    from shapely.geometry import MultiPoint
+    (ax_, ay_), (bx_, by_) = front
+    F = LineString(front)
+    d = np.array([bx_ - ax_, by_ - ay_], float); d /= np.linalg.norm(d); n = np.array([-d[1], d[0]])
+    cen = np.array(drive.centroid.coords[0])
+    if (cen - [ax_, ay_]) @ n > 0:
+        n = -n                                     # n points from the line into the building
+    near = [pt for g_ in getattr(drive, "geoms", [drive]) for pt in g_.exterior.coords if F.distance(Point(pt)) < reach]
+    if not near:
+        return drive
+    fill = MultiPoint(near + list(front)).convex_hull
+    big = 200.0
+    beyond = Polygon([(ax_ - d[0] * big, ay_ - d[1] * big), (bx_ + d[0] * big, by_ + d[1] * big),
+                      (bx_ + d[0] * big + n[0] * big, by_ + d[1] * big + n[1] * big),
+                      (ax_ - d[0] * big + n[0] * big, ay_ - d[1] * big + n[1] * big)])
+    # only clip what lies within the front's own span (+ reach), so the rest of the driveway is untouched
+    span = F.buffer(reach, cap_style="flat")
+    return unary_union([drive, fill.intersection(span)]).difference(beyond.intersection(span))
+
+
+def side_grade(zf, ax_, ay_, d, n, s, t, th, band, reach=0.35, run=0.5, max_slope=1.5, blocked=None):
+    """Grade at signed offset ``t`` from a wall segment (point a, unit direction d, left normal n, station s),
+    from the surface ``zf`` on that side only: sampled ``band + reach`` and ``band + reach + run`` out (beyond
+    the smeared step) and extrapolated linearly back to max(|t|, th / 2), so a sloping bed or drive keeps its
+    slope up to the wall face instead of being levelled at the far sample.
+
+    ``blocked(x, y)`` -> bool array: sample points there are unusable (inside another wall's band: a narrow
+    strip between two walls must not take the grade from beyond the other wall); the sample then moves in
+    to ``band`` and then just outside the face (no slope), else the surface at the point itself is kept."""
+    s = np.atleast_1d(np.asarray(s, float)); t = np.atleast_1d(np.asarray(t, float))
+    sg = np.where(t >= 0, 1.0, -1.0)
+    px = lambda dist: ax_ + s * d[0] + sg * dist * n[0]
+    py = lambda dist: ay_ + s * d[1] + sg * dist * n[1]
+    blk = blocked or (lambda x, y: np.zeros(np.shape(x), bool))
+    dn = np.maximum(np.abs(t), th / 2)
+    out = np.full(t.shape, np.nan)
+    d1, d2 = band + reach, band + reach + run
+    ok = ~blk(px(d1), py(d1)) & ~blk(px(d2), py(d2))
+    if ok.any():
+        z1 = zf(px(d1), py(d1)); z2 = zf(px(d2), py(d2))
+        g = np.clip((z2 - z1) / run, -max_slope, max_slope)
+        out = np.where(ok, z1 + g * (dn - d1), out)
+    for dist in (band, th / 2 + 0.5 * (band - th / 2)):
+        todo = np.isnan(out)
+        if not todo.any():
+            break
+        okd = todo & ~blk(px(dist), py(dist))
+        if okd.any():
+            out = np.where(okd, zf(px(dist), py(dist)), out)
+    todo = np.isnan(out)
+    if todo.any():
+        here_x = ax_ + s * d[0] + t * n[0]; here_y = ay_ + s * d[1] + t * n[1]
+        out = np.where(todo, zf(here_x, here_y), out)
+    return out
+
+
+def _band_owner(walls, X, Y, c):
+    """Integer grid: index of the wall whose breakline band (half thickness + 1.5 cells) holds each node, -1 for
+    none, -2 for nodes in the bands of several walls."""
+    own = np.full(X.shape, -1)
+    for k, (line, th) in enumerate(walls):
+        m = shapely.contains_xy(LineString(line).buffer(th / 2 + 1.5 * c), X, Y)
+        own = np.where(m & (own == -1), k, np.where(m & (own != -1) & (own != k), -2, own))
+    return own
+
+
+def _blocker(own, k, x0, y0, c):
+    """blocked(x, y) for wall k: the nearest node lies in another wall's band."""
+    ny, nx = own.shape
+
+    def f(x, y):
+        i = np.clip(np.rint((np.asarray(x) - x0) / c).astype(int), 0, nx - 1)
+        j = np.clip(np.rint((np.asarray(y) - y0) / c).astype(int), 0, ny - 1)
+        o = own[j, i]
+        return (o != -1) & (o != k)
+    return f
+
+
+def apply_breaklines(Z, xs, ys, walls, c, reach=0.35, snap=None):
+    """Grid nodes within half a wall thickness + 1.5 cells of a wall segment take the grade of their own side
+    (side_grade: sampled ``reach`` m beyond that band from the unmodified surface and extrapolated back along its
+    slope): the step happens inside the wall instead of as a ramp poking out of its faces.
+
+    ``snap`` (a pair of node-coordinate arrays [X, Y], modified in place): nodes within half a thickness
+    + one cell of the wall line are also moved onto the wall face on their side, so every terrain
+    triangle that crosses the wall runs from one face to the other, inside the wall (a grid cell is as
+    wide as a wall is thick, so without it a ramp would stand out of the face)."""
+    Z0 = Z.copy()
+    X, Y = np.meshgrid(xs, ys)
+    x0, y0 = xs[0], ys[0]
+    ny, nx = Z.shape
+
+    def zb(x, y):
+        fi = np.clip((x - x0) / c, 0, nx - 1.001); fj = np.clip((y - y0) / c, 0, ny - 1.001)
+        i, j = fi.astype(int), fj.astype(int); tx, ty = fi - i, fj - j
+        return (Z0[j, i] * (1 - tx) * (1 - ty) + Z0[j, i + 1] * tx * (1 - ty)
+                + Z0[j + 1, i] * (1 - tx) * ty + Z0[j + 1, i + 1] * tx * ty)
+    own = _band_owner(walls, X, Y, c)
+    for k, (line, th) in enumerate(walls):
+        band = th / 2 + 1.5 * c
+        blocked = _blocker(own, k, x0, y0, c)
+        for (ax_, ay_), (bx_, by_) in zip(line[:-1], line[1:]):
+            d = np.array([bx_ - ax_, by_ - ay_], float); ln = float(np.hypot(*d))
+            if ln < 1e-6:
+                continue
+            d /= ln; n = np.array([-d[1], d[0]])
+            s = (X - ax_) * d[0] + (Y - ay_) * d[1]
+            t = (X - ax_) * n[0] + (Y - ay_) * n[1]
+            m = (s >= 0) & (s <= ln) & (np.abs(t) <= band)
+            if not m.any():
+                continue
+            Z[m] = side_grade(zb, ax_, ay_, d, n, s[m], t[m], th, band, reach, blocked=blocked)
+            if snap is not None:
+                ms = (s >= 0) & (s <= ln) & (np.abs(t) < th / 2 + c)
+                sg = np.sign(t[ms]); sg[sg == 0] = 1
+                snap[0][ms] = ax_ + s[ms] * d[0] + sg * (th / 2) * n[0]
+                snap[1][ms] = ay_ + s[ms] * d[1] + sg * (th / 2) * n[1]
+    return Z
+
+
+def wall_tops(data):
+    """Per-segment tops of the retaining walls, in wall_lines() order: a list of floats per wall (a scalar top_z
+    repeated, a stepped wall's list padded with its last value), or None for a wall without top_z (height-based)."""
+    items = data.get("items", []) if isinstance(data, dict) else data
+    out = []
+    for it in items:
+        if not (isinstance(it, dict) and it.get("line") and it.get("kind", "retaining_wall") == "retaining_wall"):
+            continue
+        nseg = max(len(it["line"]) - 1, 1)
+        tz = it.get("top_z")
+        if tz is None:
+            out.append(None)
+        elif isinstance(tz, (list, tuple)):
+            tz = [float(v) for v in tz] or [0.0]
+            out.append([tz[min(k, len(tz) - 1)] for k in range(nseg)])
+        else:
+            out.append([float(tz)] * nseg)
+    return out
+
+
+def face_tops(data, zfun=None):
+    """wall_tops() in wall_faces() order (the walls wall_faces keeps: lines of >= 2 vertices, a side known)."""
+    items = data.get("items", []) if isinstance(data, dict) else data
+    out = []
+    for it in items:
+        if not (isinstance(it, dict) and it.get("line") and len(it["line"]) >= 2
+                and it.get("kind", "retaining_wall") == "retaining_wall"):
+            continue
+        if it.get("uphill") not in ("left", "right") and zfun is None:
+            continue
+        out.append(wall_tops([it])[0])
+    return out
+
+
+def face_overlay_gaps(data, default, zfun=None):
+    """Per-wall --overlay-wall-gap in wall_faces() order: a wall item's "overlay_gap" (m) overrides ``default``. 0 suits
+    a thin edge that belongs to the paving on its uphill side (a walk's concrete edge): the walk overlay then runs to the
+    wall's back and on past its ends instead of stopping a strip short of it."""
+    items = data.get("items", []) if isinstance(data, dict) else data
+    out = []
+    for it in items:
+        if not (isinstance(it, dict) and it.get("line") and len(it["line"]) >= 2
+                and it.get("kind", "retaining_wall") == "retaining_wall"):
+            continue
+        if it.get("uphill") not in ("left", "right") and zfun is None:
+            continue
+        out.append(float(it.get("overlay_gap", default)))
+    return out
+
+
+def wall_top_clamp(Z, X, Y, walls, tops, pxy, pz, c, tol=0.2, radius=0.3, dz=0.25):
+    """Terrain nodes at a retaining wall (within half its thickness + one cell of its centre line, inside a segment's
+    span: the nodes apply_breaklines snaps onto the faces) standing more than ``tol`` above that segment's top, with no
+    LiDAR return within ``radius`` m (plan) and ``dz`` of their height, take top + ``tol``. Retained ground meets a wall at
+    its top; a side grade extrapolated from a cliff or a steep bank behind the wall otherwise stands up as a spike on the
+    cap, and the despike passes skip breakline bands. Measured ground above a wall top (a bed rising behind a low
+    edging) keeps its height. ``walls`` = wall_lines(), ``tops`` = wall_tops(); X, Y the regular grid node positions.
+    Returns (new grid, bool mask of the lowered nodes)."""
+    from scipy.spatial import cKDTree
+    Z = np.array(Z, float, copy=True)
+    low = np.zeros(Z.shape, bool)
+    if not walls or tops is None or not len(pxy):
+        return Z, low
+    tree = cKDTree(np.asarray(pxy, float)); pz = np.asarray(pz, float)
+    for (line, th), tz in zip(walls, tops):
+        if tz is None:
+            continue
+        for k, ((ax_, ay_), (bx_, by_)) in enumerate(zip(line[:-1], line[1:])):
+            d = np.array([bx_ - ax_, by_ - ay_], float); ln = float(np.hypot(*d))
+            if ln < 1e-6:
+                continue
+            d /= ln; n = np.array([-d[1], d[0]])
+            s = (X - ax_) * d[0] + (Y - ay_) * d[1]
+            t = (X - ax_) * n[0] + (Y - ay_) * n[1]
+            cap = tz[min(k, len(tz) - 1)] + tol
+            m = (s >= 0) & (s <= ln) & (np.abs(t) < th / 2 + c) & (Z > cap)
+            for j_, i_ in zip(*np.nonzero(m)):
+                idx = tree.query_ball_point([X[j_, i_], Y[j_, i_]], radius)
+                if idx and np.any(np.abs(pz[idx] - Z[j_, i_]) < dz):
+                    continue
+                Z[j_, i_] = cap
+                low[j_, i_] = True
+    return Z, low
+
+
+def wall_back_cap(Z, NX, NY, faces, tops, pxy, pz, c, reach=0.5, radius=0.25, flat=0.1, dz=0.05, over=0.1, min_n=3,
+                  trim=6, eps=2e-3, skip=None, cap_seen=True, ends=True, cap_drop=0.02, stats=None):
+    """Retained ground behind a wall over FLAT measured ground (the uphill counterpart of wall_foot_lower, which never
+    lets a foot node stand above its cell's lowest last return). The breakline side grade behind a face is extrapolated
+    from beyond the band along the slope there; next to a walk ramp or a bank it can stand 0.2-0.4 m over the level
+    ground the LiDAR measured right behind the wall, and over the wall cap.
+
+    * nodes (mesh positions NX, NY) on the uphill side of a face with a top, from the wall's back line (``th`` behind
+      the face) out to ``reach`` m behind the wall body, inside a segment's span: the last returns (``pxy``, ``pz``)
+      within ``radius`` m of the node that lie behind the wall body (at least the thickness uphill of the face: no face
+      or foot returns) are FLAT when at least ``min_n`` of them span less than ``flat`` m (from ``trim`` returns on, the
+      highest and the lowest are left out of that test: one return off a kerb or a stone); the node then takes
+      min(z, max(their lowest (trimmed) + ``dz``, their median)) -- a node inside the flat cluster is not pushed under
+      its median;
+    * nodes ON the back line (snapped there by apply_breaklines) whose behind-the-body returns have a median no more
+      than ``over`` m above the segment's top (the retained ground meets the cap) stand no higher than that top, so the
+      terrain triangles inside the wall band stay under the cap instead of covering its back edge;
+    * nodes INSIDE the wall body (between the face and the back line: at a joint of the face line the breakline snap,
+      which works per segment span, leaves a node there at its own cell's grade) stand no higher than the top of the
+      nearest segment (the higher one at a joint);
+    * ``cap_seen``: nodes on the body's back boundary (the back lines, the mitre wedge behind a convex joint, the back
+      corners) still standing over the top where the LiDAR SEES THE CAP -- at least ``min_n`` last returns within ``radius``
+      inside the back half of the body, median no more than ``over`` m over the top (soil lapping onto the cap would put
+      them higher) -- stand at the top - ``cap_drop``: the side grade carried there from a steep bank (or a boulder's
+      raised flank) further uphill otherwise covers the back of the cap, which the LiDAR measured bare. ``top`` = the
+      lowest top of the segments within th + c / 2 (a step of a stepped wall);
+    * ``ends``: at each free end of a face line (first / last vertex; nodes within one cell of another wall's body are
+      left), where the LiDAR sees the cap within 2 ``radius`` of the end (the same test over the back half of the body),
+      the beyond-end nodes within one cell of the end line: the one nearest the end's back corner (within c) is moved ONTO
+      the corner, the one nearest its face corner too when it stands over the top (a toe the end abuts; the foot in front
+      of the face is left), those beside the body (between the face and the back line) onto the end line, and each stands
+      no higher than top - ``cap_drop`` (only where any of them stands over it). No snap reaches beyond a wall's end, so the triangles from
+      a raised node there (a bank or boulder toe the end abuts) to the back-line nodes otherwise cover the cap's end; with
+      a vertex at the back corner the terrain meets the end and the back line at the cap and rises beyond them. NX, NY
+      are modified IN PLACE for these nodes.
+    Never raises a node; ``skip`` (bool grid) nodes are left alone (grade pads). ``faces`` = wall_faces(), ``tops`` =
+    face_tops() (a wall without tops is skipped). ``stats`` (dict, optional) gets the counts "cap_seen" and "ends".
+    Returns (new grid, bool mask of the lowered nodes)."""
+    from scipy.spatial import cKDTree
+    Z = np.array(Z, float, copy=True)
+    low = np.zeros(Z.shape, bool)
+    if not faces or not len(pxy):
+        return Z, low
+    pxy = np.asarray(pxy, float); pz = np.asarray(pz, float)
+    tree = cKDTree(pxy)
+    if stats is not None:
+        stats.setdefault("cap_seen", 0); stats.setdefault("ends", 0)
+    bodies = [LineString(np.asarray(l_, float)).buffer(-d_ * t_, single_sided=True, join_style="mitre")
+              for l_, d_, t_ in faces]
+    for wi, ((line, down, th), tz) in enumerate(zip(faces, tops or [])):
+        if tz is None:
+            continue
+        P = np.asarray(line, float)
+        R = th + reach
+        bx0, by0 = P.min(0) - R - c; bx1, by1 = P.max(0) + R + c
+        cand = (NX >= bx0) & (NX <= bx1) & (NY >= by0) & (NY <= by1)
+        if skip is not None:
+            cand &= ~skip
+        if not cand.any():
+            continue
+        segs = []
+        for a_, b_ in zip(P[:-1], P[1:]):
+            d = b_ - a_; ln = float(np.hypot(*d))
+            if ln >= 1e-9:
+                d = d / ln
+                segs.append((a_, d, down * np.array([-d[1], d[0]]), ln))      # n points downhill
+            else:
+                segs.append(None)
+
+        def behind(qx, qy):
+            """Uphill distance behind the face (inf where not behind it within a span) and the segment index."""
+            u = np.full(np.shape(qx), np.inf); k_ = np.full(np.shape(qx), -1)
+            for k, sg in enumerate(segs):
+                if sg is None:
+                    continue
+                a_, d, n, ln = sg
+                s = (qx - a_[0]) * d[0] + (qy - a_[1]) * d[1]
+                t = -((qx - a_[0]) * n[0] + (qy - a_[1]) * n[1])
+                m = (s >= -1e-6) & (s <= ln + 1e-6) & (t > -1e-6) & (t < u)
+                u = np.where(m, t, u); k_ = np.where(m, k, k_)
+            return u, k_
+        un, kn = behind(NX, NY)
+        # nodes INSIDE the wall body that no breakline snap reached (at a joint of the face line, outside both segments'
+        # spans) keep the grade of their own cell and poke through the cap: they stand no higher than the top
+        body = LineString(P).buffer(-down * th, single_sided=True, join_style="mitre")
+        jj, ii = np.nonzero(cand)
+        if len(jj) and not body.is_empty:
+            qx, qy = NX[jj, ii], NY[jj, ii]
+            dface = shapely.distance(LineString(P), shapely.points(qx, qy))
+            inb = shapely.contains_xy(body, qx, qy) & (dface > eps) & (dface < th - eps)
+            for j_, i_, x_, y_ in zip(jj[inb], ii[inb], qx[inb], qy[inb]):
+                dk = [float(np.hypot(*(np.array([x_, y_]) - (sg[0] + np.clip((x_ - sg[0][0]) * sg[1][0] + (y_ - sg[0][1])
+                                                                              * sg[1][1], 0.0, sg[3]) * sg[1]))))
+                      if sg is not None else np.inf for sg in segs]
+                top = max(tz[min(k, len(tz) - 1)] for k, d_ in enumerate(dk) if d_ <= min(dk) + 1e-3)
+                if Z[j_, i_] > top + 1e-9:
+                    Z[j_, i_] = top; low[j_, i_] = True
+        sel = cand & (un >= th - eps) & (un <= R + 1e-6)
+        for j_, i_ in zip(*np.nonzero(sel)):
+            h = tree.query_ball_point([NX[j_, i_], NY[j_, i_]], radius)
+            if len(h) < min_n:
+                continue
+            h = np.asarray(h)
+            ur, _ = behind(pxy[h, 0], pxy[h, 1])
+            zz = np.sort(pz[h[ur >= th - 1e-6]])
+            if len(zz) < min_n:
+                continue
+            top = tz[min(int(kn[j_, i_]), len(tz) - 1)]
+            z0 = Z[j_, i_]
+            new = z0
+            zt = zz[1:-1] if len(zz) >= trim else zz
+            if zt[-1] - zt[0] < flat:
+                new = min(new, max(float(zt[0]) + dz, float(np.median(zt))))
+            if abs(un[j_, i_] - th) <= eps and float(np.median(zz)) <= top + over:
+                new = min(new, top)
+            if new < z0 - 1e-9:
+                Z[j_, i_] = new; low[j_, i_] = True
+        if not (cap_seen or ends) or body.is_empty:
+            continue
+        FL = LineString(P)
+
+        def cap_returns(qx, qy, r_):
+            """Last returns within r_ of (qx, qy) in the back half of this body (th / 2 .. th behind the face)."""
+            h = tree.query_ball_point([qx, qy], r_)
+            if not h:
+                return np.zeros(0)
+            h = np.asarray(h)
+            df = shapely.distance(FL, shapely.points(pxy[h, 0], pxy[h, 1]))
+            ok = (df >= th / 2) & (df <= th + 1e-6) & shapely.contains_xy(body.buffer(1e-6), pxy[h, 0], pxy[h, 1])
+            return pz[h[ok]]
+
+        def low_top(qx, qy):
+            """Lowest top of the segments within th + c / 2 of (qx, qy)."""
+            q = shapely.Point(qx, qy)
+            ts = [tz[min(k, len(tz) - 1)] for k, sg in enumerate(segs)
+                  if sg is not None and LineString([P[k], P[k + 1]]).distance(q) <= th + c / 2]
+            return min(ts) if ts else min(tz)
+        if cap_seen:
+            jj, ii = np.nonzero(cand)
+            if len(jj):
+                qx, qy = NX[jj, ii], NY[jj, ii]
+                pq = shapely.points(qx, qy)
+                dface = shapely.distance(FL, pq)
+                onb = (shapely.distance(body.exterior, pq) <= eps) & (dface >= th - eps)
+                for j_, i_, x_, y_ in zip(jj[onb], ii[onb], qx[onb], qy[onb]):
+                    top = low_top(x_, y_)
+                    if Z[j_, i_] <= top + 1e-9:         # at / under the top already (the rules above): left as it is
+                        continue
+                    zc = cap_returns(x_, y_, radius)
+                    if len(zc) >= min_n and float(np.median(zc)) <= top + over:
+                        Z[j_, i_] = top - cap_drop; low[j_, i_] = True
+                        if stats is not None:
+                            stats["cap_seen"] += 1
+        if ends and len(P) >= 2:
+            others = [b_ for k_, b_ in enumerate(bodies) if k_ != wi and not b_.is_empty]
+            for k_end, (pe, pn_) in ((0, (P[0], P[1])), (len(P) - 2, (P[-1], P[-2]))):
+                sg = segs[k_end]
+                if sg is None:
+                    continue
+                e = (pe - pn_) / max(float(np.hypot(*(pe - pn_))), 1e-12)     # outward along the line
+                uvec = -sg[2]                                                 # uphill
+                top = tz[min(k_end, len(tz) - 1)]
+                cb = pe + th * uvec                                           # back corner of the end
+                # LiDAR sees the cap near this end: back half of the body within 2 radius of the end
+                mid = pe + 0.75 * th * uvec - radius * e
+                zc = cap_returns(mid[0], mid[1], 2 * radius)
+                if not (len(zc) >= min_n and float(np.median(zc)) <= top + over):
+                    continue
+                o = (NX - pe[0]) * e[0] + (NY - pe[1]) * e[1]
+                t = (NX - pe[0]) * uvec[0] + (NY - pe[1]) * uvec[1]
+                m = cand & (o > -eps) & (o <= c + eps) & (t > -c / 2) & (t <= th + c / 2)
+                if not m.any():
+                    continue
+                jj, ii = np.nonzero(m)
+                if others:
+                    pq = shapely.points(NX[jj, ii], NY[jj, ii])
+                    near_o = np.zeros(len(jj), bool)
+                    for b_ in others:
+                        near_o |= shapely.distance(b_, pq) <= c
+                    jj, ii = jj[~near_o], ii[~near_o]
+                if not len(jj) or not np.any(Z[jj, ii] > top - cap_drop + 1e-9):
+                    continue
+                tt = t[jj, ii]; hi = Z[jj, ii] > top - cap_drop + 1e-9
+                # the node nearest the back corner (from behind or beside the body) goes onto it; the one nearest the
+                # face corner only when it stands over the top (a toe the end abuts, not the foot in front of the face)
+                dc = np.where(tt > th / 2, np.hypot(NX[jj, ii] - cb[0], NY[jj, ii] - cb[1]), np.inf)
+                kc = int(np.argmin(dc)) if dc.min() <= c else -1
+                df = np.where((tt < th / 2) & hi, np.hypot(NX[jj, ii] - pe[0], NY[jj, ii] - pe[1]), np.inf)
+                if kc >= 0:
+                    df[kc] = np.inf
+                kf = int(np.argmin(df)) if df.min() <= c else -1
+                for k_, (j_, i_) in enumerate(zip(jj, ii)):
+                    if k_ == kc:
+                        NX[j_, i_], NY[j_, i_] = cb
+                    elif k_ == kf:
+                        NX[j_, i_], NY[j_, i_] = pe
+                    elif eps < tt[k_] < th - eps:
+                        NX[j_, i_] -= o[j_, i_] * e[0]; NY[j_, i_] -= o[j_, i_] * e[1]
+                    else:
+                        continue
+                    if Z[j_, i_] > top - cap_drop:
+                        Z[j_, i_] = top - cap_drop; low[j_, i_] = True
+                    if stats is not None:
+                        stats["ends"] += 1
+    return Z, low
+
+
+def wall_back_shift(Z, NX, NY, faces, tops, c, shift=0.02, margin=0.01, max_shift=None, eps=2e-3):
+    """The uphill counterpart of wall_foot_lower's foot shift. apply_breaklines snaps the nodes behind a wall onto its
+    back line (``th`` uphill of the face); the terrain triangles from such a node to the nodes on the face run through the
+    wall body, and with the node at (or over) the wall's top they reach the cap's back edge at (or over) the cap:
+    coincident with it (a ray cast or a render picks the terrain) or lapping over it by th (z - top) / (z - zf).
+    Every back-line node (mesh position NX, NY within ``eps`` of a segment's back line, inside its span) standing at or
+    over that segment's top - ``margin`` is moved uphill off the back line, IN PLACE in NX, NY, by
+    max(``shift``, th (z - top + margin) / (top - margin - zf)) -- the distance that puts the triangles to the face under
+    the cap at its back edge, ``zf`` = the highest of its 8 grid neighbours on (or in front of) the face; ``top`` = the
+    lowest top of the segments whose back line passes within half a cell (a step of a stepped wall) -- capped at
+    ``max_shift`` (default 0.4 c; the next unsnapped node lies >= one cell uphill). A node whose face neighbours stand at or
+    over the top itself (a buried wall) is left. A node INSIDE the body at a convex joint of the face line (outside both
+    segments' spans: no snap reached it, wall_back_cap holds it at the top) at or over the top - ``margin`` is pushed out
+    along the ray from the nearest point of the face line through it to the body's back boundary (the mitre) + the same
+    shift. Z is not changed (measured ground over a low edging keeps its height).
+    ``faces`` = wall_faces(), ``tops`` = face_tops() (a wall without tops is skipped). Returns the bool mask of the moved
+    nodes and their shifts (m)."""
+    moved = np.zeros(Z.shape, bool); amount = np.zeros(Z.shape)
+    if shift is None or shift < 0 or not faces:
+        return moved, amount
+    mx = 0.4 * c if max_shift is None else max_shift
+    ny, nx = Z.shape
+    NX0, NY0 = NX.copy(), NY.copy()
+    for (line, down, th), tz in zip(faces, tops or []):
+        if tz is None:
+            continue
+        P = np.asarray(line, float)
+        bx0, by0 = P.min(0) - th - c; bx1, by1 = P.max(0) + th + c
+        cand = (NX0 >= bx0) & (NX0 <= bx1) & (NY0 >= by0) & (NY0 <= by1)
+        if not cand.any():
+            continue
+        best = np.full(Z.shape, np.inf); seg = np.full(Z.shape, -1); nrm = np.zeros(Z.shape + (2,))
+        front = np.zeros(Z.shape, bool)
+        tmin = np.full(Z.shape, np.inf)          # lowest top of the segments whose back line passes within half a cell
+        for k, (a_, b_) in enumerate(zip(P[:-1], P[1:])):
+            d = b_ - a_; ln = float(np.hypot(*d))
+            if ln < 1e-9:
+                continue
+            d = d / ln; n = down * np.array([-d[1], d[0]])               # n points downhill
+            s = (NX0 - a_[0]) * d[0] + (NY0 - a_[1]) * d[1]
+            t = (NX0 - a_[0]) * n[0] + (NY0 - a_[1]) * n[1]
+            span = cand & (s >= -1e-6) & (s <= ln + 1e-6)
+            front |= span & (t >= -eps) & (t <= c)                       # on the face or in front of it
+            m = span & (np.abs(-t - th) <= eps) & (np.abs(-t - th) < best)
+            best = np.where(m, np.abs(-t - th), best); seg = np.where(m, k, seg); nrm[m] = n
+            # at a step of a stepped wall a back-line node of the higher segment also carries triangles over the lower cap
+            near = cand & (np.hypot(s - np.clip(s, 0.0, ln), -t - th) <= c / 2)
+            tmin = np.where(near, np.minimum(tmin, tz[min(k, len(tz) - 1)]), tmin)
+        def _u(j_, i_, top, depth):
+            """Shift for a node `depth` m behind the face (None: leave it)."""
+            z = Z[j_, i_]
+            if z < top - margin:
+                return None
+            zf = [Z[j_ + dj, i_ + di] for dj in (-1, 0, 1) for di in (-1, 0, 1)
+                  if (dj or di) and 0 <= j_ + dj < ny and 0 <= i_ + di < nx and front[j_ + dj, i_ + di]]
+            if not zf or max(zf) >= top - margin:
+                # no face node next to it (a twin behind another back-line node: it moves with that one), or a buried
+                # wall (the face nodes stand at the top too: moving the node does not help)
+                return None
+            need = depth * (z - top + margin) / (top - margin - max(zf))
+            return min(max(shift, need), mx)
+        ug = np.full(Z.shape, np.nan)
+        for j_, i_ in zip(*np.nonzero(seg >= 0)):
+            u = _u(j_, i_, min(tz[min(int(seg[j_, i_]), len(tz) - 1)], tmin[j_, i_]), th)
+            if u is not None:
+                ug[j_, i_] = u
+        # twins (two grid nodes snapped onto the same point of the back line, from inside the body and from behind it) move
+        # together: the larger shift, so the sliver between them neither folds over nor opens onto the cap
+        for j_, i_ in zip(*np.nonzero(np.isfinite(ug))):
+            for dj in (-1, 0, 1):
+                for di in (-1, 0, 1):
+                    j2, i2 = j_ + dj, i_ + di
+                    if (dj or di) and 0 <= j2 < ny and 0 <= i2 < nx and seg[j2, i2] >= 0 \
+                            and np.hypot(NX0[j2, i2] - NX0[j_, i_], NY0[j2, i2] - NY0[j_, i_]) <= 0.01:
+                        ug[j2, i2] = max(ug[j_, i_], ug[j2, i2]) if np.isfinite(ug[j2, i2]) else ug[j_, i_]
+        for j_, i_ in zip(*np.nonzero(np.isfinite(ug))):
+            u = ug[j_, i_]
+            NX[j_, i_] -= u * nrm[j_, i_, 0]; NY[j_, i_] -= u * nrm[j_, i_, 1]
+            moved[j_, i_] = True; amount[j_, i_] = u
+        # nodes INSIDE the body at a convex joint of the face line (outside both segments' spans, so no snap reached them;
+        # wall_back_cap holds them at the top): pushed out along the ray from the nearest point of the face line through
+        # them to the body's back boundary (the mitre), + the same shift -- at the top inside the body, their triangles
+        # to the back-line nodes lie on the cap
+        body = LineString(P).buffer(-down * th, single_sided=True, join_style="mitre")
+        FL = LineString(P)
+        jj, ii = np.nonzero(cand & (seg < 0))
+        if len(jj) and not body.is_empty:
+            qx, qy = NX0[jj, ii], NY0[jj, ii]
+            dface = shapely.distance(FL, shapely.points(qx, qy))
+            inb = shapely.contains_xy(body, qx, qy) & (dface > eps) & (dface < th - eps)
+            for j_, i_, x_, y_ in zip(jj[inb], ii[inb], qx[inb], qy[inb]):
+                p0 = np.array(FL.interpolate(FL.project(shapely.Point(x_, y_))).coords[0])
+                dv = np.array([x_, y_]) - p0; dl = float(np.hypot(*dv))
+                if dl < 1e-6:
+                    continue
+                dv /= dl
+                ex = LineString([p0 + 1e-6 * dv, p0 + 4 * th * dv]).intersection(body.exterior)
+                pts_ = [np.array(g_.coords[0]) for g_ in getattr(ex, "geoms", [ex]) if not g_.is_empty]
+                if not pts_:
+                    continue
+                e_ = min(pts_, key=lambda q: float(np.hypot(*(q - p0))))
+                depth = float(np.hypot(*(e_ - p0)))
+                ks = [k for k, (a_, b_) in enumerate(zip(P[:-1], P[1:]))
+                      if min(np.hypot(*(a_ - p0)), np.hypot(*(b_ - p0))) < 1e-6]
+                top = max(tz[min(k, len(tz) - 1)] for k in ks) if ks else max(tz)
+                u = _u(j_, i_, top, depth)
+                if u is None:
+                    continue
+                NX[j_, i_], NY[j_, i_] = e_ + u * dv
+                moved[j_, i_] = True; amount[j_, i_] = depth + u - dl
+    return moved, amount
+
+
+def deck_caps(details, clear=0.30, stair_clear=0.05):
+    """Ceilings for the terrain under decks and stairs of a details.json dict (add_details.py): every deck with a
+    ``polygon`` and ``top_z`` gives (polygon, z <= top_z - ``clear``); every stair (top, dir, width, length, top_z,
+    bottom_z, risers) gives (its footprint, z <= tread line - ``stair_clear``), where the tread line runs through the
+    lowest point of every tread (add_details: tread k at top_z - k * rise over s = run (k-1) .. run k, run =
+    length / (risers - 1)): top_z - rise (1 + s / run), from top_z - rise at the head to bottom_z at the foot (s is
+    clamped to the run outside the footprint). Returns [(shapely Polygon, f(X, Y) -> cap z, label)]."""
+    out = []
+    for dk in (details or {}).get("decks", []):
+        if not (dk.get("polygon") and "top_z" in dk):
+            continue
+        pg = Polygon([p[:2] for p in dk["polygon"]]).buffer(0)
+        if pg.is_empty:
+            continue
+        z = float(dk["top_z"]) - clear
+        out.append((pg, (lambda X, Y, z=z: np.full(np.shape(X), z)), dk.get("label", "deck")[:40]))
+    for st in (details or {}).get("stairs", []):
+        if not all(k in st for k in ("top", "dir", "top_z", "bottom_z")):
+            continue
+        tx, ty = map(float, st["top"][:2]); dx, dy = map(float, st["dir"][:2])
+        dn = float(np.hypot(dx, dy))
+        if dn < 1e-9:
+            continue
+        dx, dy = dx / dn, dy / dn
+        W = float(st.get("width", 1.0)); r = int(st.get("risers", 0) or 0)
+        zt, zb = float(st["top_z"]), float(st["bottom_z"])
+        L_ = float(st["length"]) if st.get("length") else float(st.get("run", 0.27)) * max(r - 1, 1)
+        if L_ <= 1e-6:
+            continue
+        nx_, ny_ = -dy, dx
+        pg = Polygon([(tx + sa * L_ * dx + sb * W / 2 * nx_, ty + sa * L_ * dy + sb * W / 2 * ny_)
+                      for sa, sb in ((0, -1), (1, -1), (1, 1), (0, 1))])
+        if r >= 2:
+            rise, run = (zt - zb) / r, L_ / (r - 1)
+            line = lambda s, zt=zt, rise=rise, run=run: zt - rise * (1.0 + s / run)
+        else:
+            line = lambda s, zt=zt, zb=zb, L_=L_: zt + (zb - zt) * s / L_
+
+        def f(X, Y, tx=tx, ty=ty, dx=dx, dy=dy, L_=L_, line=line):
+            s = np.clip((np.asarray(X) - tx) * dx + (np.asarray(Y) - ty) * dy, 0.0, L_)
+            return line(s) - stair_clear
+        out.append((pg, f, st.get("label", "stair")[:40]))
+    return out
+
+
+def stair_foot_ground(Z, NX, NY, details, pxy, pz, reach=0.75, radius=0.25, min_n=2, margin=0.25, protect=None, q=0.25):
+    """The ground just past the foot of every details.json stair at its measured height: grid nodes (positions NX, NY)
+    0 < s - L <= ``reach`` past the foot (s along the run from the stair head, L its length) and |t| <= W / 2 +
+    ``margin`` across it are lowered to the ``q`` quantile of the last returns (pxy, pz) within ``radius`` m of them,
+    where there are at least ``min_n`` (the lower quartile: returns off the bottom tread, the stringers and low plants
+    sit above the ground, and it is less sensitive than the lowest return to one low outlier). A stair excluded from the ground filter is bridged from the grade round it, and the
+    3x3 median of the ground surface carries the bottom tread's height a cell or two past the foot; deck_caps / cap_terrain
+    only reach --deck-blend m past the foot (and not into a breakline band), so the landing would stand over the
+    measured ground. Only lowers; nodes in ``protect`` (snapped wall-face nodes, grade pads) are left alone. Returns
+    (new grid, bool mask of the nodes lowered by more than 1 cm, [(label, n lowered, max drop)])."""
+    from scipy.spatial import cKDTree
+    Z = np.array(Z, float, copy=True)
+    Z0 = Z.copy()
+    pxy = np.asarray(pxy, float); pz = np.asarray(pz, float)
+    stats = []
+    if len(pz) == 0:
+        return Z, np.zeros(Z.shape, bool), stats
+    tree = cKDTree(pxy[:, :2])
+    for st in (details or {}).get("stairs", []):
+        if not all(k in st for k in ("top", "dir")):
+            continue
+        tx, ty = map(float, st["top"][:2]); dx, dy = map(float, st["dir"][:2])
+        dn = float(np.hypot(dx, dy))
+        if dn < 1e-9:
+            continue
+        dx, dy = dx / dn, dy / dn
+        r = int(st.get("risers", 0) or 0)
+        L_ = float(st["length"]) if st.get("length") else float(st.get("run", 0.27)) * max(r - 1, 1)
+        W = float(st.get("width", 1.0))
+        s = (NX - tx) * dx + (NY - ty) * dy
+        t = -(NX - tx) * dy + (NY - ty) * dx
+        m = (s > L_ + 1e-6) & (s <= L_ + reach) & (np.abs(t) <= W / 2 + margin)
+        if protect is not None:
+            m &= ~np.asarray(protect, bool)
+        jj, ii = np.nonzero(m)
+        n_ = 0; worst = 0.0
+        for j, i in zip(jj, ii):
+            near = tree.query_ball_point((NX[j, i], NY[j, i]), radius)
+            if len(near) < min_n:
+                continue
+            zg = float(np.quantile(pz[near], q))
+            if zg < Z[j, i] - 0.01:
+                worst = max(worst, Z[j, i] - zg); n_ += 1
+            Z[j, i] = min(Z[j, i], zg)
+        stats.append((st.get("label", "stair")[:40], n_, worst))
+    return Z, (Z0 - Z) > 0.01, stats
+
+
+def steps_caps(data, stair_clear=0.05):
+    """Ceilings for the terrain under landscape steps (yard.json items of kind "steps", add_site.py k_steps: tread k of n
+    at z0 + (z1 - z0) (k + 1) / n over s = k L / n .. (k + 1) L / n from line[0] to line[1]): the footprint (line, width)
+    with z <= z0 + (z1 - z0) s / L - ``stair_clear`` (the line through the lowest corner of every tread; s clamped to the
+    run outside the footprint). The LiDAR ground under a measured stair is a smoothed ramp through the treads, which
+    stands above the tread fronts by up to a riser. Returns [(Polygon, f(X, Y) -> cap z, label)] as deck_caps()."""
+    items = data.get("items", []) if isinstance(data, dict) else (data or [])
+    out = []
+    for it in items:
+        if not (isinstance(it, dict) and it.get("kind") == "steps" and len(it.get("line", [])) >= 2
+                and "z0" in it and "z1" in it):
+            continue
+        (ax_, ay_), (bx_, by_) = [tuple(map(float, q[:2])) for q in it["line"][:2]]
+        L_ = float(np.hypot(bx_ - ax_, by_ - ay_))
+        if L_ < 1e-6:
+            continue
+        ux, uy = (bx_ - ax_) / L_, (by_ - ay_) / L_
+        W = float(it.get("width", 1.2))
+        z0, z1 = float(it["z0"]), float(it["z1"])
+        pg = Polygon([(ax_ - uy * W / 2, ay_ + ux * W / 2), (bx_ - uy * W / 2, by_ + ux * W / 2),
+                      (bx_ + uy * W / 2, by_ - ux * W / 2), (ax_ + uy * W / 2, ay_ - ux * W / 2)])
+
+        def f(X, Y, ax_=ax_, ay_=ay_, ux=ux, uy=uy, L_=L_, z0=z0, z1=z1):
+            s = np.clip((np.asarray(X) - ax_) * ux + (np.asarray(Y) - ay_) * uy, 0.0, L_)
+            return z0 + (z1 - z0) * s / L_ - stair_clear
+        out.append((pg, f, it.get("name", "steps")[:40]))
+    return out
+
+
+def cap_terrain(Z, X, Y, caps, blend=0.3, skip=None):
+    """Lower the terrain under decks / stairs (deck_caps): Z = w min(Z, cap) + (1 - w) Z, with the grade-pad blend
+    weight w (1 inside the polygon, falling to 0 at ``blend`` m outside it). Only ever lowers. Nodes in ``skip`` (bool
+    grid: breakline bands, pads, wall feet, cut-outs) are capped only inside the polygon, never by the outside blend.
+    Returns (new grid, bool mask of the nodes lowered by more than 1 cm)."""
+    Z = np.array(Z, float, copy=True)
+    Z0 = Z.copy()
+    for pg, capf, _lab in caps:
+        bx0, by0, bx1, by1 = pg.buffer(blend + 1e-6).bounds
+        m = (X >= bx0) & (X <= bx1) & (Y >= by0) & (Y <= by1)
+        if not m.any():
+            continue
+        dist = shapely.distance(pg, shapely.points(X[m], Y[m]))
+        w = np.clip(1.0 - dist / blend, 0.0, 1.0) if blend > 0 else (dist <= 0).astype(float)
+        if skip is not None:
+            w[np.asarray(skip, bool)[m] & (dist > 0)] = 0.0
+        zc = np.minimum(Z[m], capf(X[m], Y[m]))
+        Z[m] = w * zc + (1 - w) * Z[m]
+    return Z, (Z0 - Z) > 0.01
+
+
+def cap_nodes(X, Y, caps, reach):
+    """Bool grid of the nodes inside, or within ``reach`` m of, any deck / stair cap polygon (deck_caps / steps_caps):
+    the terrain there was capped under boards and treads, so a later smoothing pass (add_site.py's steep-face Laplacian,
+    which lifts a stair foot towards a boulder face beside it) must leave them where they are (scene "fixed_nodes")."""
+    out = np.zeros(np.shape(X), bool)
+    for pg, _f, _lab in caps or []:
+        g = pg.buffer(reach)
+        bx0, by0, bx1, by1 = g.bounds
+        m = (X >= bx0) & (X <= bx1) & (Y >= by0) & (Y <= by1)
+        if m.any():
+            out[m] |= shapely.contains_xy(g, X[m], Y[m])
+    return out
+
+
+def flat_lower_no_dents(Z, target, mask, tol=0.15, min_level=3, passes=3):
+    """Lower the ``mask`` nodes of grid ``Z`` to ``target`` where the result leaves each lowered node level with (within
+    ``tol``) or above at least ``min_level`` of its 8 neighbours (in the lowered grid): a shelf lowered as a whole passes,
+    a lone node dropped into a dent does not (it keeps its height). Repeated ``passes`` times, as a node's neighbours may
+    be dropped in the same pass or rejected in a later one. Returns the new grid."""
+    Z = np.asarray(Z, float)
+    ok = np.asarray(mask, bool) & np.isfinite(target) & (np.nan_to_num(target, nan=np.inf) < Z)
+    for _ in range(max(1, passes)):
+        Zl = np.where(ok, target, Z)
+        P = np.pad(Zl, 1, mode="edge")
+        ny, nx = Z.shape
+        level = np.zeros(Z.shape, int)
+        for dj in (-1, 0, 1):
+            for di in (-1, 0, 1):
+                if dj or di:
+                    level += (P[1 + dj:1 + dj + ny, 1 + di:1 + di + nx] <= Zl + tol)
+        keep = ok & (level >= min_level)
+        if (keep == ok).all():
+            break
+        ok = keep
+    return np.where(ok, target, Z)
+
+
+def clamp_mean(Z, free, above=0.3, max_drop=0.15, passes=2):
+    """Lone tips over the mean of the 8 neighbours: on ``free`` nodes z = max(min(z, mean8 + ``above``), z0 - ``max_drop``)
+    (a node on a crest line is its own 3x3 median, so the median clamps never see it; a measured terrain break keeps
+    all but ``max_drop`` of its height, z0 = its height before the first pass). ``passes`` times (lowering one tip lowers
+    its neighbours' means). Border nodes are left alone. Returns (new grid, number of nodes lowered)."""
+    from scipy import ndimage
+    Z = np.array(Z, float, copy=True)
+    Z0 = Z.copy()
+    fr = np.asarray(free, bool).copy()
+    fr[[0, -1], :] = False; fr[:, [0, -1]] = False
+    k8 = np.ones((3, 3)); k8[1, 1] = 0
+    for _ in range(max(1, int(passes))):
+        mean8 = ndimage.convolve(Z, k8 / 8.0, mode="nearest")
+        tgt = np.maximum(np.minimum(Z, mean8 + above), Z0 - max_drop)
+        cut = fr & (tgt < Z - 1e-9)
+        if not cut.any():
+            break
+        Z[cut] = tgt[cut]
+    return Z, int((fr & (Z < Z0 - 1e-9)).sum())
+
+
+def clamp_tips(Z, free, above=0.15, max_drop=0.15):
+    """Lone peaks: a ``free`` node higher than all 8 neighbours and more than ``above`` over their mean takes
+    max(mean8 + ``above``, z - ``max_drop``). On a 0.25 m grid a single node 0.2-0.3 m proud of smooth ground renders as a
+    lit tooth (the folds of the four cells round it all leave it as a corner); a measured stone keeps a low bump.
+    Border nodes are left alone. Returns (new grid, number of nodes lowered)."""
+    from scipy import ndimage
+    Z = np.array(Z, float, copy=True)
+    fr = np.asarray(free, bool).copy()
+    fr[[0, -1], :] = False; fr[:, [0, -1]] = False
+    k8 = np.ones((3, 3)); k8[1, 1] = 0
+    mean8 = ndimage.convolve(Z, k8 / 8.0, mode="nearest")
+    max8 = ndimage.maximum_filter(Z, footprint=k8.astype(bool), mode="nearest")
+    tgt = np.maximum(mean8 + above, Z - max_drop)
+    cut = fr & (Z > max8) & (Z - mean8 > above) & (tgt < Z - 1e-9)
+    Z[cut] = tgt[cut]
+    return Z, int(cut.sum())
+
+
+def small_patches(mask, max_nodes=2):
+    """Nodes of ``mask`` in 8-connected patches of at most ``max_nodes`` nodes (an isolated solid cell, not a boulder)."""
+    from scipy import ndimage
+    m = np.asarray(mask, bool)
+    if not m.any():
+        return np.zeros(m.shape, bool)
+    lab, n = ndimage.label(m, np.ones((3, 3)))
+    size = ndimage.sum(m, lab, range(1, n + 1))
+    return np.isin(lab, [k + 1 for k, sz in enumerate(size) if sz <= max_nodes])
+
+
+def split_diagonals(Z, NX=None, NY=None, eps=1e-6):
+    """Per grid cell, the diagonal the terrain quad is folded along: True = (j,i+1)-(j+1,i), False =
+    (j,i)-(j+1,i+1). Each cell takes the diagonal whose two nodes differ less in height, so ridges and
+    valleys run along the fold instead of across it (a warped cell split the other way renders as a dark
+    folded shard on a slope or a boulder flank). With the node positions (NX, NY: nodes snapped onto wall faces
+    make some cells skewed or concave in plan) a diagonal that would give a triangle of plan area <= ``eps`` m2
+    (turned over: it faces down and folds over its neighbours, a terrain shard a low camera sees through the draped
+    paving) is never taken when the other one gives two proper triangles."""
+    d02 = np.abs(Z[1:, 1:] - Z[:-1, :-1])
+    d13 = np.abs(Z[:-1, 1:] - Z[1:, :-1])
+    alt = d13 < d02 - 1e-9
+    if NX is None or NY is None:
+        return alt
+    P = [(NX[:-1, :-1], NY[:-1, :-1]), (NX[:-1, 1:], NY[:-1, 1:]), (NX[1:, 1:], NY[1:, 1:]), (NX[1:, :-1], NY[1:, :-1])]
+
+    def area(a, b, c):
+        return 0.5 * ((b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1]))
+    p00, p01, p11, p10 = P
+    ok_main = np.minimum(area(p00, p01, p11), area(p00, p11, p10)) > eps      # (j,i)-(j+1,i+1)
+    ok_alt = np.minimum(area(p01, p11, p10), area(p01, p10, p00)) > eps       # (j,i+1)-(j+1,i)
+    alt = np.where(ok_main & ~ok_alt, False, alt)
+    return np.where(ok_alt & ~ok_main, True, alt)
+
+
+def quad_face(j, i, nx, alt):
+    """Vertex indices of grid cell (j, i), counter-clockwise from above, ordered so that the face's own
+    0-2 diagonal is the fold chosen by split_diagonals (add_site.py splits every quad along 0-2)."""
+    a0 = j * nx + i
+    return [a0 + 1, a0 + nx + 1, a0 + nx, a0] if alt else [a0, a0 + 1, a0 + nx + 1, a0 + nx]
+
+
+def _ccw(cs):
+    """Triangle corner list in counter-clockwise (normal up) order."""
+    (x0_, y0_), (x1_, y1_), (x2_, y2_) = [c_[:2] for c_ in cs]
+    return cs[::-1] if (x1_ - x0_) * (y2_ - y0_) - (x2_ - x0_) * (y1_ - y0_) < 0 else cs
+
+
+def drape_on_mesh(geom, NX, NY, Z, lift, faces_ok=None, alt=None):
+    """Drape polygon(s) ``geom`` exactly on the terrain mesh: grid nodes at (NX, NY, Z) (2-D arrays; nodes may
+    be moved off the regular grid, e.g. snapped onto wall faces), each quad (j,i)-(j,i+1)-(j+1,i+1)-(j+1,i) split
+    along its (j,i)-(j+1,i+1) diagonal as the mesh faces are, or along (j,i+1)-(j+1,i) where ``alt`` (bool
+    [ny-1, nx-1], from split_diagonals) is set. Every piece of ``geom`` inside a terrain triangle
+    gets that triangle's plane + ``lift``, so the overlay coincides with the terrain (no terrain poking through
+    on rough ground, no overlay floating over a twisted cell, clean meeting with wall faces).
+    ``faces_ok`` (bool [ny-1, nx-1]): quads that exist in the terrain mesh. Returns (verts, tris); every
+    triangle is wound counter-clockwise seen from above (normal +z), so viewers that cull back faces keep it."""
+    verts, tris = [], []
+    if geom is None or geom.is_empty:
+        return verts, tris
+    ny, nx = Z.shape
+    bx0, by0, bx1, by1 = geom.bounds
+    # candidate quads: node bounding boxes overlapping the geometry bounds (nodes move less than a cell)
+    qx0 = np.minimum.reduce([NX[:-1, :-1], NX[:-1, 1:], NX[1:, :-1], NX[1:, 1:]])
+    qx1 = np.maximum.reduce([NX[:-1, :-1], NX[:-1, 1:], NX[1:, :-1], NX[1:, 1:]])
+    qy0 = np.minimum.reduce([NY[:-1, :-1], NY[:-1, 1:], NY[1:, :-1], NY[1:, 1:]])
+    qy1 = np.maximum.reduce([NY[:-1, :-1], NY[:-1, 1:], NY[1:, :-1], NY[1:, 1:]])
+    cand = (qx1 >= bx0) & (qx0 <= bx1) & (qy1 >= by0) & (qy0 <= by1)
+    if faces_ok is not None:
+        cand &= faces_ok
+    if alt is None:
+        alt = np.zeros(cand.shape, bool)
+    if not cand.any():
+        return verts, tris
+    shapely.prepare(geom)
+    for corners, flag in ((((0, 0), (0, 1), (1, 1)), False), (((0, 0), (1, 1), (1, 0)), False),
+                          (((0, 0), (0, 1), (1, 0)), True), (((0, 1), (1, 1), (1, 0)), True)):
+        jj, ii = np.nonzero(cand & (alt == flag))
+        if not len(jj):
+            continue
+        P = np.stack([np.column_stack([NX[jj + dj, ii + di], NY[jj + dj, ii + di], Z[jj + dj, ii + di]])
+                      for dj, di in corners], 1)                         # [n, 3 corners, xyz]
+        polys = shapely.polygons(P[:, :, :2])
+        good = shapely.area(polys) > 1e-9
+        inside = good & shapely.contains(geom, polys)
+        part = good & ~inside & shapely.intersects(geom, polys)
+        # plane z = a x + b y + c of every triangle
+        A = np.concatenate([P[:, :, :2], np.ones((len(P), 3, 1))], 2)
+        coef = np.full((len(P), 3), np.nan)
+        ok = good & (inside | part)
+        coef[ok] = np.linalg.solve(A[ok], P[ok, :, 2][..., None])[..., 0]
+        for k in np.nonzero(inside)[0]:
+            b0 = len(verts)
+            verts += [[round(float(x), 4), round(float(y), 4), round(float(z) + lift, 4)] for x, y, z in _ccw(list(P[k]))]
+            tris.append([b0, b0 + 1, b0 + 2])
+        kp = np.nonzero(part)[0]
+        if len(kp):
+            pieces = shapely.intersection(geom, polys[kp])
+            for k, pc in zip(kp, pieces):
+                if pc.is_empty or pc.area < 1e-6:
+                    continue
+                a_, b_, c_ = coef[k]
+                for t in shapely.constrained_delaunay_triangles(pc).geoms:
+                    if t.area < 1e-7:
+                        continue
+                    cs = _ccw(list(t.exterior.coords)[:3])              # counter-clockwise: normals up
+                    b0 = len(verts)
+                    for x, y in cs:
+                        verts.append([round(x, 4), round(y, 4), round(float(a_ * x + b_ * y + c_) + lift, 4)])
+                    tris.append([b0, b0 + 1, b0 + 2])
+    return verts, tris
+
+
+# per cell fold (split_diagonals): the corners (dj, di) of the quad's two triangles, in quad_face order
+# (triangle 0 = face corners 0-1-2, triangle 1 = 0-2-3)
+_TRI_CORNERS = {False: (((0, 0), (0, 1), (1, 1)), ((0, 0), (1, 1), (1, 0))),
+                True: (((0, 1), (1, 1), (1, 0)), ((0, 1), (1, 0), (0, 0)))}
+
+
+def mesh_z(NX, NY, Z, alt, x0, y0, c, x, y):
+    """Terrain height at plan points (x, y) on the mesh triangles: grid nodes at (NX, NY, Z) (nodes may be snapped off the
+    regular grid onto wall faces, by less than a cell), each cell folded along its split_diagonals diagonal (``alt``). The
+    point's own cell is searched first, then its 8 neighbours. nan where no triangle holds the point."""
+    x = np.atleast_1d(np.asarray(x, float)); y = np.atleast_1d(np.asarray(y, float))
+    ny, nx = Z.shape
+    out = np.full(x.shape, np.nan)
+    i0 = np.floor((x - x0) / c).astype(int); j0 = np.floor((y - y0) / c).astype(int)
+    for dj, di in ((0, 0), (0, -1), (-1, 0), (0, 1), (1, 0), (-1, -1), (-1, 1), (1, -1), (1, 1)):
+        todo = np.isnan(out)
+        if not todo.any():
+            break
+        i = i0 + di; j = j0 + dj
+        ok = todo & (i >= 0) & (i < nx - 1) & (j >= 0) & (j < ny - 1)
+        if not ok.any():
+            continue
+        k = np.nonzero(ok)[0]; ii, jj = i[k], j[k]; fl = alt[jj, ii]
+        for t in (0, 1):
+            P = []
+            for v in range(3):
+                (mj, mi), (aj, ai) = _TRI_CORNERS[False][t][v], _TRI_CORNERS[True][t][v]
+                cj = jj + np.where(fl, aj, mj); ci = ii + np.where(fl, ai, mi)
+                P.append((NX[cj, ci], NY[cj, ci], Z[cj, ci]))
+            (x1, y1, z1), (x2, y2, z2), (x3, y3, z3) = P
+            px, py = x[k], y[k]
+            den = (y2 - y3) * (x1 - x3) + (x3 - x2) * (y1 - y3)
+            with np.errstate(invalid="ignore", divide="ignore"):
+                l1 = ((y2 - y3) * (px - x3) + (x3 - x2) * (py - y3)) / den
+                l2 = ((y3 - y1) * (px - x3) + (x1 - x3) * (py - y3)) / den
+            l3 = 1 - l1 - l2
+            hit = (np.abs(den) > 1e-12) & (np.minimum(np.minimum(l1, l2), l3) >= -1e-9) & np.isnan(out[k])
+            out[k[hit]] = (l1 * z1 + l2 * z2 + l3 * z3)[hit]
+    return out
+
+
+def paving_foot_plane(faces, zf, paving, solids=None, near=0.1, band=(0.3, 0.6), n=4, max_slope=0.3, max_rms=0.03,
+                      skip=None):
+    """The paving plane at the foot of the retaining-wall faces: plane(x, y) -> z for plan points on the downhill side of a
+    face (or on it) within ``near`` m of it, nan elsewhere. z is the straight line fitted to the surface ``zf`` (the
+    terrain under the draped paving) at ``n`` points ``band`` m out along the face's downhill normal from the point's
+    foot on the face, extended back to the point: a sloping or crossfalling drive keeps its measured slope up to the
+    joint, while whatever the grid does within the last cell (the side grade of the step, face nodes snapped from both
+    sides of a face that is oblique to the grid at different heights) is replaced. Only where every sample lies on
+    ``paving`` (a shapely geometry), the path from the face out to the last sample stays outside ``solids`` (the wall
+    footprints, + 0.02 m: no other wall in between), and the samples are paving-like: fitted slope within
+    +-``max_slope`` and rms about the line <= ``max_rms`` (a bank or a step in the band is not a paving joint, and is left
+    alone). Points more than 5 mm inside a wall footprint or inside ``skip`` (a shapely geometry: grade pads, which keep
+    their own measured / levelled height), and points whose samples fall in ``skip`` (the paving in front is a pad), get
+    nan. The nearest face segment with valid samples is used.
+    ``faces`` = wall_faces() output [(line, down, thickness)]."""
+    segs = []
+    for line, down, _th in faces:
+        P = np.asarray(line, float)
+        for a_, b_ in zip(P[:-1], P[1:]):
+            d = b_ - a_; ln = float(np.hypot(*d))
+            if ln < 1e-6:
+                continue
+            d = d / ln
+            segs.append((a_, d, down * np.array([-d[1], d[0]]), ln))
+    ts = np.linspace(band[0], band[1], max(int(n), 2))
+    tm = ts.mean(); tv = ((ts - tm) ** 2).sum()
+    bad = solids.buffer(0.02) if solids is not None and not solids.is_empty else None
+    inner = solids.buffer(-0.005) if solids is not None and not solids.is_empty else None
+    if skip is not None and not skip.is_empty:
+        sk_in = skip.buffer(-0.005)
+        inner = sk_in if inner is None else inner.union(sk_in)
+        shapely.prepare(skip)
+    else:
+        skip = None
+    path = np.arange(0.05, band[1] + 1e-9, 0.05)                 # the way out to the samples: no other wall on it
+    if paving is not None and not paving.is_empty:
+        shapely.prepare(paving)
+
+    def plane(x, y):
+        x = np.asarray(x, float); y = np.asarray(y, float)
+        shp = x.shape; x = x.ravel(); y = y.ravel()
+        out = np.full(x.shape, np.nan); best = np.full(x.shape, np.inf)
+        if paving is None or paving.is_empty or not segs:
+            return out.reshape(shp)
+        for a_, d, nrm, ln in segs:
+            s = (x - a_[0]) * d[0] + (y - a_[1]) * d[1]
+            t = (x - a_[0]) * nrm[0] + (y - a_[1]) * nrm[1]
+            sc = np.clip(s, 0.0, ln)
+            dist = np.hypot(s - sc, t)
+            m = (t >= -0.005) & (dist <= near) & (dist < best)          # (nodes snapped onto the face: within 5 mm)
+            if not m.any():
+                continue
+            k = np.nonzero(m)[0]
+            fx = a_[0] + sc[k] * d[0]; fy = a_[1] + sc[k] * d[1]
+            ok = np.ones(len(k), bool); zs = []
+            for tk in ts:
+                qx = fx + tk * nrm[0]; qy = fy + tk * nrm[1]
+                ok &= shapely.contains_xy(paving, qx, qy)
+                if skip is not None:
+                    ok &= ~shapely.contains_xy(skip, qx, qy)
+                zs.append(np.asarray(zf(qx, qy), float).reshape(-1))
+            if bad is not None:
+                for tk in path:
+                    ok &= ~shapely.contains_xy(bad, fx + tk * nrm[0], fy + tk * nrm[1])
+            zs = np.array(zs)
+            ok &= np.isfinite(zs).all(0)
+            if not ok.any():
+                continue
+            g = ((ts - tm)[:, None] * (zs - zs.mean(0))).sum(0) / tv
+            res = zs - (zs.mean(0) + g * (ts - tm)[:, None])
+            with np.errstate(invalid="ignore"):
+                ok &= (np.abs(g) <= max_slope) & (np.sqrt((res ** 2).mean(0)) <= max_rms)
+            if not ok.any():
+                continue
+            zt = zs.mean(0) + g * (np.maximum(t[k], 0.0) - tm)
+            kk = k[ok]
+            out[kk] = zt[ok]; best[kk] = dist[kk]
+        if inner is not None:
+            cand = np.isfinite(out)
+            if cand.any():
+                cin = np.nonzero(cand)[0]
+                out[cin[shapely.contains_xy(inner, x[cin], y[cin])]] = np.nan
+        return out.reshape(shp)
+    return plane
+
+
+def paving_wall_feet(Z, NX, NY, plane, max_change=0.3):
+    """Grid nodes (at their mesh positions NX, NY) within the reach of ``plane`` (paving_foot_plane: the paving at the foot
+    of a retaining-wall face) take the plane's height, unless that would move them by more than ``max_change`` m (then
+    something else stands there). Returns (new grid, bool mask of the nodes moved)."""
+    zp = plane(NX, NY)
+    with np.errstate(invalid="ignore"):
+        m = np.isfinite(zp) & (np.abs(zp - Z) <= max_change)
+    Zn = np.where(m, zp, Z)
+    return Zn, m & (np.abs(Zn - Z) > 1e-6)
+
+
+def poking_triangles(NX, NY, Z, alt, plane, cells=None, tol=0.02, solids=None, strip=None):
+    """Terrain triangles that poke through the paving at a wall foot: triangles (bool [ny-1, nx-1, 2], quad_face order:
+    0 = corners 0-1-2, 1 = corners 0-2-3) that stand more than ``tol`` m over ``plane`` (paving_foot_plane: defined on
+    the downhill side of a face within its ``near`` m, outside the walls) at a corner, edge midpoint, edge quarter point or
+    the centroid, and that lie wholly within the foot strip ``strip`` (shapely: the downhill side of the faces out to the
+    plane's ``near``) and the wall bodies (``solids`` + 0.01 m): a sliver on the face line whose nodes the plane could
+    not take, or the wall's hidden step showing in front of a face (at a concave joint of a stepped wall the chord
+    between the two faces' nodes runs in front of the corner, and the triangle from it to the back line stands there as
+    a dark wedge). A triangle reaching out past the strip onto the open paving (ordinary terrain under the overlay) or
+    past a wall's back (the retained ground) is never one. Without ``strip`` only triangles whose corners all lie within
+    the plane's reach count. ``cells`` (bool [ny-1, nx-1]): the cells to test (default all)."""
+    ny, nx = Z.shape
+    poke = np.zeros((ny - 1, nx - 1, 2), bool)
+    if cells is None:
+        cells = np.ones((ny - 1, nx - 1), bool)
+    jj, ii = np.nonzero(cells)
+    if not len(jj):
+        return poke
+    fl = alt[jj, ii]
+    W = [(1, 0, 0), (0, 1, 0), (0, 0, 1), (0.5, 0.5, 0), (0, 0.5, 0.5), (0.5, 0, 0.5), (0.75, 0.25, 0), (0.25, 0.75, 0),
+         (0, 0.75, 0.25), (0, 0.25, 0.75), (0.25, 0, 0.75), (0.75, 0, 0.25), (1 / 3, 1 / 3, 1 / 3)]
+    for t in (0, 1):
+        P = []
+        for v in range(3):
+            (mj, mi), (aj, ai) = _TRI_CORNERS[False][t][v], _TRI_CORNERS[True][t][v]
+            cj = jj + np.where(fl, aj, mj); ci = ii + np.where(fl, ai, mi)
+            P.append((NX[cj, ci], NY[cj, ci], Z[cj, ci]))
+        hit = np.zeros(len(jj), bool)
+        for w in W:
+            qx = sum(w[v] * P[v][0] for v in range(3)); qy = sum(w[v] * P[v][1] for v in range(3))
+            qz = sum(w[v] * P[v][2] for v in range(3))
+            zp = plane(qx, qy)
+            with np.errstate(invalid="ignore"):
+                hit |= np.isfinite(zp) & (qz > zp + tol)
+        if hit.any():
+            # only a triangle wholly within the foot strip and the wall bodies (one reaching out onto the open paving or
+            # back onto the retained ground is ordinary terrain)
+            kk = np.nonzero(hit)[0]
+            if strip is not None:
+                cover = strip if solids is None or solids.is_empty else strip.union(solids.buffer(0.01))
+                tri_ = shapely.polygons(np.stack([np.column_stack([P[v][0][kk], P[v][1][kk]]) for v in range(3)], 1))
+                within = shapely.area(shapely.difference(tri_, cover)) < 1e-5
+            else:
+                within = np.ones(len(kk), bool)
+                for v in range(3):
+                    within &= np.isfinite(plane(P[v][0][kk], P[v][1][kk]))
+            hit[kk[~within]] = False
+        poke[jj[hit], ii[hit], t] = True
+    return poke
+
+
+def level_overlay(verts, plane, lift, max_change=0.3):
+    """Draped overlay vertices ([[x, y, z], ...], modified in place) within the reach of ``plane`` (paving_foot_plane)
+    take the plane + ``lift`` (the same paving joint as the terrain nodes under them; a piece draped on a triangle that
+    crosses in front of a face at a joint lies on the plane too), unless that moves them by more than ``max_change``.
+    Returns the number of vertices moved."""
+    if not verts:
+        return 0
+    V = np.asarray(verts, float)
+    zp = plane(V[:, 0], V[:, 1]) + lift
+    with np.errstate(invalid="ignore"):
+        m = np.isfinite(zp) & (np.abs(zp - V[:, 2]) <= max_change) & (np.abs(zp - V[:, 2]) > 1e-6)
+    for k in np.nonzero(m)[0]:
+        verts[k][2] = round(float(zp[k]), 4)
+    return int(m.sum())
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--ground", default="auto", choices=["auto", "class2", "filtered"],
+                    help="terrain from class-2 returns, or a filtered ground surface (auto: filtered when <10%% are class 2)")
+    ap.add_argument("--ground-exclude", help="json list of polygons that are never ground (decks, a garage under a deck)")
+    ap.add_argument("--keep-rocks", action="store_true", help="filtered terrain: keep boulders/outcrops from no-canopy last returns")
+    ap.add_argument("--rocks", default="solid", choices=["solid", "lowest"],
+                    help="--keep-rocks method. solid (default): terrain = max(ground, solid surface) where solid = cells whose "
+                         "neighbourhood is single-return and planar (lidar.solid_surface); lowest: lowest last return of "
+                         "every no-canopy cell (older, noisier: shrub tops become ground)")
+    ap.add_argument("--rock-max", type=float, default=4.5, help="max height of a kept rock above the filtered ground (m)")
+    ap.add_argument("--canopy-frac", type=float, default=0.2, help="cells with more multi-return pulses than this are canopy")
+    ap.add_argument("--solid-single", type=float, default=0.9, help="solid surface: min single-return fraction within --solid-radius")
+    ap.add_argument("--solid-rms", type=float, default=0.2, help="solid surface: max plane-fit RMS within --solid-radius (m)")
+    ap.add_argument("--solid-radius", type=float, default=0.6, help="solid surface: neighbourhood half-size (m)")
+    ap.add_argument("--solid-rise", type=float, default=1.0,
+                    help="solid cells more than this above the ground surface must form a patch of --solid-patch m^2")
+    ap.add_argument("--solid-patch", type=float, default=0.75, help="min area (m^2) of a tall solid patch (boulder)")
+    ap.add_argument("--solid-mask-buffer", type=float, default=0.3,
+                    help="solid surface: never on the roof plan, decks or --ground-exclude polygons grown by this (m)")
+    ap.add_argument("--solid-grow", type=int, default=-1,
+                    help="rounds of edge growth of tall solid patches (-1: ceil(radius / cell) + 1; 0 = off)")
+    ap.add_argument("--boulders", help="yard.json whose boulder items (polygon, top_z) count as traced rock outlines")
+    ap.add_argument("--rock-q", type=float, default=0.9,
+                    help="inside traced rock outlines the terrain takes this quantile of the single returns per cell "
+                         "(not above the outline's top_z + 0.1; 0 = off)")
+    ap.add_argument("--rock-floor-last", type=int, default=1,
+                    help="inside traced rock outlines no node stays below its cell's lowest last return (1 = on, 0 = off)")
+    ap.add_argument("--despike", type=float, default=0.3,
+                    help="rock-raised nodes: z = min(z, 3x3 median + this), then a Gaussian of --despike-sigma (0 = off)")
+    ap.add_argument("--despike-sigma", type=float, default=0.25, help="Gaussian sigma (m) of the despike pass")
+    ap.add_argument("--despike-edge", type=float, default=0.0,
+                    help="presentation option: nodes raised more than this next to unraised ground (the outline teeth of a "
+                         "boulder patch, which cast shard shadows) take the full Gaussian, unclamped. Off by default: it "
+                         "rounds small boulders well below their LiDAR tops (0 = off)")
+    ap.add_argument("--despike-passes", type=int, default=2, help="passes of the edge smoothing")
+    ap.add_argument("--despike-clamp", type=float, default=0.05,
+                    help="the despike Gaussian moves no node by more than this (m), so measured cliff edges stay (0 = no limit)")
+    ap.add_argument("--veg-mask", help="json list of polygons (rings or {polygon} dicts): shrub / bed areas whose single returns "
+                                       "are vegetation, not rock: kept out of the --keep-rocks solid merge, the rock-outline "
+                                       "quantile and the edge growth (terrain = filtered ground). --beds entries with "
+                                       "\"no_solid\": true are added to it")
+    ap.add_argument("--spike-clamp", type=float, default=0.3,
+                    help="despike of every terrain node, after the rock merge and again after the pads and breaklines: "
+                         "z = min(z, 3x3 median + this), --spike-passes times; in the second stage breakline bands, grade "
+                         "pads and cut-out rings are skipped (0 = off)")
+    ap.add_argument("--spike-passes", type=int, default=2, help="passes of the final despike")
+    ap.add_argument("--spike-floor", type=int, default=1, choices=[0, 1, 2],
+                    help="where the --rock-smooth-floor also protects measured rock points from the 3x3 clamp: 1 = inside "
+                         "traced rock outlines (default), 2 = on every rock node, 0 = nowhere (every peak is cut to the "
+                         "3x3 median + --spike-clamp)")
+    ap.add_argument("--spike-rock", type=float, default=0.2,
+                    help="final despike: nodes the rock merge raised more than this (m; + the pits their 3x3 closing adds) "
+                         "are also clamped from below (--pit-clamp) and smoothed (--rock-smooth)")
+    ap.add_argument("--peak-clamp", type=float, default=0.1,
+                    help="despike: z = min(z, highest of the 8 neighbours + this) (lone peaks; 0 = off)")
+    ap.add_argument("--pit-ceiling", type=float, default=0.3,
+                    help="despike: the pit lift and the rock Gaussian never raise a node more than this above its own "
+                         "cell's lowest last return (measured ground at a rock foot stays; negative = no ceiling)")
+    ap.add_argument("--pit-clamp", type=float, default=0.3, help="final despike, rock nodes: z = max(z, 3x3 median - this) (0 = off)")
+    ap.add_argument("--rock-smooth", type=float, default=0.25,
+                    help="final despike: Gaussian sigma (m) over the rock nodes only (0 = off)")
+    ap.add_argument("--rock-smooth-clamp", type=float, default=0.0,
+                    help="final despike: the rock Gaussian moves no node by more than this (m; 0 = no limit)")
+    ap.add_argument("--rock-smooth-floor", type=float, default=0.1,
+                    help="despike: on rock nodes neither the clamp nor the Gaussian takes a node more than this below the "
+                         "measured height of its own cell (max of its lowest last return and q90 single return), so measured "
+                         "rock keeps its height (negative = no floor)")
+    ap.add_argument("--rock-smooth-ring", type=int, default=1,
+                    help="final despike: the rock Gaussian also covers this many rings of nodes round the rock (its foot)")
+    ap.add_argument("--bump-clamp", type=float, default=0.4,
+                    help="final despike: off-rock nodes more than this above the 5x5 median, in groups of <= 4 nodes, take "
+                         "that median (0 = off)")
+    ap.add_argument("--ground-despike", type=float, default=0.3,
+                    help="filtered ground: isolated ground cells (<= 2) more than this above the median of their 3x3 ground "
+                         "cells are shrub tops, not ground (0 = off)")
+    ap.add_argument("--veg-window", type=float, default=2.0,
+                    help="inside --veg-mask / no_solid beds the terrain is capped at the grey opening of this window (m) + "
+                         "--veg-dh: shrub tops the ground filter kept are cut to the envelope of the ground around them")
+    ap.add_argument("--veg-dh", type=float, default=0.1, help="see --veg-window")
+    ap.add_argument("--wall-gap", type=float, default=0.0,
+                    help="draped overlays stop this far short of every retaining wall's faces (m; they are draped on the "
+                         "terrain triangles themselves, which step inside the wall, so 0 meets the face cleanly)")
+    ap.add_argument("--rock-face", type=float, default=0.3,
+                    help="terrain faces raised more than this by the rock merge get surface class 'rock' (0 = off)")
+    ap.add_argument("--ground-cell", type=float, help="cell of the morphological ground filter (default max(--cell, 0.5))")
+    ap.add_argument("--ground-stat", default="median", choices=["min", "median"],
+                    help="height of a filtered ground cell: lowest return, or median of returns within 0.25 m of it")
+    ap.add_argument("--breaklines", help="json with retaining walls (a yard.json: items of kind retaining_wall, or a list of "
+                                         "{line, thickness}): grid nodes next to a wall take the grade of their own side, so "
+                                         "the terrain steps inside the wall instead of ramping across it")
+    ap.add_argument("--raised", help="comma list of wing ids standing on another storey (no ground contact; also read "
+                                     "from keep_wall_bottoms in the --grade / --breaklines / --boulders yard.json): "
+                                     "ground under their overhangs is kept")
+    ap.add_argument("--grade", help="json list of flat pads {polygon, z[, blend]}: terrain inside set to z (areaways, patios "
+                                    "cut into a slope), blended back to the surface over `blend` m outside; z \"lidar\": "
+                                    "the plane fitted to the last returns round it (fit_pad_plane: a wall foot under the eave)")
+    ap.add_argument("--curb-cut", type=float, default=0.6,
+                    help="no curb within this distance of a driveway polygon (curb cut at the driveway mouth); 0 = off")
+    ap.add_argument("--curb-cut-uses", default="Driveway", help="comma list of SurfaceUse values that cut the curb")
+    ap.add_argument("--garage-front", help='json {"front": [[x,y],[x,y]]}: the driveway apron is extended to / cut at this '
+                                           "garage-door line (the measured wall face)")
+    ap.add_argument("--paving-like", help="json polygons where returns are not terrain (street with cars, driveways)")
+    ap.add_argument("--paving-hump", type=float, default=0.3,
+                    help="inside the street / paving outlines, returns more than this over the local lowest-return surface "
+                         "(--paving-hump-window m grey opening: parked cars, trailers) are dropped before any gridding "
+                         "(filtered ground, solid merge, class-2 terrain); 0 = off")
+    ap.add_argument("--paving-hump-window", type=float, default=3.0, help="see --paving-hump (m; wider than a car)")
+    ap.add_argument("--street-bank", type=float, default=0.4,
+                    help="street nodes more than this above the locally fitted road plane, within 3 m of the street outline, "
+                         "are bank under a too-wide street polygon: they leave the street overlay (0 = off)")
+    ap.add_argument("--spike-third", type=float, default=0.3,
+                    help="third despike pass after the second stage: z = min(z, 3x3 median + this) on non-rock nodes outside "
+                         "breakline bands, pads and cut-outs, and on rock nodes the merge raised less than --spike-third-rise "
+                         "(0 = off)")
+    ap.add_argument("--spike-third-rise", type=float, default=1.0, help="see --spike-third (m)")
+    ap.add_argument("--support-radius", type=float, default=0.3,
+                    help="third despike pass: a non-rock node more than --spike-third over the mean of its 8 neighbours (or "
+                         "--bump-clamp over its 5x5 median) is lowered to that level unless a LiDAR return within this many m "
+                         "(plan) lies within --support-dz of its height")
+    ap.add_argument("--support-dz", type=float, default=0.25, help="see --support-radius (m)")
+    ap.add_argument("--wall-foot", type=float, default=0.5,
+                    help="after the breaklines, nodes within one cell of a retaining-wall face on its downhill side (past its "
+                         "ends too) take min(z, their cell's lowest last return), nodes up to this many m out min(z, that + "
+                         "--wall-foot-tol); they are skipped by the later despike passes (0 = off)")
+    ap.add_argument("--wall-foot-tol", type=float, default=0.3, help="see --wall-foot (m)")
+    ap.add_argument("--wall-foot-shift", type=float, default=0.02,
+                    help="snapped foot nodes (grid nodes from beyond a face's downhill side that the breaklines snap onto "
+                         "the face) are feet of that face whatever other wall's band they fall in, and are moved this far "
+                         "downhill off the face so they never coincide with the node snapped there from inside the wall "
+                         "(m; 0 = not moved)")
+    ap.add_argument("--wall-front-probe", type=float, default=0.05,
+                    help="retained ground (--wall-back-floor): a node on a wall's downhill face (or a moved foot node) is "
+                         "raised as another wall's retained ground only when the point this far further downhill is behind "
+                         "a wall too (a terrace); at a corner where two walls meet the lower level runs to the face (m; 0 = "
+                         "off)")
+    ap.add_argument("--pad-back-tol", type=float, default=0.0,
+                    help="retained ground (--wall-back-floor) never raises a node inside a grade pad above the pad z + this "
+                         "(m; the pad is the measured surface and the returns over a patio include a deck overhead; a "
+                         "surface draped on the pad then lies at the pad z + its lift; negative = off)")
+    ap.add_argument("--pad-face-stop", type=int, default=1,
+                    help="a grade pad's blend stops at a retaining-wall face that runs along the pad edge (within 0.05 m): "
+                         "no blend on the face's downhill side (1 = on, 0 = off)")
+    ap.add_argument("--overlay-wall-gap", type=float, default=0.15,
+                    help="draped street / paving / bed overlays are cut back from a strip this wide on the uphill side of "
+                         "every wall face (and past its ends), so a polygon lapping over a face is not draped on the upper "
+                         "level (0 = off; a wall item's \"overlay_gap\" overrides it for that wall)")
+    ap.add_argument("--spike-fourth", type=float, default=0.3,
+                    help="fourth despike pass after the third: z = min(z, 3x3 median + this) on non-rock nodes outside the "
+                         "breakline bands, wall feet, pads and cut-outs (0 = off)")
+    ap.add_argument("--street-clamp", type=float, default=0.25,
+                    help="street-overlay nodes: z = min(z, locally fitted road plane + this) (0 = off)")
+    ap.add_argument("--house-extra", help="json list of polygons treated as building (no lawn/beds; e.g. a garage under a deck)")
+    ap.add_argument("--ground-exclude-roof", type=int, default=1,
+                    help="filtered ground: the roof plan (model facets) is never ground either, not only the walls + 1 m "
+                         "(eave returns a few metres above a hillside pass the morphological filter; 1 = on, 0 = off)")
+    ap.add_argument("--decks", help="details.json (add_details.py): the terrain under every deck (polygon, top_z) is capped at "
+                                    "top_z - --deck-clear and under every stair at its tread line - --stair-clear, blended "
+                                    "over --deck-blend m outside; applied last, after every despike (cap_terrain)")
+    ap.add_argument("--step-caps", type=int, default=1,
+                    help="the terrain under the --grade yard.json 'steps' items is capped at their tread line - --stair-clear "
+                         "too (steps_caps; 1 = on, 0 = off)")
+    ap.add_argument("--deck-clear", type=float, default=0.30, help="see --decks (m below the deck top)")
+    ap.add_argument("--stair-clear", type=float, default=0.05, help="see --decks (m below the tread line)")
+    ap.add_argument("--deck-blend", type=float, default=0.3, help="see --decks (m outside the polygon)")
+    ap.add_argument("--stair-foot", type=float, default=0.75,
+                    help="after the deck / stair caps, nodes up to this many m past the foot of a --decks stair (stair width "
+                         "+ 0.25 m each side) are lowered to the --stair-foot-q quantile of the last returns within "
+                         "--stair-foot-radius (>= 2 returns; snapped wall-face nodes and grade pads left alone; 0 = off)")
+    ap.add_argument("--stair-foot-radius", type=float, default=0.25, help="see --stair-foot (m)")
+    ap.add_argument("--stair-foot-q", type=float, default=0.25, help="see --stair-foot: quantile of the returns (0.5 = median)")
+    ap.add_argument("--wall-back-floor", type=float, default=0.2,
+                    help="retained ground: nodes behind a wall face (within its thickness + 1.5 cells) lying under the "
+                         "--wall-back-q quantile of the last returns within one cell behind the wall body are raised to it, "
+                         "at most this far over the wall top (m; < 0 = off)")
+    ap.add_argument("--wall-back-reach", type=float, default=1.5,
+                    help="retained ground (--wall-back-floor): the band behind a face is the wall thickness + this many "
+                         "cells (also round a convex joint of the face line)")
+    ap.add_argument("--wall-back-q", type=float, default=0.5,
+                    help="retained ground (--wall-back-floor): raise to this quantile of the last returns within one cell "
+                         "behind the wall body (0.5 = their median, the per-cell estimate of the filtered ground; 0 = the "
+                         "lowest return, the round-7 rule, which leaves a rough rock top or ledge a noise sigma low)")
+    ap.add_argument("--flat-rock-window", type=float, default=0.5,
+                    help="rock-raised nodes over the flat cluster of last returns in their window (m, square, centred; "
+                         "--flat-rock-n within --flat-rock-dz, at least --flat-rock-share of the window's returns) are "
+                         "lowered to its median (0 = off)")
+    ap.add_argument("--flat-rock-n", type=int, default=5, help="see --flat-rock-window")
+    ap.add_argument("--flat-rock-dz", type=float, default=0.1, help="see --flat-rock-window (m)")
+    ap.add_argument("--flat-rock-share", type=float, default=0.5, help="see --flat-rock-window")
+    ap.add_argument("--flat-rock-tol", type=float, default=0.05, help="see --flat-rock-window: smaller changes are left (m)")
+    ap.add_argument("--wall-top-tol", type=float, default=0.2,
+                    help="nodes at a retaining wall's faces more than this above its top_z with no LiDAR last return within "
+                         "0.3 m / 0.25 m take top_z + this (wall_top_clamp; negative = off)")
+    ap.add_argument("--wall-back-cap", type=float, default=0.05,
+                    help="retained ground behind a wall over flat measured ground: nodes from the back line out to "
+                         "--wall-back-cap-reach m behind the body take min(z, lowest behind-the-body last return within "
+                         "--wall-back-cap-radius + this) where those returns span < --wall-back-cap-flat; back-line nodes "
+                         "stand no higher than the wall top where the ground there meets it (wall_back_cap; negative = off)")
+    ap.add_argument("--wall-back-cap-reach", type=float, default=0.5, help="see --wall-back-cap (m behind the wall body)")
+    ap.add_argument("--wall-cap-seen", type=int, default=1,
+                    help="wall_back_cap: nodes on a wall body's back boundary over the top, where >= 3 last returns in the back "
+                         "half of the body (the cap) have a median <= top + 0.1 m, stand at the top - --wall-cap-drop "
+                         "(1 = on, 0 = off)")
+    ap.add_argument("--wall-cap-ends", type=int, default=1,
+                    help="wall_back_cap: at a free wall end where the LiDAR sees the cap, the beyond-end nodes within one cell "
+                         "move onto the end line / back corner and stand at the top - --wall-cap-drop (1 = on, 0 = off)")
+    ap.add_argument("--wall-cap-drop", type=float, default=0.02, help="see --wall-cap-seen / --wall-cap-ends (m)")
+    ap.add_argument("--wall-back-cap-radius", type=float, default=0.25, help="see --wall-back-cap (m)")
+    ap.add_argument("--wall-back-cap-flat", type=float, default=0.1, help="see --wall-back-cap (m)")
+    ap.add_argument("--wall-back-shift", type=float, default=None,
+                    help="back-line nodes (grid nodes the breaklines snap onto a wall's back line) standing at or over the "
+                         "wall top - 0.01 m move uphill off it by max(this, the distance that keeps their triangles across "
+                         "the wall body under the cap; at most 0.4 cell), so the terrain neither coincides with the cap's "
+                         "back edge nor laps over it (wall_back_shift; m; default --wall-foot-shift; negative = off)")
+    ap.add_argument("--spike-mean", type=float, default=0.3,
+                    help="last despike pass: on the --spike-fourth nodes, z = min(z, mean of the 8 neighbours + this), never "
+                         "lowered by more than --spike-mean-drop (crest tips the median clamps cannot see; 0 = off)")
+    ap.add_argument("--spike-mean-drop", type=float, default=0.15, help="see --spike-mean (m)")
+    ap.add_argument("--tip-clamp", type=float, default=0.15,
+                    help="last despike pass: a node higher than all 8 neighbours and more than this over their mean (on the "
+                         "--spike-mean nodes, plus isolated rock nodes) takes mean + this, lowered by at most "
+                         "--spike-mean-drop (lone teeth; 0 = off)")
+    ap.add_argument("--spike-fourth-passes", type=int, default=2, help="passes of the fourth despike pass")
+    ap.add_argument("--paving-foot", type=float, default=0.1,
+                    help="where draped concrete paving meets a retaining-wall face on its downhill side, the "
+                         "terrain nodes and overlay vertices within this many m of the face take the paving plane extended "
+                         "from --paving-foot-band m out (paving_foot_plane), and terrain triangles still standing more than "
+                         "0.02 m over it there are dropped (poking_triangles): one clean straight joint instead of a lip and "
+                         "face-line slivers (m; 0 = off)")
+    ap.add_argument("--paving-foot-band", default="0.3,0.6",
+                    help="see --paving-foot: the distances out from the face (m) the plane is fitted over")
+    ap.add_argument("project"); ap.add_argument("features"); ap.add_argument("out")
+    ap.add_argument("--half", type=float, default=34.0); ap.add_argument("--cell", type=float, default=0.5)
+    ap.add_argument("--bed-width", type=float, default=0.9, help="rock bed band around the walls (m)")
+    ap.add_argument("--beds", help="json list of extra bed polygons [[x,y],...] or {polygon, label, no_solid} dicts (e.g. under "
+                                   "decks; no_solid: a shrub / mulch bed that is also a --veg-mask)")
+    ap.add_argument("--paving", help="json list of extra concrete polygons [[x,y],...] (aprons, stoops the GIS misses)")
+    ap.add_argument("--cutouts", help="json list of polygons [[x,y],...] cut out of the ground and every surface "
+                                      "(window-well pits, stair wells); add_site.py builds what goes in the hole")
+    ap.add_argument("--address", help="parcel ADDRESS to outline as the subject lot")
+    ap.add_argument("--subject-only", action="store_true",
+                    help="drop private paving (driveways, patios, walks) that does not touch the subject parcel "
+                         "(needs --address); streets and public sidewalk centre-lines are kept")
+    ap.add_argument("--edging", type=float, default=0.0,
+                    help="emit landscape edging lines along rock-bed/lawn boundaries longer than this many metres (0 = off)")
+    a = ap.parse_args()
+
+    site = json.load(open(os.path.join(a.project, "site.json")))
+    datum = float(site.get("datum_m"))
+    model = json.load(open(os.path.join(a.project, "model.json")))
+    F = json.load(open(a.features))
+    pts = np.load(os.path.join(a.project, "data/lidar_points.npy"))
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+    from propmodel import lidar as L
+    if a.paving_hump > 0:
+        # parked cars / trailers on the street or a driveway: not ground, and not "rock" for the solid merge
+        pav = paving_outlines(F, json.load(open(a.paving)) if a.paving else None)
+        hump = L.paving_humps(pts, pav, above=a.paving_hump, window=a.paving_hump_window)
+        if hump.any():
+            hp = pts[hump]
+            print(f"terrain: {int(hump.sum())} returns on paving more than {a.paving_hump} m over the local lowest-return "
+                  f"surface dropped (vehicles; x {hp[:, 0].min():.1f}..{hp[:, 0].max():.1f}, y {hp[:, 1].min():.1f}..{hp[:, 1].max():.1f})")
+        pts = pts[~hump]
+    g = pts[pts[:, 3] == 2]
+    gx, gy, gz = g[:, 0], g[:, 1], g[:, 2] - datum
+
+    bed_polys, veg_polys = bed_entries(json.load(open(a.beds))) if a.beds else ([], [])
+    if a.veg_mask:
+        veg_polys += bed_entries(json.load(open(a.veg_mask)))[0]
+    veg = unary_union(veg_polys) if veg_polys else Polygon()
+
+    # ---- terrain grid -----------------------------------------------------
+    from scipy.interpolate import griddata
+    from scipy.ndimage import median_filter
+    h, c = a.half, a.cell
+    xs = np.arange(-h, h + 1e-9, c)
+    ys = np.arange(-h, h + 1e-9, c)
+    X, Y = np.meshgrid(xs, ys)
+    rock_rise = np.zeros(X.shape)          # how far the rock merge raised each node above the filtered ground
+    rock_low = None                        # measured height of each node's cell (solid merge): floor of the rock smoothing
+    in_outlines = np.zeros(X.shape, bool)  # nodes inside traced rock outlines
+    cell_low = None                        # lowest last return of each node's cell (ceiling of the pit lift / smoothing)
+    if a.ground == "filtered" or (a.ground == "auto" and len(g) < 0.1 * len(pts)):
+        # LiDAR delivered with few class-2 points (e.g. Montana statewide QL1): find the ground with the
+        # progressive morphological filter on last returns; the house, decks and anything listed in
+        # --ground-exclude can never be ground (they are bridged from the grade around them)
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+        from propmodel import lidar as L
+        ex = [_wing_union(model).buffer(1.0)] + ([roof_plan(model)] if a.ground_exclude_roof else [])
+        if a.ground_exclude:
+            ex += [Polygon(q).buffer(0) for q in json.load(open(a.ground_exclude))]
+        exu = unary_union(ex)
+        surf = L.ground_surface(pts, cell=a.ground_cell or max(c, 0.5), exclude=exu, zstat=a.ground_stat,
+                                despike=a.ground_despike if a.ground_despike > 0 else None)
+        Z = L.surface_z(surf, X.ravel(), Y.ravel()).reshape(X.shape) - datum
+        if not veg.is_empty and a.veg_window > 0:
+            vm = shapely.contains_xy(veg, X, Y)
+            Zv = L.veg_floor(Z, vm, c, window=a.veg_window, dh=a.veg_dh)
+            print(f"terrain: vegetation mask lowers {int((Z - Zv > 0.05).sum())} nodes to the ground envelope "
+                  f"(max {(Z - Zv).max():.2f} m)")
+            Z = Zv
+        print(f"terrain: filtered ground surface ({int(surf['ground'].sum())} ground cells, {a.ground_stat} per cell)")
+        if a.keep_rocks and a.rocks == "solid":
+            # boulders and outcrops are real terrain the morphological filter shaves off: take the max of the
+            # ground and the solid surface (single-return, planar neighbourhood), never on the building, decks,
+            # paving with cars (--paving-like) or rising more than --rock-max
+            Zg = median_filter(Z, size=3, mode="nearest")
+            loc = np.column_stack([pts[:, :2], pts[:, 2] - datum, pts[:, 3:]])
+            sol = L.solid_surface(loc, xs[0] - c / 2, ys[0] - c / 2, len(xs), len(ys), cell=c, radius=a.solid_radius,
+                                  min_single=a.solid_single, max_rms=a.solid_rms)
+            Zs = sol["Z"]
+            cell_low = sol["low"]
+            # measured rock height of each node cell: the higher of its lowest last return and its q90 single return
+            with np.errstate(invalid="ignore"):
+                rock_low = np.fmax(sol["low"], sol["q90_single"])
+            # never solid: the roof plan and decks / excludes (+ a small margin; a boulder can stand right at the
+            # drip line) and paving with cars. The ground filter above keeps its wider exclusion.
+            mb = a.solid_mask_buffer
+            nog = unary_union([roof_plan(model).buffer(mb)]
+                              + [Polygon(q).buffer(0).buffer(mb) for q in (json.load(open(a.ground_exclude)) if a.ground_exclude else [])]
+                              + [Polygon(q).buffer(0) for q in (json.load(open(a.paving_like)) if a.paving_like else [])]
+                              + [veg])
+            nogm = shapely.contains_xy(nog, X, Y)
+            if not veg.is_empty:
+                print(f"terrain: vegetation mask (no solid / rock merge) {veg.area:.1f} m2, "
+                      f"{int(shapely.contains_xy(veg, X, Y).sum())} nodes")
+            Zs[nogm] = np.nan
+            ngrow = int(np.ceil(a.solid_radius / c)) + 1 if a.solid_grow < 0 else a.solid_grow
+            Z, acc = L.merge_solid(Zg, Zs, c, rise=a.solid_rise, min_patch=a.solid_patch, max_rise=a.rock_max,
+                                   grow=sol, grow_iter=ngrow, mask=nogm)
+            print(f"terrain: solid surface raises {int((Z - Zg > 0.05).sum())} nodes "
+                  f"({int((Z - Zg > a.rock_face).sum())} by > {a.rock_face} m, max {(Z - Zg).max():.2f} m; edge growth {ngrow} rounds)")
+            # traced rock outlines: the planarity test fails on domed and fractured rock, so take a high quantile
+            # of the cell's single returns there (canopy above the outline's top is not rock)
+            outl = rock_outlines(F, json.load(open(a.boulders)) if a.boulders else None)
+            if outl and a.rock_q > 0:
+                s1 = loc[:, 5] == 1
+                ii = np.floor((loc[:, 0] - (xs[0] - c / 2)) / c).astype(int)
+                jj = np.floor((loc[:, 1] - (ys[0] - c / 2)) / c).astype(int)
+                okq = s1 & (ii >= 0) & (ii < len(xs)) & (jj >= 0) & (jj < len(ys))
+                q = L.cell_quantile(ii[okq], jj[okq], loc[okq, 2], len(xs), len(ys), a.rock_q)
+                cap = np.full(X.shape, -np.inf); inside = np.zeros(X.shape, bool)
+                for pg, tz in outl:
+                    m_ = shapely.contains_xy(pg, X, Y)
+                    inside |= m_
+                    cap[m_] = np.maximum(cap[m_], (tz + 0.1) if tz is not None else np.inf)
+                in_outlines = inside & ~nogm
+                with np.errstate(invalid="ignore"):
+                    take = inside & ~nogm & np.isfinite(q) & (q > Z) & (q <= cap) & (q - Zg < a.rock_max)
+                Z = np.where(take, q, Z)
+                print(f"terrain: {len(outl)} rock outlines, {int(take.sum())} nodes raised to the q{a.rock_q:g} single return")
+                if a.rock_floor_last:
+                    # a traced outline is rock by inspection (vegetation was excluded when it was traced): no node in it
+                    # stays below the lowest last return of its own cell (cells with mixed pulses have no q90 single return)
+                    low = sol["low"]
+                    with np.errstate(invalid="ignore"):
+                        tk2 = inside & ~nogm & np.isfinite(low) & (low > Z) & (low <= cap) & (low - Zg < a.rock_max)
+                    Z = np.where(tk2, low, Z)
+                    print(f"terrain: rock outlines, {int(tk2.sum())} more nodes raised to their cell's lowest last return")
+            rock_rise = Z - Zg
+            if a.despike > 0:
+                from scipy.ndimage import binary_dilation
+                raised = rock_rise > 0.05
+                # outline of the raised patches: tall nodes next to unraised ground (cell-sized teeth)
+                outline = (rock_rise > a.despike_edge) & binary_dilation(~raised, np.ones((3, 3))) if a.despike_edge > 0 else None
+                Z = L.despike(Z, raised, c, above=a.despike, sigma=a.despike_sigma,
+                              max_change=a.despike_clamp if a.despike_clamp > 0 else None,
+                              edge_nodes=outline, passes=a.despike_passes)
+                rock_rise = Z - Zg
+            print(f"terrain: rock-raised nodes {int((rock_rise > 0.05).sum())} "
+                  f"({int((rock_rise > a.rock_face).sum())} by > {a.rock_face} m, max {rock_rise.max():.2f} m)")
+        elif a.keep_rocks:
+            # the morphological filter shaves boulders and rock outcrops (real terrain). Where no pulse split
+            # (no canopy), take the lowest last return of each cell instead, unless the cell is building, deck,
+            # paving/street (cars) or rises implausibly high above the filtered ground.
+            last = pts[:, 4] >= pts[:, 5]
+            ii = np.floor((pts[:, 0] - (xs[0] - c / 2)) / c).astype(int)
+            jj = np.floor((pts[:, 1] - (ys[0] - c / 2)) / c).astype(int)
+            ok = (ii >= 0) & (ii < len(xs)) & (jj >= 0) & (jj < len(ys))
+            zmin = np.full(X.shape, np.inf); cnt = np.zeros(X.shape); multi = np.zeros(X.shape)
+            np.minimum.at(zmin, (jj[ok & last], ii[ok & last]), pts[ok & last, 2] - datum)
+            np.add.at(cnt, (jj[ok], ii[ok]), 1.0)
+            np.add.at(multi, (jj[ok], ii[ok]), (pts[ok, 5] > 1).astype(float))
+            canopy = multi / np.maximum(cnt, 1) > a.canopy_frac
+            from scipy.ndimage import binary_dilation
+            canopy = binary_dilation(canopy, iterations=1)       # trunks and branch edges next to canopy cells
+            keep = np.isfinite(zmin) & ~canopy & (zmin - Z < a.rock_max) & (zmin - Z > -0.5)
+            nog = unary_union([exu.buffer(0.5), veg] + [Polygon(q).buffer(0) for q in (json.load(open(a.paving_like)) if a.paving_like else [])])
+            keep &= ~shapely.contains_xy(nog, X, Y)
+            Z = np.where(keep, zmin, Z)
+            print(f"terrain: {int(keep.sum())} cells keep their rock/grade returns ({100 * keep.mean():.0f} %)")
+    else:
+        Z = griddata((gx, gy), gz, (X, Y), method="linear")
+        Zn = griddata((gx, gy), gz, (X, Y), method="nearest")
+        Z = np.where(np.isnan(Z), Zn, Z)
+    if not (a.keep_rocks and a.rocks == "solid"):
+        Z = median_filter(Z, size=3, mode="nearest")      # (the solid merge filtered its ground part already)
+
+    # ---- final despike of every node (lit pyramids: shrub tops the ground filter kept, single solid cells,
+    # sampling holes in boulder tops, a 2x2 block on a slope), first stage: before the pads and breaklines, so the
+    # wall bands take their side grades from a clean surface
+    def _despike(Z, rock_rise, skip, stage, smooth=True):
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+        from propmodel import lidar as L
+        floor = (rock_low - a.rock_smooth_floor) if (rock_low is not None and a.rock_smooth_floor >= 0) else None
+        Zn, rk_n = L.clamp_spikes(Z, c, skip=skip, rock=rock_rise > a.spike_rock, above=a.spike_clamp,
+                                  below=a.pit_clamp if (a.pit_clamp > 0 and smooth) else None, passes=a.spike_passes,
+                                  sigma=a.rock_smooth if smooth else 0,
+                                  max_change=a.rock_smooth_clamp if a.rock_smooth_clamp > 0 else None,
+                                  floor=floor, bump=a.bump_clamp if a.bump_clamp > 0 else None, ring=a.rock_smooth_ring,
+                                  ring_exclude=shapely.contains_xy(veg, X, Y) if not veg.is_empty else None,
+                                  floor_clamp={0: False, 1: in_outlines, 2: True}[a.spike_floor],
+                                  peak=a.peak_clamp if a.peak_clamp > 0 else None,
+                                  ceiling=(cell_low + a.pit_ceiling) if (cell_low is not None and a.pit_ceiling >= 0) else None)
+        dz = Zn - Z
+        print(f"terrain: despike ({stage}) lowered {int((dz < -0.01).sum())} nodes (max {-dz.min():.2f} m), raised "
+              f"{int((dz > 0.01).sum())} (max {dz.max():.2f} m)" + (f"; {int(rk_n.sum())} rock nodes smoothed" if smooth else "")
+              + (f", {int(skip.sum())} skipped" if skip is not None else ""))
+        return Zn, rock_rise + dz
+    if a.spike_clamp > 0:
+        Z, rock_rise = _despike(Z, rock_rise, None, "after the rock merge")
+
+    # ---- grade pads and retaining-wall breaklines ------------------------------
+    pads = grade_pads(json.load(open(a.grade))) if a.grade else []
+    padmask = np.zeros(X.shape, bool)       # pad + blend nodes (the final despike leaves them alone)
+    if pads:
+        _Zp = Z.copy()
+
+        def _zp(x, y):
+            fi = np.clip((x - xs[0]) / c, 0, len(xs) - 1.001); fj = np.clip((y - ys[0]) / c, 0, len(ys) - 1.001)
+            i_, j_ = int(fi), int(fj); tx, ty = fi - i_, fj - j_
+            return (_Zp[j_, i_] * (1 - tx) * (1 - ty) + _Zp[j_, i_ + 1] * tx * (1 - ty)
+                    + _Zp[j_ + 1, i_] * (1 - tx) * ty + _Zp[j_ + 1, i_ + 1] * tx * ty)
+        pfaces = wall_faces(json.load(open(a.breaklines)), zfun=_zp) if (a.breaklines and a.pad_face_stop) else []
+        if any(p.get("z") == "lidar" for p in pads):
+            _lm = pts[:, 4] >= pts[:, 5]
+            pads, prep = resolve_lidar_pads(pads, pts[_lm, :2], pts[_lm, 2] - datum, zfun=_bilinear(xs, ys, _Zp),
+                                            exclude=_wing_union(model))
+            for lab, pl, st in prep:
+                if pl is None:
+                    print(f"terrain: WARNING: LiDAR plane pad '{lab}' not applied: {st.get('why')}")
+                else:
+                    print(f"terrain: LiDAR plane pad '{lab}': {st['n']} last returns, rms {st['rms']:.3f} m (max "
+                          f"{st['max_res']:.3f}), z {pl[2]:.2f} at ({pl[0]:.2f},{pl[1]:.2f}), slope {st['slope']:.3f}")
+        Z, padmask, nblk = pad_blend(Z, X, Y, pads, pfaces, rock_rise)
+        for pad in pads:
+            zs_ = "LiDAR plane" if pad.get("plane") is not None else pad["z"]
+            print(f"terrain: grade pad z={zs_} over {Polygon(pad['polygon']).buffer(0).area:.1f} m2")
+        if nblk:
+            print(f"terrain: grade-pad blends stop at the retaining-wall faces along the pad edges: {nblk} nodes on the "
+                  f"lower level kept out of the blend")
+    _Zw = Z.copy()
+
+    def _zw(x, y):
+        fi = np.clip((x - xs[0]) / c, 0, len(xs) - 1.001); fj = np.clip((y - ys[0]) / c, 0, len(ys) - 1.001)
+        i_, j_ = int(fi), int(fj); tx, ty = fi - i_, fj - j_
+        return (_Zw[j_, i_] * (1 - tx) * (1 - ty) + _Zw[j_, i_ + 1] * tx * (1 - ty)
+                + _Zw[j_ + 1, i_] * (1 - tx) * ty + _Zw[j_ + 1, i_ + 1] * tx * ty)
+    walls = wall_lines(json.load(open(a.breaklines)), zfun=_zw) if a.breaklines else []
+    wfaces = wall_faces(json.load(open(a.breaklines)), zfun=_zw) if a.breaklines else []
+    node_xy = [X.copy(), Y.copy()]          # mesh vertex positions (nodes next to walls move onto the faces)
+    lastm = pts[:, 4] >= pts[:, 5]
+    low_last = cell_lowest(pts[lastm, :2], pts[lastm, 2] - datum, xs[0], ys[0], c, X.shape)
+    foot = np.zeros(X.shape, bool)
+    if walls:
+        Z = apply_breaklines(Z, xs, ys, walls, c, snap=node_xy)
+        print(f"terrain: {len(walls)} retaining-wall breaklines")
+        if a.wall_foot > 0 and wfaces:
+            nsf = int(snapped_feet(node_xy[0], node_xy[1], wfaces, xs[0], ys[0], c)[0].sum())
+            _nx0 = node_xy[0].copy(); _ny0 = node_xy[1].copy()
+            Zf, foot = wall_foot_lower(Z, node_xy[0], node_xy[1], wfaces, low_last, xs[0], ys[0], c, reach=a.wall_foot,
+                                       tol=a.wall_foot_tol, walls=walls, shift=a.wall_foot_shift)
+            dzf = Z - Zf
+            print(f"terrain: wall feet: {int(foot.sum())} nodes within {a.wall_foot} m downhill of a face, "
+                  f"{int((dzf > 0.01).sum())} lowered to their cell's lowest last return (max {dzf.max():.2f} m); "
+                  f"{nsf} snapped foot nodes, {int((np.hypot(node_xy[0] - _nx0, node_xy[1] - _ny0) > 1e-9).sum())} of them "
+                  f"(those with a twin on the face) moved {a.wall_foot_shift} m off it")
+            Z = Zf
+        if a.wall_back_floor >= 0 and wfaces:
+            pceil = pad_ceiling(pads, node_xy[0], node_xy[1], tol=a.pad_back_tol) if (pads and a.pad_back_tol >= 0) else None
+            Zb, back = wall_back_floor(Z, node_xy[0], node_xy[1], wfaces, face_tops(json.load(open(a.breaklines)), zfun=_zw),
+                                       pts[lastm, :2], pts[lastm, 2] - datum, c, tol=a.wall_back_floor, q=a.wall_back_q,
+                                       reach_cells=a.wall_back_reach, ceiling=pceil, front_probe=a.wall_front_probe)
+            if back.any():
+                what = f"q{a.wall_back_q:g} of the last returns" if a.wall_back_q > 0 else "lowest last return"
+                print(f"terrain: retained ground: {int(back.sum())} nodes behind a wall face raised to the {what} "
+                      f"within {c} m behind the wall body (max {(Zb - Z).max():.2f} m, never over the wall top + "
+                      f"{a.wall_back_floor} m" + (f" nor, inside a grade pad, its z + {a.pad_back_tol} m" if pceil is not None
+                                                  else "") + ")")
+            Z = Zb
+        if a.wall_top_tol >= 0:
+            Zt, wtop = wall_top_clamp(Z, X, Y, walls, wall_tops(json.load(open(a.breaklines))), pts[lastm, :2],
+                                      pts[lastm, 2] - datum, c, tol=a.wall_top_tol)
+            if wtop.any():
+                print(f"terrain: wall tops: {int(wtop.sum())} unsupported nodes at a wall face more than {a.wall_top_tol} m "
+                      f"over its top lowered (max {(Z - Zt).max():.2f} m)")
+            Z = Zt
+        if a.wall_back_cap >= 0 and wfaces:
+            bst = {}
+            Zc_, bcap = wall_back_cap(Z, node_xy[0], node_xy[1], wfaces, face_tops(json.load(open(a.breaklines)), zfun=_zw),
+                                      pts[lastm, :2], pts[lastm, 2] - datum, c, reach=a.wall_back_cap_reach,
+                                      radius=a.wall_back_cap_radius, flat=a.wall_back_cap_flat, dz=a.wall_back_cap,
+                                      skip=padmask, cap_seen=a.wall_cap_seen, ends=a.wall_cap_ends,
+                                      cap_drop=a.wall_cap_drop, stats=bst)
+            if bcap.any():
+                print(f"terrain: retained ground over flat measured ground: {int(bcap.sum())} nodes behind a wall lowered "
+                      f"to the lowest last return + {a.wall_back_cap} m or to the wall top (max {(Z - Zc_).max():.2f} m)"
+                      + (f"; {bst['cap_seen']} back-boundary nodes where the LiDAR sees the cap and {bst['ends']} nodes at "
+                         f"free wall ends to the top - {a.wall_cap_drop} m" if bst.get('cap_seen') or bst.get('ends') else ""))
+            Z = Zc_
+
+    # ---- surface classes --------------------------------------------------
+    house = unary_union([_wing_poly(w) for w in model["wings"] if not w.get("roof_only")])
+    extra_polys = [Polygon(q).buffer(0) for q in json.load(open(a.house_extra))] if a.house_extra else []
+    if extra_polys:
+        house = unary_union([house] + extra_polys)
+    imp = F.get("impervious", [])
+    street = polys_of(imp, lambda p: p.get("SurfaceUse") == "Street" or p.get("SurfaceType") == "Paved Street")
+    concrete = polys_of(imp, lambda p: not (p.get("SurfaceUse") == "Street" or p.get("SurfaceType") == "Paved Street"))
+    if a.subject_only and a.address:
+        subj = polys_of([fe for fe in F.get("parcels", []) if (fe.get("props") or {}).get("ADDRESS") == a.address])
+        if not subj.is_empty:
+            keep = subj.buffer(0.5)
+            private = [fe for fe in imp if not (fe.get("props", {}).get("SurfaceUse") == "Street"
+                                               or fe.get("props", {}).get("SurfaceType") == "Paved Street")]
+            concrete = unary_union([g_ for g_ in (polys_of([fe]) for fe in private) if not g_.is_empty and g_.intersects(keep)]
+                                   or [Polygon()])
+    sw_lines = []
+    for fe in F.get("sidewalk", []):
+        wid = float((fe.get("props") or {}).get("WIDTH") or 4) * 0.3048
+        for gl in fe["geoms"]:
+            if len(gl) >= 2:
+                sw_lines.append(LineString(gl).buffer(wid / 2, cap_style="flat"))
+    if sw_lines:
+        concrete = unary_union([concrete, unary_union(sw_lines).difference(street)])
+    if a.paving:
+        concrete = unary_union([concrete] + [Polygon(p).buffer(0) for p in json.load(open(a.paving))])
+    if a.garage_front and os.path.exists(a.garage_front):
+        gf = json.load(open(a.garage_front))
+        gf = gf.get("front", gf) if isinstance(gf, dict) else gf
+        before = concrete.area
+        concrete = align_apron(concrete, gf[:2])
+        print(f"paving: apron aligned to the garage front {gf[:2]} ({concrete.area - before:+.1f} m2)")
+    # traced boulder / outcrop outlines (faces inside get the rock class)
+    rocks = unary_union([pg for pg, _ in rock_outlines(F, json.load(open(a.boulders)) if a.boulders else None)] or [Polygon()])
+    window = Polygon([(-h, -h), (h, -h), (h, h), (-h, h)])
+    street, concrete = street.intersection(window), concrete.intersection(window)
+    if a.street_bank > 0 and not street.is_empty:
+        kerb = unary_union([LineString(gl).buffer(1.0) for fe in (F.get("curbs") or []) for gl in fe["geoms"] if len(gl) >= 2]
+                           or [Polygon()])
+        bank = street_bank(street, X, Y, Z, c, rise=a.street_bank, keep=kerb)
+        if not bank.is_empty:
+            before = street.area
+            street = street.difference(bank.intersection(street))
+            street = unary_union([g_ for g_ in getattr(street, "geoms", [street]) if g_.area > 0.05] or [Polygon()])
+            print(f"paving: street outline laps onto a bank (> {a.street_bank} m over the road plane): "
+                  f"{before - street.area:.1f} m2 left as ground")
+    beds = house.buffer(a.bed_width, join_style="mitre").difference(house) if a.bed_width > 0 else Polygon()
+    if bed_polys:
+        beds = unary_union([beds] + bed_polys)
+    beds = beds.difference(concrete).difference(street)
+    cut = unary_union([Polygon(p).buffer(0) for p in json.load(open(a.cutouts))]) if a.cutouts else Polygon()
+    if not cut.is_empty:
+        street, concrete, beds = street.difference(cut), concrete.difference(cut), beds.difference(cut)
+        # LiDAR returns from inside an existing pit drag the ground down around it: level the grid near each
+        # cut-out to the median grade of a ring 0.6-1.5 m outside it
+        # (full levelling within 0.6 m, blending back to the LiDAR surface by 1.5 m so no cell is left with a step)
+        for pc in getattr(cut, "geoms", [cut]):
+            dist = shapely.distance(pc, shapely.points(X.ravel(), Y.ravel())).reshape(X.shape)
+            ring = (dist > 1.5) & (dist < 2.5) & ~shapely.contains_xy(house, X, Y)
+            if ring.sum() >= 4:
+                w = np.clip((1.5 - dist) / 0.9, 0.0, 1.0)
+                Z = w * float(np.median(Z[ring])) + (1 - w) * Z
+
+    # ---- final despike, second stage: what the pads, breaklines and cut-outs left (their own nodes keep their steps)
+    skip = padmask.copy() | foot
+    if walls:
+        skip |= _band_owner(walls, X, Y, c) != -1
+    if not cut.is_empty:
+        skip |= shapely.distance(cut, shapely.points(X.ravel(), Y.ravel())).reshape(X.shape) < 1.5
+    if a.spike_clamp > 0:
+        Z, rock_rise = _despike(Z, rock_rise, skip, "after pads / breaklines")
+    # third pass: a plain 3x3-median clamp (no rock floor, no smoothing) on everything but the breakline bands, pads,
+    # cut-outs and the tall rock (cliffs and boulders the merge raised >= --spike-third-rise keep their measured edges)
+    if a.spike_third > 0:
+        sk3 = skip | (rock_rise >= a.spike_third_rise)
+        Zn, _ = L.clamp_spikes(Z, c, skip=sk3, rock=None, above=a.spike_third, below=None, passes=1, sigma=0,
+                               peak=a.peak_clamp if a.peak_clamp > 0 else None)
+        # crest and bump nodes the median clamp cannot see (a node on a crest line IS its 3x3 median) are lowered only
+        # where no LiDAR return supports their height (measured terrain breaks stay)
+        free3 = ~sk3 & ~(rock_rise > a.spike_rock)
+        Zn, nun = L.clamp_unsupported(Zn, c, free3, pts[:, :2], pts[:, 2] - datum, x0=xs[0], y0=ys[0], above=a.spike_third,
+                                      bump=a.bump_clamp if a.bump_clamp > 0 else None, radius=a.support_radius,
+                                      dz=a.support_dz)
+        dz = Zn - Z
+        print(f"terrain: despike (third pass) lowered {int((dz < -0.01).sum())} nodes (max {-dz.min():.2f} m; "
+              f"{nun} unsupported crest / bump nodes), {int(sk3.sum())} skipped")
+        Z, rock_rise = Zn, rock_rise + dz
+        if a.spike_fourth > 0:
+            # once more on the non-rock nodes: lowering the crests can leave the next node standing over its new median
+            Zn, _ = L.clamp_spikes(Z, c, skip=sk3 | (rock_rise > a.spike_rock), rock=None, above=a.spike_fourth, below=None,
+                                   passes=max(1, a.spike_fourth_passes), sigma=0,
+                                   peak=a.peak_clamp if a.peak_clamp > 0 else None)
+            dz = Zn - Z
+            print(f"terrain: despike (fourth pass, non-rock) lowered {int((dz < -0.01).sum())} nodes (max {-dz.min():.2f} m)")
+            Z, rock_rise = Zn, rock_rise + dz
+            # isolated rock nodes (rock-raised patches of <= 2 nodes: a single solid cell, not a boulder) count as ground here
+            rk_ = rock_rise > a.spike_rock
+            free5 = ~sk3 & (~rk_ | small_patches(rk_, 2))
+            if a.spike_mean > 0:
+                Zn, nm_ = clamp_mean(Z, free5, above=a.spike_mean, max_drop=a.spike_mean_drop)
+                dz = Zn - Z
+                print(f"terrain: despike (crest tips over the 8-neighbour mean + {a.spike_mean} m) lowered {nm_} nodes "
+                      f"(max {-dz.min():.2f} m)")
+                Z, rock_rise = Zn, rock_rise + dz
+            if a.tip_clamp > 0:
+                Zn, nt_ = clamp_tips(Z, free5, above=a.tip_clamp, max_drop=a.spike_mean_drop)
+                dz = Zn - Z
+                print(f"terrain: lone peaks over the 8-neighbour mean + {a.tip_clamp} m lowered {nt_} nodes "
+                      f"(max {-dz.min():.2f} m)")
+                Z, rock_rise = Zn, rock_rise + dz
+    # rock-raised nodes on a flat measured ledge / shelf: the cluster median of the last returns round them (the outline
+    # quantile and the rock smoothing carry a cliff's height out over the shelf at its foot)
+    if a.flat_rock_window > 0 and a.keep_rocks:
+        rk_ = (rock_rise > a.spike_rock) & ~skip
+        med_, cnt_ = L.flat_window_median(rk_, c, pts[lastm, :2], pts[lastm, 2] - datum, x0=xs[0], y0=ys[0],
+                                          window=a.flat_rock_window, dz=a.flat_rock_dz, min_n=a.flat_rock_n,
+                                          share=a.flat_rock_share)
+        with np.errstate(invalid="ignore"):
+            ch = np.isfinite(med_) & (Z - med_ > a.flat_rock_tol)
+        if ch.any():
+            # lowered only: a node under the window's dominant flat cluster may stand at the foot of an eave, a deck or a
+            # cliff top that fills the window (the solid merge and the rock floor already lift measured rock); a lowered
+            # node must sit level with (or above) at least 3 of its 8 neighbours: a shelf at a cliff foot is lowered as a
+            # whole, a lone node on a rough rock top whose window happens to hold a low flat cluster does not become a dent
+            Zl = flat_lower_no_dents(Z, med_, ch)
+            ch &= Z - Zl > 1e-6
+            dz = np.where(ch, Zl - Z, 0.0)
+            print(f"terrain: flat rock ledges: {int(ch.sum())} rock nodes lowered to the median of their {a.flat_rock_window} m "
+                  f"window's flat last-return cluster (>= {a.flat_rock_n} within {a.flat_rock_dz} m; max {-dz.min():.2f} m)")
+            Z, rock_rise = Z + dz, rock_rise + dz
+    # street nodes: never more than --street-clamp over the locally fitted road plane (bank cells already left the street)
+    if a.street_clamp > 0 and not street.is_empty:
+        road_z = road_plane(street, X, Y, Z)
+        if road_z is not None:
+            # street-class nodes: every corner of a cell whose centre is on the street (the overlay's edge triangles
+            # reach the first node outside the outline; a bank node there would lift the overlay's edge)
+            scell = shapely.contains_xy(street, (X[:-1, :-1] + X[1:, 1:]) / 2, (Y[:-1, :-1] + Y[1:, 1:]) / 2)
+            sm_ = np.zeros(X.shape, bool)
+            sm_[:-1, :-1] |= scell; sm_[:-1, 1:] |= scell; sm_[1:, :-1] |= scell; sm_[1:, 1:] |= scell
+            sm_ &= ~skip
+            Zr = np.where(sm_, np.minimum(Z, road_z(X, Y) + a.street_clamp), Z)
+            dz = Zr - Z
+            print(f"terrain: street nodes clamped to the road plane + {a.street_clamp} m: {int((dz < -0.01).sum())} lowered "
+                  f"(max {-dz.min():.2f} m)")
+            Z = Zr
+    # decks and stairs: the terrain under them stays below their boards / treads (a deck excluded from the ground filter
+    # is bridged from the grade around it, which on a hillside can run through the boards); applied last, so no despike
+    # pass or rock merge undoes it
+    caps = deck_caps(json.load(open(a.decks)), clear=a.deck_clear, stair_clear=a.stair_clear) if a.decks else []
+    if a.step_caps and a.grade:
+        caps += steps_caps(json.load(open(a.grade)), stair_clear=a.stair_clear)
+    keep_nodes = np.zeros(X.shape, bool)       # nodes add_site's steep-face smoothing must not move (scene "fixed_nodes")
+    if caps:
+        Zc, capped = cap_terrain(Z, X, Y, caps, blend=a.deck_blend, skip=skip)
+        dz = Zc - Z
+        keep_nodes = cap_nodes(X, Y, caps, a.deck_blend + c)
+        print(f"terrain: {len(caps)} deck / stair caps lowered {int(capped.sum())} nodes (max {-dz.min():.2f} m); "
+              f"{int(keep_nodes.sum())} nodes under / round them kept in place by add_site's face smoothing")
+        Z, rock_rise = Zc, rock_rise + dz
+    if a.decks and a.stair_foot > 0:
+        prot = padmask | (np.hypot(node_xy[0] - X, node_xy[1] - Y) > 1e-9)
+        Zf2, sfm, sfs = stair_foot_ground(Z, node_xy[0], node_xy[1], json.load(open(a.decks)), pts[lastm, :2],
+                                          pts[lastm, 2] - datum, reach=a.stair_foot, radius=a.stair_foot_radius, protect=prot,
+                                          q=a.stair_foot_q)
+        if sfm.any():
+            print(f"terrain: stair feet: {int(sfm.sum())} nodes within {a.stair_foot} m past a stair foot lowered to the "
+                  f"q{a.stair_foot_q:g} of the last returns within {a.stair_foot_radius} m (" + "; ".join(
+                      f"{lab[:24]}: {n_} max {w_:.2f} m" for lab, n_, w_ in sfs if n_) + ")")
+        Z, rock_rise = Zf2, rock_rise + (Zf2 - Z)
+
+    # back-line nodes at / over a wall top step uphill off the back line (after every pass that changes their height):
+    # their triangles across the wall body then stay under the cap instead of covering its back edge
+    bsh = a.wall_foot_shift if a.wall_back_shift is None else a.wall_back_shift
+    if walls and wfaces and bsh >= 0:
+        bmv, bam = wall_back_shift(Z, node_xy[0], node_xy[1], wfaces, face_tops(json.load(open(a.breaklines)), zfun=_zw),
+                                   c, shift=bsh)
+        if bmv.any():
+            print(f"terrain: wall backs: {int(bmv.sum())} back-line nodes at / over a wall top moved uphill off the back "
+                  f"line by {bam[bmv].min():.3f}-{bam[bmv].max():.3f} m (terrain kept under the cap's back edge)")
+
+    # paving at the wall feet (after every pass that moves a node): draped paving meeting a retaining-wall face on its
+    # downhill side runs at its own plane (fitted --paving-foot-band m out) up to the face -- one straight joint
+    pfoot = None
+    npfoot = 0
+    if walls and wfaces and a.paving_foot > 0:
+        paving_ = concrete            # driveways, walks, patios (a street edge at a wall is often a bank: left alone)
+        if not paving_.is_empty:
+            solids_ = unary_union([LineString(l_).buffer(th / 2, cap_style="flat", join_style="mitre") for l_, th in walls])
+            alt0_ = split_diagonals(Z, node_xy[0], node_xy[1])
+            Z0_, NX0_, NY0_ = Z.copy(), node_xy[0].copy(), node_xy[1].copy()
+
+            def _zmesh(qx, qy):
+                return mesh_z(NX0_, NY0_, Z0_, alt0_, xs[0], ys[0], c, qx, qy)
+            b0_, b1_ = (float(v) for v in a.paving_foot_band.split(","))
+            # grade pads keep their own (measured / levelled) height
+            padg_ = unary_union([Polygon(p_["polygon"]).buffer(0) for p_ in pads]) if pads else None
+            pfoot = paving_foot_plane(wfaces, _zmesh, paving_, solids_, near=a.paving_foot, band=(b0_, b1_), skip=padg_)
+            Zpf, pfm = paving_wall_feet(Z, node_xy[0], node_xy[1], pfoot)
+            dz = Zpf - Z
+            npfoot = int(pfm.sum())
+            if pfm.any():
+                print(f"terrain: paving at wall feet: {npfoot} nodes within {a.paving_foot} m downhill of a face set to the "
+                      f"paving plane fitted {b0_}-{b1_} m out ({int((dz < -1e-6).sum())} lowered, max {max(0.0, -dz.min()):.2f} m; "
+                      f"{int((dz > 1e-6).sum())} raised, max {max(0.0, dz.max()):.2f} m)")
+            Z, rock_rise = Zpf, rock_rise + dz
+            keep_nodes |= pfm
+
+    # face centres
+    cx = (X[:-1, :-1] + X[1:, 1:]) / 2
+    cy = (Y[:-1, :-1] + Y[1:, 1:]) / 2
+    fx, fy = cx.ravel(), cy.ravel()
+    cls = np.zeros(fx.shape, int)
+    # only grid cells wholly inside the walls are dropped (a cell straddling a wall stays, under the wall),
+    # so no gap opens round the house where no overlay covers the ground
+    for k, geom in ((1, beds), (2, concrete), (3, street), (4, house.buffer(-c * 0.75))):
+        if not geom.is_empty:
+            cls[shapely.contains_xy(geom, fx, fy)] = k
+    raised = set(a.raised.split(",")) if a.raised else set()
+    for yj in {a.grade, a.breaklines, a.boulders} - {None}:
+        yd = json.load(open(yj))
+        if isinstance(yd, dict):
+            raised |= set(yd.get("keep_wall_bottoms", []))
+    if raised:   # ground stays under a raised storey that overhangs open ground
+        cls[(cls == 4) & ~standing_cells(model["wings"], extra_polys, Z, fx, fy, c, raised)] = 0
+    in_rock = shapely.contains_xy(rocks, fx, fy) if not rocks.is_empty else np.zeros(fx.shape, bool)
+    # rock faces: raised by the rock merge, or inside a traced rock outline; plus the steep flanks next to them
+    # (> 45 deg within two faces), so a boulder is stone down to its foot instead of only on its top
+    nyf, nxf = Z.shape[0] - 1, Z.shape[1] - 1
+    rrf = rock_rise[:-1, :-1] + rock_rise[:-1, 1:] + rock_rise[1:, :-1] + rock_rise[1:, 1:]
+    rockf = (rrf > 4 * a.rock_face) if a.rock_face > 0 else np.zeros((nyf, nxf), bool)
+    rockf |= (in_rock & (cls == 0)).reshape(nyf, nxf)
+    if rockf.any():
+        from scipy.ndimage import binary_dilation as _bd
+        gzx = (Z[:-1, 1:] + Z[1:, 1:] - Z[:-1, :-1] - Z[1:, :-1]) / (2 * c)
+        gzy = (Z[1:, :-1] + Z[1:, 1:] - Z[:-1, :-1] - Z[:-1, 1:]) / (2 * c)
+        rockf |= _bd(rockf, iterations=2) & (np.hypot(gzx, gzy) > 1.0)
+    rockf = rockf.ravel()
+    # paved surfaces are planar-ish: smooth them more (curb faces come separately)
+    ny, nx = Z.shape
+    verts = np.column_stack([node_xy[0].ravel(), node_xy[1].ravel(), Z.ravel()])
+    faces, fcls = [], []
+    alt = split_diagonals(Z, node_xy[0], node_xy[1])   # per-cell fold along the more level diagonal (never turned over)
+    faces_ok = np.zeros((ny - 1, nx - 1), bool)
+    poke = None
+    if pfoot is not None:
+        # terrain triangles still standing over the paving plane within --paving-foot of a face (e.g. from a face node to
+        # a node behind the face, crossing in front of the next face at a joint): dropped, the draped paving covers them
+        fl_ = unary_union([LineString(l_) for l_, _d, _t in wfaces])
+        ccx = (node_xy[0][:-1, :-1] + node_xy[0][1:, 1:]) / 2; ccy = (node_xy[1][:-1, :-1] + node_xy[1][1:, 1:]) / 2
+        nearc = (shapely.distance(fl_, shapely.points(ccx.ravel(), ccy.ravel())) < a.paving_foot + 1.5 * c).reshape(ccx.shape)
+        strip_ = unary_union([LineString(l_).buffer(d_ * a.paving_foot, single_sided=True, join_style="mitre")
+                              for l_, d_, _t in wfaces])
+        poke = poking_triangles(node_xy[0], node_xy[1], Z, alt, pfoot, cells=nearc, solids=solids_, strip=strip_)
+    npoke = 0
+    for j in range(ny - 1):
+        for i in range(nx - 1):
+            k = j * (nx - 1) + i
+            if cls[k] == 4:
+                continue
+            if not cut.is_empty and cut.intersects(Polygon([(X[j, i], Y[j, i]), (X[j, i + 1], Y[j, i + 1]),
+                                                            (X[j + 1, i + 1], Y[j + 1, i + 1]), (X[j + 1, i], Y[j + 1, i])])):
+                continue   # the hole is closed by the overlays around it and by what add_site.py puts in it
+            q_ = quad_face(j, i, nx, alt[j, i])
+            faces_ok[j, i] = True
+            # ground everywhere (paving and beds are crisp draped overlays), except boulders / outcrops the
+            # rock merge raised: those get the rock class (add_site gives them a lighter stone material)
+            if poke is not None and poke[j, i].any():
+                # the quad's own two triangles (0-1-2, 0-2-3: its 0-2 fold), the poking one left out
+                for t_, tri_ in ((0, [q_[0], q_[1], q_[2]]), (1, [q_[0], q_[2], q_[3]])):
+                    if poke[j, i, t_]:
+                        npoke += 1
+                    else:
+                        faces.append(tri_); fcls.append(5 if rockf[k] else 0)
+                continue
+            faces.append(q_)
+            fcls.append(5 if rockf[k] else 0)
+    if pfoot is not None:
+        print(f"terrain: paving at wall feet: {npoke} terrain triangles standing over the paving plane within "
+              f"{a.paving_foot} m of a face dropped")
+
+    # ---- crisp draped overlays (exact polygon edges, z from the terrain triangles themselves) -----------
+    def drape(geom, lift):
+        return drape_on_mesh(geom, node_xy[0], node_xy[1], Z, lift, faces_ok, alt)
+
+    overlays = {}
+    # overlays end at the wall faces (+ --wall-gap): the terrain under the wall is the hidden step
+    wallpoly = unary_union([LineString(l_).buffer(th / 2 + a.wall_gap, cap_style="flat") for l_, th in walls]) if walls else Polygon()
+    if a.overlay_wall_gap > 0 and wfaces:
+        # nothing draped on the uphill side within --overlay-wall-gap of a face (or past its ends): it would take the
+        # upper level's triangles and stand up as a spike on the wall
+        gaps = face_overlay_gaps(json.load(open(a.breaklines)), a.overlay_wall_gap, zfun=_zw)
+        wallpoly = unary_union([wallpoly, uphill_strips(wfaces, gaps)])
+    for name, geom, lift in (("street", street.difference(wallpoly), 0.015),
+                             ("concrete", concrete.difference(house).difference(wallpoly), 0.03),
+                             ("rock_bed", beds.difference(house).difference(wallpoly), 0.02)):
+        v, t = drape(geom.buffer(0), lift)
+        nlev = level_overlay(v, pfoot, lift) if (pfoot is not None and name == "concrete") else 0
+        if nlev:
+            print(f"paving: {name} overlay: {nlev} vertices within {a.paving_foot} m of a wall face set to the paving "
+                  f"plane + {lift} m")
+        overlays[name] = {"verts": v, "tris": t}
+
+    def zat(x, y):
+        return float(griddata((X.ravel(), Y.ravel()), Z.ravel(), [(x, y)], method="linear")[0])
+
+    # ---- curbs along street edges -------------------------------------------
+    curbs = []
+    if F.get("curbs") is not None:
+        # explicit curb lines (a street edge with no raised curb, e.g. a bank meeting the asphalt, gets none)
+        lines_ = [LineString(gl) for fe in F["curbs"] for gl in fe["geoms"] if len(gl) >= 2]
+        edge = unary_union(lines_).intersection(window.buffer(-0.5)) if lines_ else LineString()
+    elif not street.is_empty:
+        edge = street.boundary.intersection(window.buffer(-0.5))
+    else:
+        edge = LineString()
+    if not edge.is_empty:
+        if a.curb_cut > 0:
+            # curb cut: no curb across a driveway mouth (the driveway meets the street flush)
+            uses = {u.strip() for u in a.curb_cut_uses.split(",") if u.strip()}
+            mouths = polys_of(imp, lambda p: p.get("SurfaceUse") in uses)
+            if not mouths.is_empty:
+                edge = edge.difference(mouths.buffer(a.curb_cut))
+        edge = shapely.line_merge(edge) if edge.geom_type == "MultiLineString" else edge
+        lines = list(edge.geoms) if hasattr(edge, "geoms") else [edge]
+        for ln in lines:
+            if ln.length < 1:
+                continue
+            n = max(int(ln.length / 1.0), 1)
+            poly = []
+            for s in range(n + 1):
+                p = ln.interpolate(s / n, normalized=True)
+                poly.append([p.x, p.y])
+            curbs.append(poly)
+    # landscape edging: bed boundary that faces lawn (not the house, paving or the street)
+    edging = []
+    if a.edging > 0 and not beds.is_empty:
+        hard = unary_union([house.buffer(0.05), concrete.buffer(0.05), street.buffer(0.05)] + ([cut.buffer(0.05)] if not cut.is_empty else []))
+        edge = beds.difference(house).boundary.difference(hard.buffer(0.1)).intersection(window.buffer(-0.5))
+        for ln in (list(edge.geoms) if hasattr(edge, "geoms") else [edge]):
+            if ln.is_empty or ln.length < a.edging:
+                continue
+            n = max(int(ln.length / 0.4), 1)
+            edging.append([[round(ln.interpolate(s / n, normalized=True).x, 3), round(ln.interpolate(s / n, normalized=True).y, 3)]
+                           for s in range(n + 1)])
+    parcel = None
+    for fe in F.get("parcels", []):
+        if a.address and (fe.get("props") or {}).get("ADDRESS") == a.address:
+            ring = fe["geoms"][0][0]
+            parcel = [[x, y] for x, y in ring]
+    points = [{"kind": "hydrant", "xy": fe["geoms"][0]} for fe in F.get("hydrants", [])]
+
+    # per-vertex rock weight (share of the rock faces around each vertex, smoothed once): add_site blends the
+    # ground and rock materials with it, so a boulder's edge is a soft transition rather than a sawtooth
+    from scipy.ndimage import uniform_filter as _uf
+    rk = rockf.reshape(nyf, nxf).astype(float)
+    vw = np.zeros((ny, nx)); vn = np.zeros((ny, nx))
+    for dj in (0, 1):
+        for di in (0, 1):
+            vw[dj:dj + nyf, di:di + nxf] += rk; vn[dj:dj + nyf, di:di + nxf] += 1
+    vrock = _uf(vw / np.maximum(vn, 1), 5, mode="nearest")
+    out = {"cell": c, "classes": CLASSES, "verts": np.round(verts, 4).tolist(), "faces": faces, "face_class": fcls,
+           "face_split": "0-2",            # each quad is folded along its own 0-2 diagonal (chosen per cell)
+           "vertex_rock": np.round(vrock.ravel(), 2).tolist(),
+           "fixed_nodes": [int(k) for k in np.nonzero(keep_nodes.ravel())[0]],   # capped under decks / stairs: keep put
+           "grid": {"x0": float(xs[0]), "y0": float(ys[0]), "nx": int(nx), "ny": int(ny), "cell": c,
+                    "z": np.round(Z, 4).ravel().tolist(), "rock_rise": np.round(rock_rise, 2).ravel().tolist()},
+           "overlays": overlays, "curbs": curbs, "edging": edging, "parcel": parcel, "points": points,
+           "cutouts": [[[round(x, 3), round(y, 3)] for x, y in g_.exterior.coords] for g_ in getattr(cut, "geoms", [cut]) if not g_.is_empty],
+           "stats": {"ground_points": int(len(g)), "z_min": float(np.nanmin(Z)), "z_max": float(np.nanmax(Z)),
+                     "cell": c, "nodes": int(Z.size), "rock_faces": int(sum(1 for v in fcls if v == 5)),
+                     "cells_folded_13": int(alt[faces_ok].sum()),
+                     "rock_raised_nodes": int((rock_rise > 0.05).sum()), "curb_lines": len(curbs),
+                     "street_m2": street.area, "concrete_m2": concrete.area, "bed_m2": beds.area,
+                     "paving_foot_nodes": npfoot, "paving_foot_tris_dropped": npoke}}
+    json.dump(out, open(a.out, "w"))
+    print(json.dumps(out["stats"], indent=1), len(faces), "faces")
+
+
+if __name__ == "__main__":
+    main()

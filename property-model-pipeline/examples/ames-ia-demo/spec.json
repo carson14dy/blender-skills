@@ -1,0 +1,15 @@
+{
+  "wings": [
+    {"id": "M", "type": "gable", "label": "main house", "cx": -0.7, "cy": -0.4, "azimuth": 90, "length": 12.6, "width": 10.8,
+     "eave_height": 3.4, "pitch": 0.34, "eave_overhang": 0.45, "rake_overhang": 0.3},
+    {"id": "G", "type": "gable", "label": "garage", "cx": 8.3, "cy": -0.8, "azimuth": 90, "length": 5.0, "width": 8.6,
+     "eave_height": 3.6, "pitch": 0.34, "pitch_b": 0.22, "eave_overhang": 0.45, "rake_overhang": 0.3},
+    {"id": "F", "type": "gable", "label": "front cross-gable", "cx": -3.9, "cy": -5.0, "azimuth": 0, "length": 6.0, "width": 6.4,
+     "eave_height": 3.3, "pitch": 0.3, "eave_overhang": 0.45, "rake_overhang": 0.3}
+  ],
+  "free": ["M.cx", "M.cy", "M.azimuth", "M.length", "M.width", "M.eave_height", "M.pitch",
+           "G.cx", "G.cy", "G.length", "G.width", "G.eave_height", "G.pitch", "G.pitch_b",
+           "F.cx", "F.cy", "F.width", "F.eave_height", "F.pitch", "M.eave_overhang"],
+  "ties": [["M.azimuth", "G.azimuth"], ["M.eave_overhang", "G.eave_overhang", "F.eave_overhang"]],
+  "priors": {"M.eave_overhang": {"value": 0.45, "sigma": 0.15}}
+}

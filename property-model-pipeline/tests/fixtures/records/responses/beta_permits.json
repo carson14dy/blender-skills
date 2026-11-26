@@ -1,0 +1,47 @@
+{
+ "displayFieldName": "",
+ "fieldAliases": {
+  "OBJECTID": "OBJECTID",
+  "PID": "PID",
+  "DateApproved": "DateApproved",
+  "Type": "Type",
+  "PropertyOwner": "PropertyOwner"
+ },
+ "fields": [
+  {
+   "name": "OBJECTID",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "PID",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "DateApproved",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "Type",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "PropertyOwner",
+   "type": "esriFieldTypeString"
+  }
+ ],
+ "features": [
+  {
+   "attributes": {
+    "OBJECTID": 91,
+    "PID": "B-000-001",
+    "DateApproved": 1633003200000,
+    "Permit": "LC-21-77",
+    "ProjectType": "Large Residential Project",
+    "Type": "Addition",
+    "ProjDesc": "Addition",
+    "ProjectCost": 65000.0,
+    "PropertyOwner": "PLANTED OWNER"
+   }
+  }
+ ]
+}

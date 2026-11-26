@@ -1,0 +1,77 @@
+{
+ "displayFieldName": "",
+ "fieldAliases": {
+  "OBJECTID": "OBJECTID",
+  "TAG": "TAG",
+  "INSTR_DATE": "INSTR_DATE",
+  "SELL_PRICE": "SELL_PRICE",
+  "Year_Built": "Year_Built"
+ },
+ "fields": [
+  {
+   "name": "OBJECTID",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "TAG",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "INSTR_DATE",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "SELL_PRICE",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "Year_Built",
+   "type": "esriFieldTypeString"
+  }
+ ],
+ "features": [
+  {
+   "attributes": {
+    "OBJECTID": 71,
+    "TAG": "T0000001",
+    "INSTR_DATE": 1678795200000,
+    "SELL_PRICE": 289900,
+    "Year_Built": 1978,
+    "CLASS": 1,
+    "House_Desc": "10 Ranch 1st 1970-1979",
+    "Grade": "4",
+    "Condition": "Average",
+    "OWNNAME1": "PLANTED NAME ONE"
+   },
+   "geometry": {
+    "rings": [
+     [
+      [
+       -140.00009121,
+       9.99986439
+      ],
+      [
+       -140.00009121,
+       10.00013561
+      ],
+      [
+       -139.99990879,
+       10.00013561
+      ],
+      [
+       -139.99990879,
+       9.99986439
+      ],
+      [
+       -140.00009121,
+       9.99986439
+      ]
+     ]
+    ],
+    "spatialReference": {
+     "wkid": 4326
+    }
+   }
+  }
+ ]
+}

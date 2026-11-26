@@ -1,0 +1,74 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "properties": {
+    "wfo": "XXX",
+    "type": "H",
+    "magf": 1.5,
+    "typetext": "HAIL",
+    "unit": "Inch",
+    "valid": "2026-07-15T23:10:00Z",
+    "lat": 10.00433966,
+    "lon": -140.0,
+    "city": "1 N Testville",
+    "county": "Alpha",
+    "st": "ZZ",
+    "source": "Trained Spotter",
+    "qualifier": "E",
+    "remark": "PLANTED REMARK naming a PLANTED PERSON"
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -140.0,
+     10.00433966
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "wfo": "XXX",
+    "type": "R",
+    "magf": 2.1,
+    "typetext": "RAIN",
+    "unit": "Inch",
+    "valid": "2026-07-15T23:00:00Z",
+    "lat": 10.0,
+    "lon": -140.0,
+    "remark": "x"
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -140.0,
+     10.0
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "wfo": "XXX",
+    "type": "G",
+    "magf": 65,
+    "typetext": "TSTM WND GST",
+    "unit": "MPH",
+    "valid": "2026-08-02T01:30:00Z",
+    "lat": 9.99999888,
+    "lon": -139.97263757,
+    "qualifier": "M",
+    "source": "ASOS"
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -139.97263757,
+     9.99999888
+    ]
+   }
+  }
+ ]
+}

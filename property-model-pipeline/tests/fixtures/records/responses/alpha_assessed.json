@@ -1,0 +1,121 @@
+{
+ "displayFieldName": "",
+ "fieldAliases": {
+  "OBJECTID": "OBJECTID",
+  "TAG": "TAG",
+  "MRNLVL": "MRNLVL",
+  "MRNBVL": "MRNBVL",
+  "TOTAL": "TOTAL",
+  "MRTNM1": "MRTNM1"
+ },
+ "fields": [
+  {
+   "name": "OBJECTID",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "TAG",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "MRNLVL",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "MRNBVL",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "TOTAL",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "MRTNM1",
+   "type": "esriFieldTypeString"
+  }
+ ],
+ "features": [
+  {
+   "attributes": {
+    "OBJECTID": 51,
+    "TAG": "T0000001",
+    "MRALVL": 0,
+    "MRABVL": 0,
+    "MRNLVL": 61000,
+    "MRNBVL": 238500,
+    "TOTAL": 299500,
+    "TYPE": "Residential",
+    "MRTNM1": "PLANTED TAXPAYER",
+    "MRTADR": "PLANTED MAIL"
+   },
+   "geometry": {
+    "rings": [
+     [
+      [
+       -140.00008847,
+       9.99986439
+      ],
+      [
+       -140.00008847,
+       10.00013561
+      ],
+      [
+       -139.99990606,
+       10.00013561
+      ],
+      [
+       -139.99990606,
+       9.99986439
+      ],
+      [
+       -140.00008847,
+       9.99986439
+      ]
+     ]
+    ],
+    "spatialReference": {
+     "wkid": 4326
+    }
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 52,
+    "TAG": "T0000002",
+    "MRNLVL": 59000,
+    "MRNBVL": 301000,
+    "TOTAL": 360000,
+    "TYPE": "Residential"
+   },
+   "geometry": {
+    "rings": [
+     [
+      [
+       -139.99990606,
+       9.99986439
+      ],
+      [
+       -139.99990606,
+       10.00013561
+      ],
+      [
+       -139.99972364,
+       10.00013561
+      ],
+      [
+       -139.99972364,
+       9.99986439
+      ],
+      [
+       -139.99990606,
+       9.99986439
+      ]
+     ]
+    ],
+    "spatialReference": {
+     "wkid": 4326
+    }
+   }
+  }
+ ]
+}

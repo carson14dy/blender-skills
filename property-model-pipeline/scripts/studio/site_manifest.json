@@ -1,0 +1,134 @@
+{
+ "note": "Roof Layer Studio app files as published on 2026-11-25. houses/ is not listed here: house files carry addresses and are verified against the scratch manifest (see restore_site.md).",
+ "generated": "2026-11-25",
+ "siteFileCount": 42,
+ "houseFileCount": 17,
+ "jsModules": 16,
+ "files": [
+  {
+   "path": "catalog/catalog.json",
+   "bytes": 3742,
+   "sha256": "7e35cd051967f93f0d6f019f55979790649faae848eaddbcc7e16e2ca946c8e6"
+  },
+  {
+   "path": "catalog/solar.json",
+   "bytes": 15375,
+   "sha256": "f872dedd17dcaa488cee93804eb565f7d66994a5c670d3bad3fb90473ee56747"
+  },
+  {
+   "path": "catalog/suppliers/sioux-falls.json",
+   "bytes": 497425,
+   "sha256": "648dca523ed68c38d17fe4d5110fb74a5c1d1b62aa279fa2d648e95eb17849af"
+  },
+  {
+   "path": "catalog/suppliers/solar.json",
+   "bytes": 19365,
+   "sha256": "6e88b38f4da04cc1040ceb4bc56f4a686ff463bd9c53933e5ea5ebd6ec94d4c7"
+  },
+  {
+   "path": "css/suppliers.css",
+   "bytes": 32394,
+   "sha256": "b5082bfb2a2509ff636867a187b1a5203a80ee87c0f568b6b660f68bbe0628b7"
+  },
+  {
+   "path": "index.html",
+   "bytes": 41287,
+   "sha256": "baed3fcce79ef56f42ef1d954da1b0e74d598e96202e650736495820e152207b"
+  },
+  {
+   "path": "js/app.js",
+   "bytes": 70257,
+   "sha256": "8db654dc81aeaf1c3c6e6bf02163f0d6670437df68fd35a9d7ad4194816ef69b"
+  },
+  {
+   "path": "js/build.js",
+   "bytes": 11415,
+   "sha256": "9c27160696686ed34c076d228396be87618e23d186be4076ce05637e2900dbc1"
+  },
+  {
+   "path": "js/house.js",
+   "bytes": 16690,
+   "sha256": "e61aaf2cc986310f24c5771d83e96f05d89d64d8e9ae4016407daab973f2379d"
+  },
+  {
+   "path": "js/labels.js",
+   "bytes": 6460,
+   "sha256": "cd77bd7e34e7b6a9ae77f69d61a89ad1cfa6fecf876b9fe5ff1c713af734b460"
+  },
+  {
+   "path": "js/layers.js",
+   "bytes": 32088,
+   "sha256": "7b0b4cdff883f2c7bc4bdc3ca551a47e0afd9121c2e00eee42b79fa43be83148"
+  },
+  {
+   "path": "js/materials-taxonomy.js",
+   "bytes": 20187,
+   "sha256": "316de367078b8a3d2571ef37f558bbaf4a596cd5eafa37bb46369294a14a5aff"
+  },
+  {
+   "path": "js/project-file.js",
+   "bytes": 12610,
+   "sha256": "90858a22cbdb419503ed7874975041d72f7ad1b438c413bf5a7be6e3a7f5fe77"
+  },
+  {
+   "path": "js/quote.js",
+   "bytes": 26670,
+   "sha256": "a9ec33c2e9ca1bcc1ef492f80cc518eb6894893f36c3d0173c757853424d5bcc"
+  },
+  {
+   "path": "js/render.js",
+   "bytes": 11304,
+   "sha256": "e2ef40dff4b4e3c978f7b70444a984c34502d03b6689abd469370bf56d46876d"
+  },
+  {
+   "path": "js/roof-geometry.js",
+   "bytes": 32958,
+   "sha256": "6354b6e04ed78bd72cc07f4c8fc96507d2d1245f1b30152e3dd6e26ede680d62"
+  },
+  {
+   "path": "js/solar.js",
+   "bytes": 27311,
+   "sha256": "a6b072ee11730b90b998ddb70bc3dad51038f4656da1e9fe32d7a542147269a9"
+  },
+  {
+   "path": "js/supplier-products.js",
+   "bytes": 13845,
+   "sha256": "f7cefeed94175c2438806cff821aee16d2ca135d8226eaa482af19b18ec08367"
+  },
+  {
+   "path": "js/supplier-ui.js",
+   "bytes": 92854,
+   "sha256": "4822fd0516ff348dd54fe7ee4e4fe4651e926dfb258467946bbad63696ed133d"
+  },
+  {
+   "path": "js/tap.js",
+   "bytes": 5962,
+   "sha256": "0a05296d087b63ed5c6e6215993d41700ae233e2dca53e739df4f77be75ac765"
+  },
+  {
+   "path": "js/textures.js",
+   "bytes": 35767,
+   "sha256": "6a30478ab7076565c82ce2b1074fa734947ba14a4f0cf115ffd3e2946235106d"
+  },
+  {
+   "path": "js/util.js",
+   "bytes": 4354,
+   "sha256": "83d76cdd87b3f83be79e76e23f5071c0039097e14d7b857189e760d607c4f145"
+  },
+  {
+   "path": "plans/index.json",
+   "bytes": 211,
+   "sha256": "60206bb654c0bcb51464dee727888794b30811ffc7c246ef61a0f452799b553e"
+  },
+  {
+   "path": "plans/metal-over-deck.json",
+   "bytes": 2182,
+   "sha256": "33e733472d5ef6482c34ff2d5cc5c441494010a60716e945b7eac3f931f6d3ec"
+  },
+  {
+   "path": "plans/storm-replacement.json",
+   "bytes": 3746,
+   "sha256": "0e32042ad13c1c1c082ee80cec724b50fecb875ef0ee02e7f6b3c29cb13b699a"
+  }
+ ]
+}

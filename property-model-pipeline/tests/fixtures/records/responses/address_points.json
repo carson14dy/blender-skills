@@ -1,0 +1,71 @@
+{
+ "displayFieldName": "",
+ "fieldAliases": {
+  "OBJECTID": "OBJECTID",
+  "TAG": "TAG",
+  "ADDRESS": "ADDRESS",
+  "LAT": "LAT",
+  "LON": "LON",
+  "MUNICIPALITY": "MUNICIPALITY",
+  "COUNTY": "COUNTY",
+  "YEARBUILT": "YEARBUILT"
+ },
+ "fields": [
+  {
+   "name": "OBJECTID",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "TAG",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "ADDRESS",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "LAT",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "LON",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "MUNICIPALITY",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "COUNTY",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "YEARBUILT",
+   "type": "esriFieldTypeString"
+  }
+ ],
+ "features": [
+  {
+   "attributes": {
+    "OBJECTID": 11,
+    "TAG": "T0000001",
+    "ADDRESS": "1 TEST AVE",
+    "LAT": 10.0,
+    "LON": -140.0,
+    "MUNICIPALITY": "TESTVILLE",
+    "COUNTY": "Alpha",
+    "YEARBUILT": "1978",
+    "OCCUPANCY": "Single Family",
+    "CONSTRTYPE": "Wood Frame",
+    "CORNERLOT": "No"
+   },
+   "geometry": {
+    "x": -140.0,
+    "y": 10.0,
+    "spatialReference": {
+     "wkid": 4326
+    }
+   }
+  }
+ ]
+}

@@ -1,0 +1,53 @@
+{
+ "displayFieldName": "",
+ "fieldAliases": {
+  "OBJECTID": "OBJECTID",
+  "PARCEL_ID": "PARCEL_ID",
+  "SALE_DATE": "SALE_DATE",
+  "SELLERS_NAME": "SELLERS_NAME"
+ },
+ "fields": [
+  {
+   "name": "OBJECTID",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "PARCEL_ID",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "SALE_DATE",
+   "type": "esriFieldTypeString"
+  },
+  {
+   "name": "SELLERS_NAME",
+   "type": "esriFieldTypeString"
+  }
+ ],
+ "features": [
+  {
+   "attributes": {
+    "OBJECTID": 101,
+    "PARCEL_ID": "B-000-001",
+    "SALE_DATE": 20200817,
+    "SALE_YEAR": 2020,
+    "SALE_PRICE": 275000,
+    "FULLVALUE": 251000,
+    "PROPERTY_CLASS": "NA-O",
+    "SELLERS_NAME": "PLANTED SELLER",
+    "BUYERS_NAME": "PLANTED BUYER"
+   }
+  },
+  {
+   "attributes": {
+    "OBJECTID": 102,
+    "PARCEL_ID": "B-000-001",
+    "SALE_DATE": 20110402,
+    "SALE_YEAR": 2011,
+    "SALE_PRICE": 0,
+    "FULLVALUE": 180000,
+    "PROPERTY_CLASS": "NA-O"
+   }
+  }
+ ]
+}
